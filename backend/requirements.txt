@@ -1,0 +1,34 @@
+# --- web ---
+fastapi
+uvicorn[standard]
+pydantic>=2
+pydantic-settings
+
+# --- db ---
+sqlalchemy>=2
+aiosqlite
+alembic
+
+# --- scraping stack ---
+scrapling[fetchers]==0.4.11     # тянет camoufox + playwright + curl_cffi совместимых версий
+httpx[socks]                    # fallback-транспорт
+# camoufox НЕ пиновать отдельно — версией управляет scrapling
+
+# --- utils ---
+python-dateutil
+rapidfuzz
+PyYAML
+tenacity
+orjson
+structlog
+apscheduler                     # Task 3.22
+
+# --- dev ---
+pytest
+pytest-asyncio
+pytest-cov
+hypothesis
+freezegun
+respx
+ruff
+mypy

@@ -1,0 +1,501 @@
+"""Parser run control, progress, reporting, and health API."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Annotated, Any, Literal
+
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.discovery import (
+    DiscoveryRefreshRequest,
+    DiscoveryResponse,
+    get_discovery_service,
+    refresh_discovery,
+)
+from app.api.errors import ApiError
+from app.api.settings import get_effective_settings
+from app.core.config import Settings
+from app.core.privacy import compliance_reasons, require_live_compliance
+from app.db.models import ParserRun, ParserRunTask, SchemaAlert, SourceCredential, SourceSchema
+from app.db.session import get_db
+from app.repositories.runs import RunRepository
+from app.services.parser.planner import ParserPlanner
+from app.services.parser.runtime import ParserRuntime
+from app.services.sources.grailed.discovery.service import DiscoveryService
+from app.services.transport.capabilities import probe_capabilities
+from app.services.transport.factory import create_proxy_manager
+
+router = APIRouter(prefix="/parser", tags=["parser"])
+RunStatus = Literal[
+    "pending", "running", "completed", "partial", "failed", "interrupted", "cancelled"
+]
+
+
+class RunRequest(BaseModel):
+    mode: Literal["delta", "full", "refresh_active"] | None = None
+    brand_ids: list[int] | None = None
+    dry_run: bool = False
+    confirm_over_budget: bool = False
+
+
+class RunSummary(BaseModel):
+    id: int
+    mode: str
+    status: str
+    phase: str
+    dry_run: bool
+    degraded: bool
+    tier: str | None
+    budget: dict[str, Any] | None
+    coverage: Decimal | None
+    requests_made: int
+    warnings: list[str]
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    heartbeat_at: datetime | None
+
+
+class RunListResponse(BaseModel):
+    data: list[RunSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class TaskResponse(BaseModel):
+    id: int
+    brand_id: int | None
+    index_type: str
+    status: str
+    attempts: int
+    hits_collected: int
+    expected_hits: int | None
+    coverage: Decimal | None
+    tier: str | None
+    error: str | None
+
+
+class RunDetailResponse(BaseModel):
+    run: RunSummary
+    tasks: list[TaskResponse]
+
+
+class ProgressResponse(BaseModel):
+    status: str
+    phase: str
+    tier: str | None
+    degraded: bool
+    brands_total: int = 0
+    brands_completed: int = 0
+    tasks_total: int = 0
+    tasks_done: int = 0
+    hits_fetched: int = 0
+    requests_made: int = 0
+    eta_seconds: int | None = None
+    heartbeat_at: datetime | None
+    warnings: list[str]
+
+
+class ParserHealthResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: Literal["ready", "degraded", "unavailable"]
+    source_mode: str
+    transports: dict[str, bool]
+    discovery: dict[str, Any]
+    schema_status: dict[str, Any] = Field(serialization_alias="schema")
+    proxies: list[dict[str, Any]]
+    active_runs: list[int]
+    reasons: list[str] = []
+    versions: dict[str, str | None] = {}
+    circuits: list[dict[str, Any]] = []
+    compliance: dict[str, Any] = {}
+    last_run: dict[str, Any] | None = None
+
+
+class RunMetricsResponse(BaseModel):
+    requests_total: int = 0
+    requests_by_tier: dict[str, int] = {}
+    http_errors_by_code: dict[str, int] = {}
+    retries: int = 0
+    rate_limit_hits: int = 0
+    avg_latency_ms: float = 0
+    p95_latency_ms: float = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    cache_hit_rate: float = 0
+    hits_fetched: int = 0
+    listings_inserted: int = 0
+    listings_updated: int = 0
+    listings_invalid: int = 0
+    quality_flags_counts: dict[str, int] = {}
+    coverage_by_brand: dict[str, str | None] = {}
+    browser_restarts: int = 0
+    proxy_failures: int = 0
+    duration_s: float = 0
+
+
+def get_parser_runtime(request: Request) -> ParserRuntime:
+    runtime = getattr(request.app.state, "parser_runtime", None)
+    if not isinstance(runtime, ParserRuntime):
+        raise ApiError(503, "parser_unavailable", "Parser runtime is unavailable")
+    return runtime
+
+
+@router.post("/run")
+async def start_run(
+    payload: RunRequest,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_effective_settings)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> dict[str, Any]:
+    try:
+        require_live_compliance(settings)
+    except RuntimeError as exc:
+        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
+    mode = payload.mode or settings.parser_mode
+    try:
+        plan = await ParserPlanner(session, settings).build(
+            mode=mode, brand_ids=payload.brand_ids
+        )
+    except LookupError as exc:
+        raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
+    except RuntimeError as exc:
+        raise ApiError(503, str(exc), "Refresh discovery before starting the parser") from exc
+    if payload.dry_run:
+        await session.rollback()
+        response.status_code = 200
+        return {"dry_run": True, "plan": plan.public()}
+    if plan.budget["over_limit"] and not payload.confirm_over_budget:
+        raise ApiError(
+            409,
+            "parser_budget_exceeded",
+            "Estimated request budget exceeds the configured limit",
+            details=[{"budget": plan.budget}],
+        )
+    run = await RunRepository(session).create(
+        mode=mode,
+        budget=plan.budget,
+        tasks=[item.persisted() for item in plan.tasks],
+        warnings=plan.warnings,
+    )
+    await session.commit()
+    if isinstance(runtime, ParserRuntime):
+        runtime.start(run.id, settings=settings)
+    else:
+        runtime.start(run.id)
+    response.status_code = 202
+    return {"dry_run": False, "run": _summary(run).model_dump(mode="json")}
+
+
+@router.get("/runs", response_model=RunListResponse)
+async def list_runs(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    status: RunStatus | None = None,
+) -> RunListResponse:
+    rows, total = await RunRepository(session).list(limit=limit, offset=offset, status=status)
+    return RunListResponse(
+        data=[_summary(item) for item in rows], total=total, limit=limit, offset=offset
+    )
+
+
+@router.get("/runs/{run_id}", response_model=RunDetailResponse)
+async def run_detail(
+    run_id: int, session: Annotated[AsyncSession, Depends(get_db)]
+) -> RunDetailResponse:
+    repository = RunRepository(session)
+    run = await repository.get(run_id)
+    if run is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    return RunDetailResponse(
+        run=_summary(run), tasks=[_task(item) for item in await repository.tasks(run_id)]
+    )
+
+
+@router.get("/runs/{run_id}/progress", response_model=ProgressResponse)
+async def run_progress(
+    run_id: int, session: Annotated[AsyncSession, Depends(get_db)]
+) -> ProgressResponse:
+    run = await RunRepository(session).get(run_id)
+    if run is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    progress = dict(run.stats.get("progress", {}))
+    return ProgressResponse(
+        status=run.status,
+        phase=run.phase,
+        tier=run.tier_used,
+        degraded=run.degraded_mode,
+        brands_total=int(progress.get("brands_total", 0)),
+        brands_completed=int(progress.get("brands_completed", 0)),
+        tasks_total=int(progress.get("tasks_total", 0)),
+        tasks_done=int(progress.get("tasks_done", 0)),
+        hits_fetched=int(progress.get("hits_fetched", 0)),
+        requests_made=run.requests_made,
+        heartbeat_at=run.heartbeat_at,
+        warnings=list(run.warnings),
+    )
+
+
+@router.get("/runs/{run_id}/report")
+async def run_report(
+    run_id: int, session: Annotated[AsyncSession, Depends(get_db)]
+) -> dict[str, Any]:
+    repository = RunRepository(session)
+    run = await repository.get(run_id)
+    if run is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    tasks = await repository.tasks(run_id)
+    return {
+        "run": _summary(run).model_dump(mode="json"),
+        "stats": run.stats,
+        "metrics": RunMetricsResponse.model_validate(
+            run.stats.get("observability", {})
+        ).model_dump(),
+        "coverage_by_brand": {
+            str(key): str(value) if value is not None else None
+            for key, value in (await repository.coverage_by_brand(run_id)).items()
+        },
+        "tasks": [_task(item).model_dump(mode="json") for item in tasks],
+    }
+
+
+@router.post("/runs/{run_id}/cancel", status_code=202, response_model=RunSummary)
+async def cancel_run(
+    run_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> RunSummary:
+    repository = RunRepository(session)
+    run = await repository.get(run_id)
+    if run is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    if run.status not in {"pending", "running"}:
+        raise ApiError(409, "run_not_cancellable", "Parser run is already terminal")
+    if not runtime.cancel(run_id):
+        await repository.finish(run_id, "cancelled")
+        await session.commit()
+    return _summary(run)
+
+
+@router.post("/runs/{run_id}/resume", status_code=202, response_model=RunSummary)
+async def resume_run(
+    run_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_effective_settings)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> RunSummary:
+    try:
+        require_live_compliance(settings)
+    except RuntimeError as exc:
+        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
+    repository = RunRepository(session)
+    try:
+        run = await repository.prepare_resume(run_id)
+    except LookupError as exc:
+        raise ApiError(404, "run_not_found", "Parser run does not exist") from exc
+    except ValueError as exc:
+        raise ApiError(409, "run_not_resumable", "Parser run cannot be resumed") from exc
+    await session.commit()
+    if isinstance(runtime, ParserRuntime):
+        runtime.start(run_id, settings=settings)
+    else:
+        runtime.start(run_id)
+    return _summary(run)
+
+
+@router.get("/health", response_model=ParserHealthResponse)
+async def parser_health(
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_effective_settings)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> ParserHealthResponse:
+    credential = await session.scalar(
+        select(SourceCredential).where(SourceCredential.source == "grailed")
+    )
+    schema = await session.scalar(
+        select(SourceSchema)
+        .where(SourceSchema.source == "grailed")
+        .order_by(SourceSchema.detected_at.desc())
+        .limit(1)
+    )
+    alerts = int(
+        await session.scalar(
+            select(func.count(SchemaAlert.id)).where(SchemaAlert.resolved_at.is_(None))
+        )
+        or 0
+    )
+    alert_rows = list(
+        await session.scalars(
+            select(SchemaAlert)
+            .where(SchemaAlert.resolved_at.is_(None))
+            .order_by(SchemaAlert.created_at.desc())
+            .limit(20)
+        )
+    )
+    last_run = await session.scalar(select(ParserRun).order_by(ParserRun.id.desc()).limit(1))
+    capabilities = probe_capabilities()
+    health_snapshot = getattr(runtime, "health_snapshot", None)
+    runtime_health = health_snapshot() if callable(health_snapshot) else {
+        "circuits": [], "proxies": [], "metrics": {}, "tier": None
+    }
+    mock = settings.source_mode in {"mock", "replay"}
+    reasons = compliance_reasons(settings)
+    unavailable_reasons = {
+        "live_compliance_not_acknowledged",
+        "credentials_missing",
+    }
+    if not mock and credential is None:
+        reasons.append("credentials_missing")
+    now = datetime.now(UTC)
+    if credential is not None:
+        discovered_at = credential.discovered_at
+        if discovered_at.tzinfo is None:
+            discovered_at = discovered_at.replace(tzinfo=UTC)
+        stale_at = discovered_at + timedelta(hours=settings.discovery_ttl_hours)
+        if credential.valid_until is not None:
+            valid_until = credential.valid_until
+            if valid_until.tzinfo is None:
+                valid_until = valid_until.replace(tzinfo=UTC)
+            stale_at = min(stale_at, valid_until)
+        if now >= stale_at or credential.verification_status == "stale":
+            reasons.append("credentials_stale")
+    if alerts:
+        reasons.append("schema_drift_active")
+    open_circuits = [
+        item for item in runtime_health.get("circuits", []) if item.get("state") != "closed"
+    ]
+    if open_circuits:
+        reasons.append("circuit_open")
+    if last_run is not None and last_run.degraded_mode:
+        reasons.append("last_run_degraded")
+    reasons = list(dict.fromkeys(reasons))
+    if any(reason in unavailable_reasons for reason in reasons):
+        health_status: Literal["ready", "degraded", "unavailable"] = "unavailable"
+    elif reasons:
+        health_status = "degraded"
+    else:
+        health_status = "ready"
+    response.status_code = 503 if health_status == "unavailable" else 200
+    return ParserHealthResponse(
+        status=health_status,
+        source_mode=settings.source_mode,
+        transports={
+            "T0": mock,
+            "T1": mock or capabilities.t1_available,
+            "T2": bool(settings.fetch_tier_allow_browser and capabilities.t2_available),
+            "T3": bool(settings.fetch_tier_allow_dom and capabilities.t2_available),
+        },
+        discovery={
+            "available": mock or credential is not None,
+            "status": "mock"
+            if mock
+            else (credential.verification_status if credential else "missing"),
+            "discovered_at": credential.discovered_at.isoformat() if credential else None,
+            "valid_until": credential.valid_until.isoformat()
+            if credential and credential.valid_until
+            else None,
+        },
+        schema_status={
+            "detected_at": schema.detected_at.isoformat() if schema else None,
+            "drift_score": str(schema.drift_score)
+            if schema and schema.drift_score is not None
+            else None,
+            "active_alerts": alerts,
+            "alerts": [
+                {
+                    "id": item.id,
+                    "severity": item.severity,
+                    "message": item.message,
+                    "details": item.details,
+                    "created_at": item.created_at.isoformat(),
+                }
+                for item in alert_rows
+            ],
+        },
+        proxies=list(runtime_health.get("proxies", []))
+        or create_proxy_manager(settings).statuses(),
+        active_runs=runtime.active_run_ids(),
+        reasons=reasons,
+        versions={
+            "scrapling": capabilities.scrapling_version,
+            "camoufox": capabilities.camoufox_version,
+        },
+        circuits=list(runtime_health.get("circuits", [])),
+        compliance={
+            "live_acknowledged": settings.live_compliance_acknowledged,
+            "seller_identity_mode": settings.store_seller_identity,
+            "limits": {
+                "requests_per_minute": settings.requests_per_minute,
+                "max_concurrency": settings.max_concurrent_requests,
+            },
+        },
+        last_run=(
+            {
+                "id": last_run.id,
+                "status": last_run.status,
+                "degraded": last_run.degraded_mode,
+                "tier": last_run.tier_used,
+                "metrics": last_run.stats.get("observability", {}),
+            }
+            if last_run is not None
+            else None
+        ),
+    )
+
+
+@router.post("/discovery/refresh", response_model=DiscoveryResponse)
+async def parser_discovery_refresh(
+    payload: DiscoveryRefreshRequest,
+    service: Annotated[DiscoveryService, Depends(get_discovery_service)],
+    settings: Annotated[Settings, Depends(get_effective_settings)],
+) -> DiscoveryResponse:
+    try:
+        require_live_compliance(settings)
+    except RuntimeError as exc:
+        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
+    return await refresh_discovery(payload, service, settings)
+
+
+def _summary(run: ParserRun) -> RunSummary:
+    return RunSummary(
+        id=run.id,
+        mode=run.mode,
+        status=run.status,
+        phase=run.phase,
+        dry_run=run.dry_run,
+        degraded=run.degraded_mode,
+        tier=run.tier_used,
+        budget=run.budget_estimate,
+        coverage=run.coverage_avg,
+        requests_made=run.requests_made,
+        warnings=list(run.warnings),
+        created_at=run.created_at,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        heartbeat_at=run.heartbeat_at,
+    )
+
+
+def _task(task: ParserRunTask) -> TaskResponse:
+    return TaskResponse(
+        id=task.id,
+        brand_id=task.brand_id,
+        index_type=task.index_type,
+        status=task.status,
+        attempts=task.attempts,
+        hits_collected=task.hits_collected,
+        expected_hits=task.expected_hits,
+        coverage=task.coverage,
+        tier=task.fetch_tier,
+        error=task.error,
+    )

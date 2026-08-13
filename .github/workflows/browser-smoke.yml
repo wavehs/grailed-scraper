@@ -1,0 +1,23 @@
+name: Browser smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  camoufox:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: scrapling install
+      - run: python -m app.cli doctor
+      - run: pytest -m browser --no-cov

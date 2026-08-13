@@ -1,0 +1,50 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+backend/.venv/
+backend/venv/
+backend/.test-tmp*/
+.pytest_cache/
+.pytest-cache*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+data/cache/*
+!data/cache/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/secrets/*
+!data/secrets/.gitkeep
+data/backups/*
+!data/backups/.gitkeep
+
+# JavaScript / frontend builds
+.pnpm-store/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+*.tsbuildinfo
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
