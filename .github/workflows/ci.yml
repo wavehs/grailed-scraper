@@ -22,12 +22,12 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-dev.txt
       - run: pip check
+      - run: alembic upgrade head
+      - run: alembic current
       - run: ruff check app tests
       - run: mypy
       - run: pytest
       - run: python -m app.cli replay
-      - run: alembic upgrade head
-      - run: alembic current
 
   frontend:
     runs-on: ubuntu-latest

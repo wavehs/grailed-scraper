@@ -41,6 +41,7 @@ def test_reproducible_runtime_contract() -> None:
     assert '"packageManager": "pnpm@9.15.9"' in frontend
     assert "pip-audit -r backend/requirements-dev.txt" in ci
     assert "pnpm audit --audit-level high" in ci
+    assert ci.index("alembic upgrade head") < ci.index("- run: pytest")
 
 
 def test_proxy_pools_accept_environment_friendly_values() -> None:

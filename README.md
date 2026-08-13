@@ -47,7 +47,7 @@ uvicorn app.main:app --reload --port 8000     # backend
 pnpm run dev                                  # frontend → http://localhost:3000
 
 ## Проверки
-cd backend && ruff check app tests && mypy && pytest && python -m app.cli replay
+cd backend && alembic upgrade head && ruff check app tests && mypy && pytest && python -m app.cli replay
 cd frontend && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build
 
 # Dependency audit: high/critical findings блокируют CI.
