@@ -1,13 +1,16 @@
 # Grailed Liquidity Analyzer
 
 ## Prerequisites
-Python 3.11, Node.js 18.18+ (в CI используется Node.js 20)
+Python 3.11.9, Node.js 20.19.5 и pnpm 9.15.9. Эти же версии заданы в
+`.python-version`, `.nvmrc`, `frontend/package.json` и CI.
 
 ## Backend
 cp .env.example .env                              # Windows: Copy-Item .env.example .env
 cd backend
 python -m venv .venv && source .venv/bin/activate # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt     # production runtime
+# Для разработки и полного offline gate вместо предыдущей команды:
+python -m pip install -r requirements-dev.txt
 
 # Скачать браузерные движки (Camoufox/Firefox + зависимости Playwright).
 # Вариант 1 — через Scrapling (рекомендуется, ставит всё сразу):
@@ -36,7 +39,8 @@ python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3
 python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3 --apply
 
 ## Frontend
-cd frontend && pnpm install
+corepack enable
+cd frontend && pnpm install --frozen-lockfile
 
 ## Run
 uvicorn app.main:app --reload --port 8000     # backend
@@ -45,6 +49,10 @@ pnpm run dev                                  # frontend → http://localhost:30
 ## Проверки
 cd backend && ruff check app tests && mypy && pytest && python -m app.cli replay
 cd frontend && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build
+
+# Dependency audit: high/critical findings блокируют CI.
+cd backend && pip-audit -r requirements-dev.txt
+cd frontend && pnpm audit --audit-level high
 
 Обычный `pytest` полностью офлайн, исключает `browser`/`integration` и требует не менее
 80% coverage для всего parser stack. Реальный Camoufox smoke запускается отдельно после
@@ -60,6 +68,9 @@ pytest -m browser --no-cov
 annotated tag `v1.0.0` описан в [release runbook](docs/RUNBOOK.md). Текущий release
 candidate остаётся `HOLD`, пока live canary, CI на Python 3.11/Node 20 и Git tag не
 подтверждены.
+
+Политика версий, dependency audit и временных исключений описана в
+[environment runbook](docs/ENVIRONMENT.md).
 
 ## Первый запуск парсера
 1. Settings → Parser → «Refresh discovery» (поднимет Camoufox один раз)

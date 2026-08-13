@@ -23,3 +23,4 @@
 | [ROADMAP.md](ROADMAP.md) | Направления после MVP. |
 | [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) | Обязательные критерии готовности. |
 | [RUNBOOK.md](RUNBOOK.md) | Offline/browser/live release gate, tag и rollback. |
+| [ENVIRONMENT.md](ENVIRONMENT.md) | Runtime versions, reproducible install, dependency audit и compatibility debt. |

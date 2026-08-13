@@ -1,4 +1,5 @@
 # Environment and secrets
+.runtime-cache/
 .env
 .env.*
 !.env.example
@@ -14,6 +15,9 @@ venv/
 backend/.venv/
 backend/venv/
 backend/.test-tmp*/
+.test-tmp*/
+.test-tmp*.json
+backend/.test-tmp*.json
 .pytest_cache/
 .pytest-cache*/
 .mypy_cache/

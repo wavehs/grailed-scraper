@@ -63,20 +63,20 @@ Baseline не является подтверждением live-совмест�
 
 ## Фаза 0 — Репозиторий и воспроизводимое окружение
 
-- [ ] Восстановить `.git`, зафиксировать исходный commit и добиться чистого worktree.
-- [ ] Зафиксировать Python `3.11.x`, Node.js `20.x` и pnpm `9.x` в runtime-файлах,
+- [x] Восстановить `.git`, зафиксировать исходный commit и добиться чистого worktree.
+- [x] Зафиксировать Python `3.11.x`, Node.js `20.x` и pnpm `9.x` в runtime-файлах,
   README и CI.
-- [ ] Разделить Python runtime и dev/test зависимости на отдельные requirements-файлы.
-- [ ] Закрепить прямые Python-зависимости версиями из проверенного окружения; сохранить
+- [x] Разделить Python runtime и dev/test зависимости на отдельные requirements-файлы.
+- [x] Закрепить прямые Python-зависимости версиями из проверенного окружения; сохранить
   `scrapling==0.4.11` и не пиновать Camoufox отдельно.
-- [ ] Удалить APScheduler и другие неиспользуемые runtime-зависимости.
-- [ ] Проверить backend install в новом Python 3.11 venv без глобальных пакетов.
-- [ ] Проверить `pnpm install --frozen-lockfile` и production build на чистом Node.js 20.
-- [ ] Добавить dependency audit для Python и npm в CI; high/critical findings блокируют release
+- [x] Удалить APScheduler и другие неиспользуемые runtime-зависимости.
+- [x] Проверить backend install в новом Python 3.11 venv без глобальных пакетов.
+- [x] Проверить `pnpm install --frozen-lockfile` и production build на чистом Node.js 20.
+- [x] Добавить dependency audit для Python и npm в CI; high/critical findings блокируют release
   либо получают документированное временное исключение с датой пересмотра.
-- [ ] Устранить предупреждения совместимости Starlette/httpx, Alembic, lxml и Vite либо
+- [x] Устранить предупреждения совместимости Starlette/httpx, Alembic, lxml и Vite либо
   занести каждое предупреждение в принятый technical-debt checklist.
-- [ ] Проверить, что offline CI выполняет Ruff, mypy, pytest/coverage, replay, миграции,
+- [x] Проверить, что offline CI выполняет Ruff, mypy, pytest/coverage, replay, миграции,
   frontend lint/typecheck/tests/build на целевых версиях.
 
 **Gate фазы 0:** чистый clone устанавливается без IDE и глобальных зависимостей, затем

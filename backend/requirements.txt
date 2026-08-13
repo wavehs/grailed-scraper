@@ -1,34 +1,20 @@
-# --- web ---
-fastapi
-uvicorn[standard]
-pydantic>=2
-pydantic-settings
+# Production runtime dependencies. Keep direct dependencies exact and let
+# Scrapling own the compatible Camoufox/Playwright/curl_cffi versions.
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+pydantic==2.13.4
+pydantic-settings==2.15.0
 
-# --- db ---
-sqlalchemy>=2
-aiosqlite
-alembic
+SQLAlchemy==2.0.51
+aiosqlite==0.22.1
+alembic==1.19.0
 
-# --- scraping stack ---
-scrapling[fetchers]==0.4.11     # тянет camoufox + playwright + curl_cffi совместимых версий
-httpx[socks]                    # fallback-транспорт
-# camoufox НЕ пиновать отдельно — версией управляет scrapling
+scrapling[fetchers]==0.4.11
+httpx[socks]==0.28.1
 
-# --- utils ---
-python-dateutil
-rapidfuzz
-PyYAML
-tenacity
-orjson
-structlog
-apscheduler                     # Task 3.22
-
-# --- dev ---
-pytest
-pytest-asyncio
-pytest-cov
-hypothesis
-freezegun
-respx
-ruff
-mypy
+python-dateutil==2.9.0.post0
+RapidFuzz==3.14.5
+PyYAML==6.0.3
+tenacity==9.1.4
+orjson==3.11.9
+structlog==26.1.0

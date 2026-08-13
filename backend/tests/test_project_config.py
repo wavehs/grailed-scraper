@@ -27,6 +27,22 @@ def test_scrapling_is_pinned() -> None:
     assert "scrapling[fetchers]==0.4.11" in requirements
 
 
+def test_reproducible_runtime_contract() -> None:
+    runtime = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    development = (ROOT / "backend" / "requirements-dev.txt").read_text(encoding="utf-8")
+    frontend = (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert (ROOT / ".python-version").read_text(encoding="utf-8").strip() == "3.11.9"
+    assert (ROOT / ".nvmrc").read_text(encoding="utf-8").strip() == "20.19.5"
+    assert "APScheduler" not in runtime and "apscheduler" not in runtime
+    assert "pytest==" not in runtime
+    assert "-r requirements.txt" in development
+    assert '"packageManager": "pnpm@9.15.9"' in frontend
+    assert "pip-audit -r backend/requirements-dev.txt" in ci
+    assert "pnpm audit --audit-level high" in ci
+
+
 def test_proxy_pools_accept_environment_friendly_values() -> None:
     settings = Settings(
         proxy_list_http="http://one:1,socks5://two:2",
