@@ -5,11 +5,8 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from datetime import timedelta
 from decimal import Decimal
 from statistics import median
-
-from rapidfuzz.fuzz import ratio
 
 from app.core.config import Settings
 from app.domain.listings import ListingData
@@ -37,7 +34,6 @@ class QualityProcessor:
             key: median(abs(item.price - medians[key]) for item in group)
             for key, group in groups.items()
         }
-        prior_by_seller: dict[str, list[ListingData]] = defaultdict(list)
         result: list[ListingData] = []
         for listing in sorted(listings, key=lambda item: item.created_at or item.first_seen_at):
             flags = set(listing.quality_flags)
@@ -62,26 +58,8 @@ class QualityProcessor:
                 flags.add("no_photos")
             if _wrong_brand(listing, known):
                 flags.add("wrong_brand")
-            if listing.seller_identity is not None:
-                previous_items = prior_by_seller[listing.seller_identity]
-                if any(self._is_repost(previous, listing) for previous in previous_items):
-                    flags.add("repost")
-                prior_by_seller[listing.seller_identity].append(listing)
             result.append(listing.model_copy(update={"quality_flags": sorted(flags)}))
         return result
-
-    def _is_repost(self, previous: ListingData, current: ListingData) -> bool:
-        previous_at = previous.created_at or previous.first_seen_at
-        current_at = current.created_at or current.first_seen_at
-        if current_at - previous_at > timedelta(days=self._settings.quality_repost_window_days):
-            return False
-        title_score = ratio(previous.title.casefold(), current.title.casefold())
-        if title_score < self._settings.quality_repost_title_score:
-            return False
-        denominator = max(previous.price, current.price)
-        return abs(previous.price - current.price) / denominator < Decimal(
-            str(self._settings.quality_repost_price_delta)
-        )
 
 
 def _is_outlier(price: Decimal, center: Decimal, mad: Decimal, k: Decimal) -> bool:
@@ -90,9 +68,7 @@ def _is_outlier(price: Decimal, center: Decimal, mad: Decimal, k: Decimal) -> bo
     return abs(price - center) / (mad * Decimal("1.4826")) > k
 
 
-def _wrong_brand(
-    listing: ListingData, known: Mapping[int, Sequence[str]]
-) -> bool:
+def _wrong_brand(listing: ListingData, known: Mapping[int, Sequence[str]]) -> bool:
     title = listing.title.casefold()
     own = {name.casefold() for name in known.get(listing.brand_id or -1, ())}
     if any(name in title for name in own):

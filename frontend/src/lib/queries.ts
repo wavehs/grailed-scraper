@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getApi } from '@/lib/api';
+import { getApi, getHealthApi } from '@/lib/api';
 import type { ApiHealth, ParserHealth } from '@/lib/types';
 
 export function useApiHealth() {
@@ -11,14 +11,14 @@ export function useApiHealth() {
   });
   return {
     ...query,
-    writable: query.data?.source_mode === 'mock' || query.data?.source_mode === 'replay',
+    writable: Boolean(query.data),
   };
 }
 
 export function useParserHealth() {
   return useQuery({
     queryKey: ['parser-health'],
-    queryFn: ({ signal }) => getApi<ParserHealth>('/parser/health', signal),
+    queryFn: ({ signal }) => getHealthApi<ParserHealth>('/parser/health', signal),
     staleTime: 5_000,
     refetchInterval: 10_000,
     retry: false,

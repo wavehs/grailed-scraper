@@ -54,12 +54,18 @@ browser_restarts, proxy_failures, duration_s`.
 
 ### 15.4. Health-эндпоинт
 
+`GET /api/health` сохраняет базовые поля и дополнительно возвращает `version`, точный
+`revision` и `environment` запущенного release.
+
 `GET /api/parser/health` отражает живое состояние credentials, доступных tiers и
 версий, schema alerts, circuit breakers по `(tier, host, proxy)`, proxy health,
 активных и последнего run, compliance и последних метрик. `unavailable` означает
 отсутствие обязательного ресурса или env-compliance acknowledgement; `degraded` —
 stale credentials, schema drift, fallback tier, открытый circuit, plain seller mode
 или деградировавший последний run. Поле `reasons` содержит машиночитаемые причины,
-а `schema.alerts` — подробности активных alerts.
+а `schema.alerts` — подробности активных alerts. Секция `runtime` отдельно сообщает
+Alembic current/head, доступность data/log directories, production bind validation и
+состояние single-instance lock. Production startup не применяет миграции и завершается
+до запуска API/parser runtime при неизвестной revision или несовпадении Alembic head.
 
 ---

@@ -1,4 +1,4 @@
-"""Offline checks for the reproducible development baseline."""
+"""Checks for the reproducible development baseline."""
 
 from pathlib import Path
 
@@ -11,10 +11,10 @@ from app.core.config import Settings
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_safe_default_source_mode_is_mock() -> None:
+def test_source_mode_is_live_only() -> None:
     contents = (ROOT / ".env.example").read_text(encoding="utf-8")
 
-    assert "APP_SOURCE_MODE=mock" in contents
+    assert "APP_SOURCE_MODE=live" in contents
 
 
 def test_backend_package_exposes_a_version() -> None:

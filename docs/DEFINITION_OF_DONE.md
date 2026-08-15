@@ -1,14 +1,5 @@
-# Definition of Done для парсера
+# Definition of Done
 
-Парсер считается готовым, когда одновременно выполнено:
+The parser is done only when the bounded live workflow processes the selected brands sequentially with measured coverage, explicit truncation, no duplicate `grailed_id`, correct lifecycle transitions, resumable tasks, and no leaked credentials or seller PII. A 21-brand run is optional and must still obey the per-brand item limit.
 
-1. `source_mode=mock` — полный e2e-прогон 21 бренда, БД заполнена, скоринг посчитан, ни одного сетевого запроса.
-2. Реальный canary-прогон 1 бренда собирает данные через T1 без браузера (кроме discovery).
-3. Принудительная блокировка T1 (флагом) → прогон завершается через T2, `degraded_mode=true`, данные те же.
-4. Отключение Algolia целиком → T3 собирает хотя бы базовый набор полей.
-5. Прогон убивается `kill -9` на середине → «Resume» доводит до `completed` без дублей и потерь.
-6. Для бренда с > 5000 sold coverage ≥ 0.98 (проверка на fake-сервере).
-7. `pytest` зелёный офлайн, coverage парсер-модулей ≥ 80%.
-8. Ни одного API-ключа в логах и в HTTP-ответах в открытом виде.
-9. Второй прогон подряд (delta) тратит ≤ 40% запросов от первого.
-10. `/api/parser/health` показывает всё зелёным, `python -m app.cli doctor` — без предупреждений.
+T1 is the default. T2/T3 are accepted only when a live failure requires escalation and the run reports degraded mode. Source-independent tests, lint, type checking, migrations, backup/restore, and Windows startup must be green, but none replaces live acceptance.

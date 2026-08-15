@@ -13,12 +13,8 @@ CATEGORY_CANDIDATES = ("category_path", "category", "department")
 async def probe_facets(
     client: DiscoveryAlgoliaClient, index: str
 ) -> tuple[str | None, str | None, tuple[str, ...]]:
-    params = urlencode(
-        {"query": "", "facets": '["*"]', "maxValuesPerFacet": 100, "hitsPerPage": 0}
-    )
-    payload = await client.json(
-        "POST", client.index_path(index), json_body={"params": params}
-    )
+    params = urlencode({"query": "", "facets": '["*"]', "maxValuesPerFacet": 100, "hitsPerPage": 0})
+    payload = await client.json("POST", client.index_path(index), json_body={"params": params})
     facets = payload.get("facets", {}) if payload else {}
     names = tuple(facets) if isinstance(facets, dict) else ()
     brand = next((candidate for candidate in BRAND_CANDIDATES if candidate in names), None)
@@ -30,4 +26,3 @@ async def probe_facets(
             json_body={"facetQuery": ""},
         )
     return brand, category, names
-

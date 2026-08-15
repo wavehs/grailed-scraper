@@ -76,7 +76,6 @@ export default function BrandsPage() {
           {autoMap.isPending ? t('mapping') : t('autoMap')}
         </Button>
       </div>
-      {!health.isLoading && !health.writable && <Notice error>{t('mockRequired')}</Notice>}
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => query.refetch()} />}
       <div className="grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2">

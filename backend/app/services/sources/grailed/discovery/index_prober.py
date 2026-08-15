@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
-from app.services.sources.grailed.discovery.client import DiscoveryAlgoliaClient
+from app.services.sources.grailed.discovery.client import (
+    DiscoveryAlgoliaClient,
+    DiscoveryHttpError,
+)
 from app.services.sources.grailed.discovery.models import IndexProbe
 
 
@@ -14,7 +17,12 @@ async def probe_indices(
 ) -> tuple[IndexProbe, ...]:
     probes: list[IndexProbe] = []
     for name in dict.fromkeys(candidates):
-        first = await _query(client, name, {"query": "", "hitsPerPage": 1, "page": 0})
+        try:
+            first = await _query(client, name, {"query": "", "hitsPerPage": 2, "page": 0})
+        except DiscoveryHttpError as exc:
+            if exc.status_code == 404:
+                continue
+            raise
         nb_hits = _int(first.get("nbHits"), 0)
         max_hits = await _max_hits_per_page(client, name)
         pagination_limit = await _pagination_limit(client, name, nb_hits)
@@ -24,7 +32,8 @@ async def probe_indices(
                 nb_hits=nb_hits,
                 pagination_limit=pagination_limit,
                 max_hits_per_page=max_hits,
-                sort_field=_sort_field(name),
+                # Index names are not proof of stable keyset ordering.
+                sort_field=None,
             )
         )
     return tuple(probes)
@@ -39,18 +48,14 @@ async def _max_hits_per_page(client: DiscoveryAlgoliaClient, index: str) -> int:
     return 20
 
 
-async def _pagination_limit(
-    client: DiscoveryAlgoliaClient, index: str, nb_hits: int
-) -> int | None:
+async def _pagination_limit(client: DiscoveryAlgoliaClient, index: str, nb_hits: int) -> int | None:
     if nb_hits <= 0:
         return None
     low, high = 0, min(nb_hits - 1, 9_999)
     last_non_empty = -1
     while low <= high:
         midpoint = (low + high) // 2
-        payload = await _query(
-            client, index, {"query": "", "hitsPerPage": 1, "page": midpoint}
-        )
+        payload = await _query(client, index, {"query": "", "hitsPerPage": 1, "page": midpoint})
         if payload.get("hits"):
             last_non_empty = midpoint
             low = midpoint + 1
@@ -68,17 +73,5 @@ async def _query(
     return payload or {}
 
 
-def _sort_field(index: str) -> str | None:
-    lowered = index.casefold()
-    if "date_added" in lowered:
-        return "created_at"
-    if "low_price" in lowered or "high_price" in lowered:
-        return "price"
-    if "popularity" in lowered:
-        return "popularity"
-    return None
-
-
 def _int(value: Any, default: int) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else default
-

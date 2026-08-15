@@ -18,8 +18,9 @@ class CachedResponse:
 
 
 class ResponseCache:
-    def __init__(self, ttl_s: float = 60.0) -> None:
+    def __init__(self, ttl_s: float = 60.0, max_entries: int = 32) -> None:
         self._ttl_s = ttl_s
+        self._max_entries = max_entries
         self._entries: dict[str, CachedResponse] = {}
         self.hits = 0
         self.misses = 0
@@ -39,4 +40,6 @@ class ResponseCache:
         return entry.response
 
     def set(self, key: str, response: HttpResponse) -> None:
+        while len(self._entries) >= self._max_entries and key not in self._entries:
+            self._entries.pop(next(iter(self._entries)))
         self._entries[key] = CachedResponse(time.monotonic() + self._ttl_s, response)

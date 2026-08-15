@@ -21,17 +21,14 @@ class DiscoveryAlgoliaClient:
         transport: HttpTransport,
         seed: DiscoverySeed,
         *,
-        mock: bool = False,
         requests_per_minute: int | None = None,
     ) -> None:
         self._transport = transport
         self._seed = seed
-        self._mock = mock
         self._requests_per_minute = requests_per_minute or 60_000
         self._client = AlgoliaClient(
             transport,
             seed,
-            mock=mock,
             requests_per_minute=self._requests_per_minute,
             max_concurrency=1,
             max_retries=0,
@@ -42,7 +39,6 @@ class DiscoveryAlgoliaClient:
         self._client = AlgoliaClient(
             self._transport,
             self._seed,
-            mock=self._mock,
             requests_per_minute=self._requests_per_minute,
             max_concurrency=1,
             max_retries=0,

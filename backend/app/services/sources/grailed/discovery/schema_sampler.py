@@ -10,21 +10,31 @@ from app.services.sources.grailed.discovery.client import DiscoveryAlgoliaClient
 from app.services.sources.grailed.discovery.models import SchemaChange, SchemaSample
 
 SENSITIVE_PARTS = {
-    "username", "email", "token", "key", "authorization", "cookie",
-    "latitude", "longitude", "coordinates", "address", "city", "state",
-    "postal_code", "postcode", "zip", "zipcode", "location",
+    "username",
+    "email",
+    "token",
+    "key",
+    "authorization",
+    "cookie",
+    "latitude",
+    "longitude",
+    "coordinates",
+    "address",
+    "city",
+    "state",
+    "postal_code",
+    "postcode",
+    "zip",
+    "zipcode",
+    "location",
 }
 
 
 async def sample_schema(
     client: DiscoveryAlgoliaClient, index: str, *, sample_size: int
 ) -> SchemaSample:
-    params = urlencode(
-        {"query": "", "hitsPerPage": sample_size, "attributesToRetrieve": '["*"]'}
-    )
-    payload = await client.json(
-        "POST", client.index_path(index), json_body={"params": params}
-    )
+    params = urlencode({"query": "", "hitsPerPage": sample_size, "attributesToRetrieve": '["*"]'})
+    payload = await client.json("POST", client.index_path(index), json_body={"params": params})
     hits = payload.get("hits", []) if payload else []
     records = [item for item in hits if isinstance(item, dict)]
     counts: Counter[str] = Counter()
@@ -109,9 +119,7 @@ def _safe_example(value: Any) -> Any:
 
 def _sensitive(path: str) -> bool:
     parts = [part.casefold() for part in path.replace("[]", "").split(".")]
-    return any(part in SENSITIVE_PARTS for part in parts) or (
-        "seller" in parts and "id" in parts
-    )
+    return any(part in SENSITIVE_PARTS for part in parts) or ("seller" in parts and "id" in parts)
 
 
 def _types(metadata: dict[str, Any]) -> tuple[str, ...]:

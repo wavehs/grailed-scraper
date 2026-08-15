@@ -86,10 +86,10 @@ confidence = 0.40 × sample
 
 ## 6. Quality policy
 
-| Флаг | Поведение scoring v1 |
+| Флаг/связь | Поведение scoring v2 |
 |---|---|
 | `possible_replica` | полностью исключить |
-| `repost` | исключить повтор; ранняя каноническая запись остаётся |
+| подтверждённый `physical_item` | учитывать один раз; приоритет sold, затем active, затем последняя запись |
 | `price_outlier` | исключить только из price-компонента |
 | `lot_or_bundle` | исключить только из price-компонента |
 | estimated `sold_at` | учитывать в sold volume и price, исключить из velocity/likes-day |

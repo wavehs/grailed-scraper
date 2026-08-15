@@ -18,12 +18,12 @@ from app.repositories.fetching import FetchReportRepository
 from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.runs import RunRepository
+from app.services.identity import IdentityResolver
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
 from app.services.parser.fetching import FetchApi, TieredFetcher
 from app.services.parser.incremental import IncrementalPlanner, RefreshActiveService
-from app.services.parser.mock.generator import SOLD_INDEX
 from app.services.parser.observability import RunMetrics
 from app.services.scoring import OpportunityScoringService, ScoringService
 from app.services.sources.base.models import CoverageReport
@@ -32,10 +32,10 @@ from app.services.sources.grailed.algolia.models import AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
 from app.services.sources.grailed.browser.factory import create_browser_session_pool
 from app.services.sources.grailed.browser.inpage_client import BrowserAlgoliaClient
+from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.sources.grailed.dom.client import DomAlgoliaClient
 from app.services.sources.grailed.dom.robots import RobotsPolicy
 from app.services.transport.factory import create_http_transport, create_proxy_manager
-from app.services.transport.mock_http import MockHttpTransport
 from app.services.transport.protocols import BrowserSession, HttpTransport
 from app.services.transport.proxy_manager import ProxyManager
 
@@ -58,9 +58,11 @@ class _Resources:
     proxy_manager: ProxyManager | None = None
 
     async def close(self) -> None:
-        if self.browser is not None:
-            await self.browser.close()
-        await self.transport.close()
+        try:
+            if self.browser is not None:
+                await self.browser.close()
+        finally:
+            await self.transport.close()
 
 
 class ParserRuntime:
@@ -79,8 +81,12 @@ class ParserRuntime:
         self._jobs: dict[int, asyncio.Task[None]] = {}
         self._cancel: dict[int, asyncio.Event] = {}
         self._resources_by_run: dict[int, _Resources] = {}
+        self._write_lock = asyncio.Lock()
         self._last_health: dict[str, Any] = {
-            "circuits": [], "proxies": [], "metrics": {}, "tier": None
+            "circuits": [],
+            "proxies": [],
+            "metrics": {},
+            "tier": None,
         }
         self._closed = False
 
@@ -123,8 +129,7 @@ class ParserRuntime:
         resources.metrics.browser_restarts = browser_restarts
         proxies = resources.proxy_manager.statuses() if resources.proxy_manager else []
         resources.metrics.proxy_failures = sum(
-            value if isinstance((value := item.get("failures")), int) else 0
-            for item in proxies
+            value if isinstance((value := item.get("failures")), int) else 0 for item in proxies
         )
         return {
             "circuits": resources.algolia.circuit_statuses(),
@@ -145,9 +150,7 @@ class ParserRuntime:
                 task.cancel()
             await asyncio.gather(*remaining, return_exceptions=True)
 
-    async def _execute(
-        self, run_id: int, cancelled: asyncio.Event, settings: Settings
-    ) -> None:
+    async def _execute(self, run_id: int, cancelled: asyncio.Event, settings: Settings) -> None:
         heartbeat: asyncio.Task[None] | None = None
         resources: _Resources | None = None
         logger = structlog.get_logger(__name__)
@@ -158,6 +161,12 @@ class ParserRuntime:
                 await session.commit()
             resources = await self._resources(run_id, settings)
             self._resources_by_run[run_id] = resources
+            async with self._sessions() as session:
+                run = await session.get(ParserRun, run_id)
+                assert run is not None
+                run.tier_used = cast(str, getattr(resources.fetcher, "current_tier", "T1"))
+                await RunRepository(session).heartbeat(run_id)
+                await session.commit()
             heartbeat = asyncio.create_task(self._heartbeat(run_id, cancelled, settings))
             task_ids = await self._pending_task_ids(run_id)
             queue: asyncio.Queue[int] = asyncio.Queue()
@@ -178,19 +187,29 @@ class ParserRuntime:
                 if cancelled.is_set():
                     await repository.finish(run_id, "cancelled")
                 else:
-                    await repository.set_phase(run_id, "normalizing")
+                    await repository.set_phase(run_id, "resolving_identity")
                     await repository.heartbeat(run_id)
+                    identity_result = await IdentityResolver(
+                        session, settings, resources.transport
+                    ).resolve_run(run_id)
+                    await session.commit()
                     await repository.set_phase(run_id, "scoring")
                     # Release SQLite's write lock before the scoring service opens
                     # its own short-lived transaction for immutable snapshots.
                     await session.commit()
+                    scoring_result = await self._scoring.score_run(run_id)
                     run = await repository.get(run_id)
                     assert run is not None
-                    scoring_result = await self._scoring.score_run(run_id)
+                    metric_snapshot = resources.metrics.snapshot()
                     run.stats = {
                         **run.stats,
+                        "identity": identity_result,
                         "scoring": scoring_result,
-                        "observability": resources.metrics.snapshot(),
+                        "observability": metric_snapshot,
+                        "persistence": {
+                            "inserted": metric_snapshot["listings_inserted"],
+                            "updated": metric_snapshot["listings_updated"],
+                        },
                     }
                     run.requests_made = sum(resources.metrics.requests_by_tier.values())
                     await repository.finish(run_id, await repository.aggregate_status(run_id))
@@ -209,10 +228,12 @@ class ParserRuntime:
                 heartbeat.cancel()
                 await asyncio.gather(heartbeat, return_exceptions=True)
             if resources is not None:
-                self._last_health = self.health_snapshot()
-                self._resources_by_run.pop(run_id, None)
-                await self._persist_metrics(run_id, resources.metrics)
-                await resources.close()
+                try:
+                    self._last_health = self.health_snapshot()
+                    await self._persist_metrics(run_id, resources.metrics)
+                finally:
+                    self._resources_by_run.pop(run_id, None)
+                    await resources.close()
 
     async def _worker(
         self,
@@ -272,7 +293,7 @@ class ParserRuntime:
             prior_cursor = task.cursor
             mode = run.mode
         if mode == "refresh_active":
-            await self._process_refresh(run_id, task_id, spec_data, fetcher, settings)
+            await self._process_refresh(run_id, task_id, spec_data, fetcher, cancelled, settings)
             return
         pagination = PaginationPlanner(fetcher).fetch(
             PaginationSpec(
@@ -285,8 +306,9 @@ class ParserRuntime:
                 secondary_attrs=("id", "objectID", "price_i"),
                 pagination_limit=int(spec_data.get("pagination_limit", 1_000)),
                 hits_per_page=settings.algolia_hits_per_page,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T0")),
+                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
                 resume_cursor=prior_cursor,
+                max_hits=int(spec_data["max_hits"]),
             )
         )
         last_key: int | None = None
@@ -321,22 +343,20 @@ class ParserRuntime:
             metrics.record_listings(fetched=len(batch.hits), invalid=invalid)
             for item in normalized:
                 metrics.record_quality_flags(item.quality_flags)
-            async with self._sessions() as session:
-                task = await session.get(ParserRunTask, task_id)
-                run = await session.get(ParserRun, run_id)
-                assert task is not None and run is not None
-                if normalized:
-                    upsert = await ListingRepository(session).upsert_batch(normalized)
-                    persistence = dict(run.stats.get("persistence", {}))
-                    persistence["inserted"] = int(persistence.get("inserted", 0)) + upsert.inserted
-                    persistence["updated"] = int(persistence.get("updated", 0)) + upsert.updated
-                    run.stats = {**run.stats, "persistence": persistence}
-                    metrics.record_listings(inserted=upsert.inserted, updated=upsert.updated)
-                task.hits_collected += len(batch.hits)
-                task.cursor = batch.cursor or task.cursor
-                run.requests_made = sum(metrics.requests_by_tier.values())
-                await RunRepository(session).heartbeat(run_id)
-                await session.commit()
+            # ponytail: SQLite has one writer; move to a server DB before removing this lock.
+            async with self._write_lock:
+                async with self._sessions() as session:
+                    task = await session.get(ParserRunTask, task_id)
+                    run = await session.get(ParserRun, run_id)
+                    assert task is not None and run is not None
+                    if normalized:
+                        upsert = await ListingRepository(session).upsert_batch(normalized)
+                        metrics.record_listings(inserted=upsert.inserted, updated=upsert.updated)
+                    task.hits_collected += len(batch.hits)
+                    task.cursor = batch.cursor or task.cursor
+                    run.requests_made = sum(metrics.requests_by_tier.values())
+                    await RunRepository(session).heartbeat(run_id)
+                    await session.commit()
         report = pagination.report
         async with self._sessions() as session:
             task = await session.get(ParserRunTask, task_id)
@@ -351,7 +371,7 @@ class ParserRuntime:
             await FetchReportRepository(session).finish_task(
                 task_id,
                 combined,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T0")),
+                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
                 cursor=task.cursor,
             )
             metrics = self._resources_by_run[run_id].metrics
@@ -374,17 +394,16 @@ class ParserRuntime:
         task_id: int,
         spec_data: dict[str, Any],
         fetcher: FetchApi,
+        cancelled: asyncio.Event,
         settings: Settings,
     ) -> None:
         async with self._sessions() as session:
             credential = await session.scalar(
                 select(SourceCredential).where(SourceCredential.source == "grailed")
             )
-            sold_index = (
-                credential.sold_index
-                if credential and credential.sold_index
-                else SOLD_INDEX
-            )
+            if credential is None or credential.sold_index is None:
+                raise RuntimeError("discovery_incomplete")
+            sold_index = credential.sold_index
             service = RefreshActiveService(
                 fetcher,
                 LifecycleRepository(session),
@@ -393,10 +412,18 @@ class ParserRuntime:
                 settings,
                 active_index=str(spec_data["index_name"]),
                 sold_index=sold_index,
+                checkpoint=session.commit,
+                should_stop=cancelled.is_set,
             )
             result = await service.run(
                 parser_run_id=run_id, brand_id=cast(int, spec_data["brand_id"])
             )
+            if cancelled.is_set():
+                task = await session.get(ParserRunTask, task_id)
+                assert task is not None
+                task.status = "pending"
+                await session.commit()
+                return
             report = CoverageReport.calculate(
                 expected_hits=result.checked,
                 collected_hits=result.checked,
@@ -404,11 +431,14 @@ class ParserRuntime:
             await FetchReportRepository(session).finish_task(
                 task_id,
                 report,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T0")),
+                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
                 cursor=None,
             )
             run = await session.get(ParserRun, run_id)
             assert run is not None
+            self._resources_by_run[run_id].metrics.record_listings(
+                inserted=result.inserted, updated=result.updated
+            )
             run.stats = {
                 **run.stats,
                 "refresh_active": {
@@ -417,6 +447,8 @@ class ParserRuntime:
                     "sold": result.sold,
                     "pending": result.pending,
                     "removed": result.removed,
+                    "inserted": result.inserted,
+                    "updated": result.updated,
                 },
             }
             await session.commit()
@@ -428,35 +460,37 @@ class ParserRuntime:
             )
             run = await session.get(ParserRun, run_id)
             snapshot = dict(run.stats.get("observability", {})) if run is not None else {}
-        metrics = RunMetrics.resume(snapshot)
-        mock = settings.source_mode in {"mock", "replay"}
-        if mock:
-            transport: HttpTransport = MockHttpTransport()
-            seed = _Credentials("fixture-app", "fixture-key", "fixture-agent")
-            client = AlgoliaClient(transport, seed, mock=True, metrics=metrics, tier="T0")
-            return _Resources(
-                TieredFetcher({"T0": client}, source_mode=settings.source_mode, metrics=metrics),
-                transport,
-                None,
-                metrics,
-                client,
-            )
+        metrics = RunMetrics.resume(
+            snapshot,
+            minimum_requests=run.requests_made if run is not None else 0,
+            tier=run.tier_used or "T1" if run is not None else "T1",
+        )
         if credential is None:
             raise RuntimeError("discovery_required")
         proxy_manager = create_proxy_manager(settings)
-        proxy = (
-            proxy_manager.select(f"parser-run-{run_id}")
-            if settings.proxy_enabled
-            else None
-        )
+        proxy = proxy_manager.select(f"parser-run-{run_id}") if settings.proxy_enabled else None
         transport = create_http_transport(settings, proxy=proxy)
         seed = _Credentials(credential.app_id, credential.api_key, credential.algolia_agent)
+
+        async def refresh_credentials() -> _Credentials:
+            async with self._sessions() as session:
+                service = DiscoveryService(session, settings, transport, browser)
+                await service.invalidate_and_refresh()
+                refreshed = await session.scalar(
+                    select(SourceCredential).where(SourceCredential.source == "grailed")
+                )
+                if refreshed is None:
+                    raise RuntimeError("discovery_required")
+                return _Credentials(refreshed.app_id, refreshed.api_key, refreshed.algolia_agent)
+
+        browser = create_browser_session_pool(settings, proxy=proxy)
         t1 = AlgoliaClient(
             transport,
             seed,
             requests_per_minute=settings.requests_per_minute,
             max_concurrency=settings.max_concurrent_requests,
             max_retries=settings.parser_max_retries,
+            max_requests=settings.parser_max_requests_per_run,
             multiquery_batch_size=settings.algolia_multiquery_batch_size,
             timeout_s=settings.parser_request_timeout_s,
             metrics=metrics,
@@ -464,24 +498,21 @@ class ParserRuntime:
             proxy_key=proxy or "direct",
             proxy_manager=proxy_manager,
             proxy_url=proxy,
+            refresh_credentials=refresh_credentials,
         )
         clients: dict[FetchTier, FetchApi] = {"T1": t1}
-        browser = create_browser_session_pool(settings, proxy=proxy)
         if browser is not None:
             clients["T2"] = BrowserAlgoliaClient(browser, seed)
             if settings.fetch_tier_allow_dom:
                 clients["T3"] = cast(FetchApi, DomAlgoliaClient(browser, RobotsPolicy(transport)))
         fetcher = TieredFetcher(
             clients,
-            source_mode="live",
             preferred=settings.fetch_tier_preferred,
             metrics=metrics,
         )
         return _Resources(fetcher, transport, browser, metrics, t1, proxy_manager)
 
-    async def _heartbeat(
-        self, run_id: int, cancelled: asyncio.Event, settings: Settings
-    ) -> None:
+    async def _heartbeat(self, run_id: int, cancelled: asyncio.Event, settings: Settings) -> None:
         while not cancelled.is_set():
             await asyncio.sleep(settings.parser_progress_interval_s)
             async with self._sessions() as session:
@@ -490,6 +521,9 @@ class ParserRuntime:
                 if resources is not None:
                     run = await session.get(ParserRun, run_id)
                     assert run is not None
+                    current_tier = cast(str, getattr(resources.fetcher, "current_tier", "T1"))
+                    run.tier_used = _max_tier(run.tier_used, current_tier)
+                    run.degraded_mode = run.degraded_mode or current_tier in {"T2", "T3"}
                     run.stats = {
                         **run.stats,
                         "observability": resources.metrics.snapshot(),
@@ -571,3 +605,8 @@ def _query(payload: dict[str, Any]) -> AlgoliaQuery:
         facets=tuple(str(value) for value in payload.get("facets", [])),
         extra=dict(payload.get("extra", {})),
     )
+
+
+def _max_tier(previous: str | None, current: str) -> str:
+    order = {"T1": 1, "T2": 2, "T3": 3}
+    return current if order.get(current, 0) >= order.get(previous or "", 0) else previous or current

@@ -29,9 +29,7 @@ T = TypeVar("T")
 class FetchApi(Protocol):
     async def search(self, index_name: str, query: AlgoliaQuery) -> AlgoliaPage: ...
 
-    async def multi_query(
-        self, requests: Sequence[AlgoliaRequest]
-    ) -> tuple[AlgoliaPage, ...]: ...
+    async def multi_query(self, requests: Sequence[AlgoliaRequest]) -> tuple[AlgoliaPage, ...]: ...
 
     async def browse(
         self, index_name: str, query: AlgoliaQuery, *, cursor: str | None = None
@@ -59,27 +57,21 @@ class TieredFetcher:
         self,
         clients: dict[FetchTier, FetchApi],
         *,
-        source_mode: str = "live",
         preferred: FetchTier = "T1",
-        refresh_credentials: Callable[[], Awaitable[None]] | None = None,
         canary: Callable[[], Awaitable[bool]] | None = None,
         canary_interval_s: float = 300.0,
         now: Callable[[], float] = time.monotonic,
         metrics: RunMetrics | None = None,
     ) -> None:
-        initial: FetchTier = "T0" if source_mode in {"mock", "replay"} else preferred
-        if initial not in clients:
-            raise ValueError(f"No client configured for initial tier {initial}")
+        if preferred not in clients:
+            raise ValueError(f"No client configured for initial tier {preferred}")
         self._clients = clients
-        self._current = initial
-        self._refresh_credentials = refresh_credentials
+        self._current = preferred
         self._canary = canary
         self._canary_interval_s = canary_interval_s
         self._now = now
         self._last_canary = now()
         self._canary_successes = 0
-        self._auth_failures = 0
-        self._rate_failures = 0
         self._waf_failures = 0
         self._t2_failures = 0
         self.transitions: list[TierTransition] = []
@@ -96,17 +88,13 @@ class TieredFetcher:
     async def search(self, index_name: str, query: AlgoliaQuery) -> AlgoliaPage:
         return await self._invoke(lambda client: client.search(index_name, query))
 
-    async def multi_query(
-        self, requests: Sequence[AlgoliaRequest]
-    ) -> tuple[AlgoliaPage, ...]:
+    async def multi_query(self, requests: Sequence[AlgoliaRequest]) -> tuple[AlgoliaPage, ...]:
         return await self._invoke(lambda client: client.multi_query(requests))
 
     async def browse(
         self, index_name: str, query: AlgoliaQuery, *, cursor: str | None = None
     ) -> AlgoliaPage:
-        return await self._invoke(
-            lambda client: client.browse(index_name, query, cursor=cursor)
-        )
+        return await self._invoke(lambda client: client.browse(index_name, query, cursor=cursor))
 
     async def search_facet_values(
         self,
@@ -137,7 +125,7 @@ class TieredFetcher:
                         getattr(exc, "status_code", 599),
                         (time.perf_counter() - started) * 1000,
                     )
-                if self._current == "T0" or self._current == "T3":
+                if self._current == "T3":
                     raise
                 if self._current == "T2":
                     self._t2_failures += 1
@@ -155,15 +143,9 @@ class TieredFetcher:
         threshold = 1
         reason = type(exc).__name__
         if isinstance(exc, AlgoliaAuthError):
-            if self._refresh_credentials is not None:
-                await self._refresh_credentials()
-            self._auth_failures += 1
-            threshold = 3
-            count = self._auth_failures
+            count = threshold
         elif isinstance(exc, AlgoliaRateLimited):
-            self._rate_failures += 1
-            threshold = 5
-            count = self._rate_failures
+            raise exc
         elif isinstance(exc, WafChallenge):
             self._waf_failures += 1
             threshold = 3
@@ -207,8 +189,6 @@ class TieredFetcher:
 
     def _reset_failures(self, tier: FetchTier) -> None:
         if tier == "T1":
-            self._auth_failures = 0
-            self._rate_failures = 0
             self._waf_failures = 0
         elif tier == "T2":
             self._t2_failures = 0

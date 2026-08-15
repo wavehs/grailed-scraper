@@ -1,4 +1,4 @@
-"""Database-backed opportunity-v1 scoring service."""
+"""Database-backed opportunity-v2 scoring with resolved model identity."""
 
 from __future__ import annotations
 
@@ -11,17 +11,19 @@ from decimal import Decimal
 from typing import Protocol
 
 import orjson
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.db.models import (
     Brand,
     Listing,
+    ListingModelAssignment,
     ModelGroup,
     ModelRule,
     ParserRun,
     ParserRunTask,
+    PhysicalItemMember,
     ScoringSnapshot,
 )
 from app.services.scoring.calculator import (
@@ -38,9 +40,9 @@ from app.services.scoring.calculator import (
     velocity_score,
 )
 
-MODEL_VERSION = "opportunity-v1"
+MODEL_VERSION = "opportunity-v2"
 WINDOWS = (30, 90)
-_FULL_EXCLUSIONS = {"possible_replica", "repost"}
+_FULL_EXCLUSIONS = {"possible_replica"}
 _PRICE_EXCLUSIONS = {"price_outlier", "lot_or_bundle"}
 
 
@@ -60,48 +62,89 @@ class OpportunityScoringService:
             if run is None:
                 raise LookupError(f"Parser run {run_id} does not exist")
             as_of = _aware(run.started_at or run.created_at)
-            brands = {
-                brand.id: brand
-                for brand in await session.scalars(select(Brand).order_by(Brand.id))
-            }
-            listings = list(
-                await session.scalars(
-                    select(Listing).where(
-                        Listing.brand_id.is_not(None),
-                        Listing.status.in_(("active", "sold")),
+            coverage, truncated = await _coverage(session, run_id, run.coverage_avg)
+            degraded = run.degraded_mode
+            groups_total = snapshots_total = 0
+            cutoff = as_of - timedelta(days=max(WINDOWS))
+            for brand_id in sorted(coverage):
+                brand = await session.get(Brand, brand_id)
+                if brand is None:
+                    raise LookupError(f"Brand {brand_id} does not exist")
+                listings = list(
+                    await session.scalars(
+                        select(Listing)
+                        .options(
+                            load_only(
+                                Listing.id,
+                                Listing.grailed_id,
+                                Listing.brand_id,
+                                Listing.title,
+                                Listing.category,
+                                Listing.status,
+                                Listing.price,
+                                Listing.sold_price,
+                                Listing.created_at,
+                                Listing.first_seen_at,
+                                Listing.sold_at,
+                                Listing.sold_at_is_estimated,
+                                Listing.days_on_market,
+                                Listing.likes_count,
+                                Listing.quality_flags,
+                            )
+                        )
+                        .where(
+                            Listing.brand_id == brand_id,
+                            or_(
+                                and_(
+                                    Listing.status == "sold",
+                                    Listing.sold_at.between(cutoff, as_of),
+                                ),
+                                and_(
+                                    Listing.status == "active",
+                                    func.coalesce(
+                                        Listing.created_at, Listing.first_seen_at
+                                    ).between(cutoff, as_of),
+                                ),
+                            ),
+                        )
                     )
                 )
-            )
-            rules = list(
-                await session.scalars(
-                    select(ModelRule)
-                    .where(ModelRule.is_active.is_(True))
-                    .options(selectinload(ModelRule.group))
-                    .order_by(ModelRule.id)
+                listings = await _canonical_relistings(session, listings)
+                rules = list(
+                    await session.scalars(
+                        select(ModelRule)
+                        .where(
+                            ModelRule.brand_id == brand_id,
+                            ModelRule.is_active.is_(True),
+                        )
+                        .options(selectinload(ModelRule.group))
+                        .order_by(ModelRule.id)
+                    )
                 )
-            )
-            assignments, groups = await self._assign_groups(
-                session, listings, rules, brands, as_of
-            )
-            coverage, truncated = await _coverage(session, run_id, run.coverage_avg)
-            drafts = _build_drafts(
-                listings=listings,
-                assignments=assignments,
-                groups=groups,
-                as_of=as_of,
-                coverage_by_brand=coverage,
-                truncated_brands=truncated,
-                degraded=run.degraded_mode,
-            )
-            rows = _finalize_rows(run, groups, drafts, as_of)
-            await self._persist(session, run_id, rows)
-            await session.commit()
+                assignments, groups = await self._assign_groups(
+                    session, listings, rules, {brand_id: brand}, as_of
+                )
+                drafts = _build_drafts(
+                    listings=listings,
+                    assignments=assignments,
+                    groups=groups,
+                    as_of=as_of,
+                    coverage_by_brand=coverage,
+                    truncated_brands=truncated,
+                    degraded=degraded,
+                )
+                rows = _finalize_rows(run, groups, drafts, as_of)
+                await self._persist(session, run_id, brand_id, rows)
+                await session.commit()
+                groups_total += len(groups)
+                snapshots_total += len(rows)
+                session.expunge_all()
             return {
                 "status": "completed",
                 "model_version": MODEL_VERSION,
                 "windows": list(WINDOWS),
-                "groups": len(groups),
-                "snapshots": len(rows),
+                "groups": groups_total,
+                "snapshots": snapshots_total,
             }
 
     async def _assign_groups(
@@ -117,11 +160,30 @@ class OpportunityScoringService:
         for rule in rules:
             rules_by_brand[rule.brand_id].append(rule)
 
-        assignments: dict[int, int] = {}
+        listing_ids = [listing.id for listing in listings]
+        persisted = list(
+            await session.scalars(
+                select(ListingModelAssignment).where(
+                    ListingModelAssignment.listing_id.in_(listing_ids)
+                )
+            )
+        )
+        persisted_groups = {
+            group.id: group
+            for group in await session.scalars(
+                select(ModelGroup).where(
+                    ModelGroup.id.in_({item.model_group_id for item in persisted})
+                )
+            )
+        }
+        groups.update(persisted_groups)
+        assignments = {item.listing_id: item.model_group_id for item in persisted}
         fallback_needed: dict[str, tuple[int, str]] = {}
         fallback_for_listing: dict[int, str] = {}
         for listing in listings:
             assert listing.brand_id is not None
+            if listing.id in assignments:
+                continue
             matches = [
                 rule
                 for rule in rules_by_brand[listing.brand_id]
@@ -138,12 +200,16 @@ class OpportunityScoringService:
             fallback_needed[stable_key] = (listing.brand_id, category)
             fallback_for_listing[listing.id] = stable_key
 
-        existing = {
-            group.stable_key: group
-            for group in await session.scalars(
-                select(ModelGroup).where(ModelGroup.stable_key.in_(fallback_needed))
-            )
-        } if fallback_needed else {}
+        existing = (
+            {
+                group.stable_key: group
+                for group in await session.scalars(
+                    select(ModelGroup).where(ModelGroup.stable_key.in_(fallback_needed))
+                )
+            }
+            if fallback_needed
+            else {}
+        )
         for stable_key, (brand_id, category) in fallback_needed.items():
             group = existing.get(stable_key)
             if group is None:
@@ -167,19 +233,21 @@ class OpportunityScoringService:
 
     @staticmethod
     async def _persist(
-        session: AsyncSession, run_id: int, rows: Sequence[ScoringSnapshot]
+        session: AsyncSession,
+        run_id: int,
+        brand_id: int,
+        rows: Sequence[ScoringSnapshot],
     ) -> None:
         existing = list(
             await session.scalars(
                 select(ScoringSnapshot).where(
                     ScoringSnapshot.parser_run_id == run_id,
+                    ScoringSnapshot.brand_id == brand_id,
                     ScoringSnapshot.model_version == MODEL_VERSION,
                 )
             )
         )
-        existing_by_key = {
-            (row.model_group_id, row.window_days): row for row in existing
-        }
+        existing_by_key = {(row.model_group_id, row.window_days): row for row in existing}
         calculated_keys: set[tuple[int, int]] = set()
         for row in rows:
             key = (row.model_group_id, row.window_days)
@@ -204,9 +272,7 @@ class NoOpScoringService:
 
 def normalize_text(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value.casefold())
-    return " ".join(
-        "".join(char for char in decomposed if not unicodedata.combining(char)).split()
-    )
+    return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
 
 
 def rule_matches(rule: ModelRule, title: str, category: str | None) -> bool:
@@ -225,11 +291,7 @@ def rule_matches(rule: ModelRule, title: str, category: str | None) -> bool:
 async def _coverage(
     session: AsyncSession, run_id: int, fallback: Decimal | None
 ) -> tuple[dict[int, Decimal], set[int]]:
-    tasks = list(
-        await session.scalars(
-            select(ParserRunTask).where(ParserRunTask.run_id == run_id)
-        )
-    )
+    tasks = list(await session.scalars(select(ParserRunTask).where(ParserRunTask.run_id == run_id)))
     values: dict[int, list[Decimal]] = defaultdict(list)
     truncated: set[int] = set()
     for task in tasks:
@@ -241,8 +303,7 @@ async def _coverage(
             truncated.add(task.brand_id)
     default = fallback if fallback is not None else Decimal(1)
     result = {
-        brand_id: sum(items, Decimal(0)) / Decimal(len(items))
-        for brand_id, items in values.items()
+        brand_id: sum(items, Decimal(0)) / Decimal(len(items)) for brand_id, items in values.items()
     }
     result.update(
         {
@@ -274,11 +335,7 @@ def _build_drafts(
                 by_group[group_id].append(listing)
         for group_id, group in groups.items():
             candidates = by_group.get(group_id, [])
-            usable = [
-                item
-                for item in candidates
-                if not (_flags(item) & _FULL_EXCLUSIONS)
-            ]
+            usable = [item for item in candidates if not (_flags(item) & _FULL_EXCLUSIONS)]
             active = [item for item in usable if item.status == "active"]
             sold = [item for item in usable if item.status == "sold"]
             exact_sold = [
@@ -322,11 +379,7 @@ def _build_drafts(
                 truncated=truncated,
             )
             warnings = sorted(
-                {
-                    warning
-                    for item in candidates
-                    for warning in _flags(item) & {"wrong_brand"}
-                }
+                {warning for item in candidates for warning in _flags(item) & {"wrong_brand"}}
                 | ({"truncated"} if truncated else set())
                 | ({"degraded_mode"} if degraded else set())
                 | ({"low_sample"} if sample < HUNDRED else set())
@@ -347,9 +400,7 @@ def _build_drafts(
                     median_days.quantize(TWO_PLACES) if median_days is not None else None
                 ),
                 median_sold_likes_per_day=(
-                    median_likes.quantize(FOUR_PLACES)
-                    if median_likes is not None
-                    else None
+                    median_likes.quantize(FOUR_PLACES) if median_likes is not None else None
                 ),
                 sell_through=sell_through.quantize(SIX_PLACES),
                 sell_through_score=(sell_through * HUNDRED).quantize(TWO_PLACES),
@@ -366,9 +417,7 @@ def _build_drafts(
                     "usable": len(usable),
                     "excluded": excluded,
                     "no_photos": no_photo,
-                    "price_excluded": sum(
-                        bool(_flags(item) & _PRICE_EXCLUSIONS) for item in sold
-                    ),
+                    "price_excluded": sum(bool(_flags(item) & _PRICE_EXCLUSIONS) for item in sold),
                 },
                 warnings=warnings,
                 input_digest=digest,
@@ -469,3 +518,36 @@ def _digest(
 
 def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+async def _canonical_relistings(
+    session: AsyncSession, listings: Sequence[Listing]
+) -> list[Listing]:
+    """Keep one active/sold row per confirmed same-seller relist component."""
+
+    if not listings:
+        return []
+    membership_rows = await session.execute(
+        select(PhysicalItemMember.listing_id, PhysicalItemMember.physical_item_id).where(
+            PhysicalItemMember.listing_id.in_([listing.id for listing in listings])
+        )
+    )
+    item_by_listing: dict[int, int] = dict(membership_rows.tuples().all())
+    by_item: dict[int, list[Listing]] = defaultdict(list)
+    result = [listing for listing in listings if listing.id not in item_by_listing]
+    for listing in listings:
+        if item_id := item_by_listing.get(listing.id):
+            by_item[item_id].append(listing)
+    for candidates in by_item.values():
+        result.append(
+            max(
+                candidates,
+                key=lambda item: (
+                    item.status == "sold",
+                    item.status == "active",
+                    _aware(item.created_at or item.first_seen_at),
+                    item.id,
+                ),
+            )
+        )
+    return result

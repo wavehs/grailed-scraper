@@ -23,7 +23,7 @@ from app.services.operations import backup_database, restore_database, retention
 from app.services.parser.observability import RunMetrics
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaQuery
-from app.services.transport.mock_http import MockHttpTransport
+from app.services.transport.protocols import HttpResponse
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,14 @@ class _Seed:
     api_key: str = "fixture-key"
     algolia_agent: str | None = "fixture-agent"
     session_headers: tuple[tuple[str, str], ...] = ()
+
+
+class _Transport:
+    async def request(self, method: str, url: str, **_: object) -> HttpResponse:
+        return HttpResponse(200, {}, b'{"hits":[],"nbHits":0}', url)
+
+    async def close(self) -> None:
+        return None
 
 
 def test_central_redaction_handles_nested_headers_urls_and_bearer_tokens() -> None:
@@ -96,7 +104,11 @@ def test_default_hash_salt_is_generated_once_outside_the_database(tmp_path) -> N
     assert first == second
     assert salt_file.is_file() and len(salt_file.read_text(encoding="ascii")) == 64
     assert compliance_reasons(
-        Settings(source_mode="live", store_seller_identity="plain")
+        Settings(
+            source_mode="live",
+            store_seller_identity="plain",
+            live_compliance_acknowledged=False,
+        )
     ) == ["live_compliance_not_acknowledged", "seller_identity_plaintext_enabled"]
 
 
@@ -106,7 +118,9 @@ def test_compliance_limits_and_live_ack_are_enforced() -> None:
     with pytest.raises(ValidationError):
         Settings(max_concurrent_requests=4)
     with pytest.raises(RuntimeError, match="live_compliance_not_acknowledged"):
-        require_live_compliance(Settings(source_mode="live"))
+        require_live_compliance(
+            Settings(source_mode="live", live_compliance_acknowledged=False)
+        )
     require_live_compliance(Settings(source_mode="live", live_compliance_acknowledged=True))
 
 
@@ -120,6 +134,9 @@ def test_run_metrics_resume_keeps_duration_and_latency() -> None:
     assert result["requests_total"] == 2
     assert result["avg_latency_ms"] == 20
     assert result["duration_s"] >= 5
+
+    reconciled = RunMetrics.resume(snapshot, minimum_requests=7, tier="T1")
+    assert reconciled.snapshot()["requests_total"] == 7
 
 
 @pytest.mark.asyncio
@@ -152,7 +169,7 @@ async def test_plain_setting_requires_nonpersistent_confirmation(tmp_path) -> No
 @pytest.mark.asyncio
 async def test_algolia_metrics_include_cache_hits_and_request_latency() -> None:
     metrics = RunMetrics()
-    client = AlgoliaClient(MockHttpTransport(), _Seed(), mock=True, metrics=metrics)
+    client = AlgoliaClient(_Transport(), _Seed(), hosts=("https://algolia.test",), metrics=metrics)
     query = AlgoliaQuery(query="Rick Owens", hits_per_page=1)
     try:
         await client.search("products_active", query)

@@ -7,8 +7,10 @@ GlobalTokenBucket(rate = requests_per_minute/60, burst = 5)
    └── HostSemaphore(algolia_host, max_concurrent = 3)
         └── PerTaskDelay(base = request_delay_ms) + jitter(±30%)
 ```
-Дефолты: `request_delay_ms=400`, `max_requests_per_minute=90`, `max_concurrency=3`, `multiquery_batch=8`.
-Реальная нагрузка: ~90 HTTP-запросов/мин × 8 подзапросов = вполне вежливо для CDN-эндпоинта, при этом 21 бренд собирается за 4–8 минут.
+Дефолты транспорта: `request_delay_ms=400`, `max_requests_per_minute=90`, `max_concurrency=3`, `multiquery_batch=8`.
+Parser использует один worker и обрабатывает бренды последовательно. Один run берёт не
+более 500 listings на бренд суммарно по active/sold; превышение всегда отражается как
+`truncated` с фактическим coverage.
 
 Автоподстройка: если `key.maxQueriesPerIPPerHour` известен → `max_requests_per_minute = min(setting, limit/60 × 0.5)`.
 
@@ -21,7 +23,9 @@ GlobalTokenBucket(rate = requests_per_minute/60, burst = 5)
 Бренды: 21 | Индексы: 2 | Оценка запросов: ~310 | Оценка времени: ~6 мин
 Оценка новых листингов: ~4 200 | Режим: delta | Tier: T1 | Прокси: off
 ```
-Если оценка > `max_requests_per_run` (дефолт 5000) — предупреждение и требование подтверждения.
+Если оценка > `max_requests_per_run` (дефолт 5000) — предупреждение и требование
+подтверждения. Тот же лимит проверяется перед каждым фактическим T1 transport call,
+включая retries: после исчерпания следующий сетевой запрос не отправляется.
 
 ### 12.3. Dry-run
 

@@ -50,9 +50,7 @@ class BrowserAlgoliaClient:
         )
         return AlgoliaPage.from_payload(payload)
 
-    async def multi_query(
-        self, requests: Sequence[AlgoliaRequest]
-    ) -> tuple[AlgoliaPage, ...]:
+    async def multi_query(self, requests: Sequence[AlgoliaRequest]) -> tuple[AlgoliaPage, ...]:
         pages: list[AlgoliaPage] = []
         for offset in range(0, len(requests), 8):
             batch = requests[offset : offset + 8]
@@ -77,7 +75,7 @@ class BrowserAlgoliaClient:
     async def browse(
         self, index_name: str, query: AlgoliaQuery, *, cursor: str | None = None
     ) -> AlgoliaPage:
-        body: dict[str, Any] = {"params": build_params(query)}
+        body: dict[str, Any] = {"params": build_params(query, include_cursor=True)}
         if cursor is not None:
             body["cursor"] = cursor
         payload = await self._json(
@@ -102,15 +100,17 @@ class BrowserAlgoliaClient:
             body,
         )
         raw_hits = payload.get("facetHits", [])
-        return tuple(
-            FacetValue(str(hit["value"]), int(hit.get("count", 0)))
-            for hit in raw_hits
-            if isinstance(hit, dict) and "value" in hit
-        ) if isinstance(raw_hits, list) else ()
+        return (
+            tuple(
+                FacetValue(str(hit["value"]), int(hit.get("count", 0)))
+                for hit in raw_hits
+                if isinstance(hit, dict) and "value" in hit
+            )
+            if isinstance(raw_hits, list)
+            else ()
+        )
 
-    async def _json(
-        self, index_name: str, path: str, body: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _json(self, index_name: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
         page = await self._browser.acquire_page()
         try:
             if id(page) not in self._initialized_pages:
@@ -126,14 +126,12 @@ class BrowserAlgoliaClient:
                     request_body=body,
                 )
         finally:
+            await self._browser.release_page(page)
             record_request = getattr(self._browser, "record_request", None)
             if record_request is not None:
                 await record_request()
-            await self._browser.release_page(page)
 
-    async def _inpage(
-        self, page: BrowserPage, path: str, body: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _inpage(self, page: BrowserPage, path: str, body: dict[str, Any]) -> dict[str, Any]:
         headers = {
             "x-algolia-application-id": self._credentials.app_id,
             "x-algolia-api-key": self._credentials.api_key,

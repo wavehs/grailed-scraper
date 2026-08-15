@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-DiscoveryMethod = Literal["intercept", "bundle", "mock", "manual"]
+DiscoveryMethod = Literal["intercept", "bundle", "manual"]
 DiscoveryStatus = Literal["ready", "stale", "discovering", "degraded", "unavailable"]
 
 

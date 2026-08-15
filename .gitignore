@@ -28,8 +28,12 @@ htmlcov/
 
 # Local data
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+data/app.lock
+data/app.pid
 data/cache/*
 !data/cache/.gitkeep
 data/logs/*

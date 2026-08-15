@@ -27,7 +27,6 @@ jobs:
       - run: ruff check app tests
       - run: mypy
       - run: pytest
-      - run: python -m app.cli replay
 
   frontend:
     runs-on: ubuntu-latest

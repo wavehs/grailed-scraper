@@ -36,10 +36,17 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
         "brand_source_map",
         "unmatched_brands",
         "app_settings",
+        "listing_model_assignments",
+        "physical_items",
+        "physical_item_members",
+        "identity_matches",
     }
     assert required_tables.issubset(set(inspector.get_table_names()))
     assert {"ix_listings_brand_status_sold_at", "ix_listings_status_last_seen_at"}.issubset(
         {index["name"] for index in inspector.get_indexes("listings")}
+    )
+    assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
+        {column["name"] for column in inspector.get_columns("listings")}
     )
     assert "ix_listing_price_history_listing_observed" in {
         index["name"] for index in inspector.get_indexes("listing_price_history")
@@ -47,6 +54,8 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert "ix_brand_source_map_brand_verified" in {
         index["name"] for index in inspector.get_indexes("brand_source_map")
     }
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("SELECT count(*) FROM brands").scalar_one() == 21
     engine.dispose()
 
 
@@ -72,7 +81,7 @@ def test_stage11_migration_moves_hash_and_scrubs_existing_raw_pii(tmp_path) -> N
             "last_seen_at, photo_urls, photo_count, seller_id, seller_username_hash, "
             "quality_flags, fetch_tier, parser_run_id, raw_json, schema_version) "
             "VALUES ('grailed', 7, 'active', 'https://example.test/7', 'Item', 'Brand', "
-            "10, 'USD', 0, 0, ?, ?, '[]', 0, 123, ?, '[]', 'T0', 1, ?, 1)",
+            "10, 'USD', 0, 0, ?, ?, '[]', 0, 123, ?, '[]', 'T1', 1, ?, 1)",
             (
                 "2026-08-01T00:00:00+00:00",
                 "2026-08-01T00:00:00+00:00",
@@ -80,6 +89,7 @@ def test_stage11_migration_moves_hash_and_scrubs_existing_raw_pii(tmp_path) -> N
                 json.dumps(
                     {
                         "seller": {"id": 123, "username": "alice", "email": "a@b.test"},
+                        "user": {"id": 456, "username": "bob"},
                         "location": "Paris, FR",
                         "title": "Item",
                     }
@@ -98,4 +108,4 @@ def test_stage11_migration_moves_hash_and_scrubs_existing_raw_pii(tmp_path) -> N
     assert {"seller_identity", "seller_identity_mode", "raw_json_purged_at"} <= columns
     assert "seller_id" not in columns and "seller_username_hash" not in columns
     assert row is not None and row[0] == "a" * 64 and row[1] == "hashed"
-    assert json.loads(row[2]) == {"seller": {}, "title": "Item"}
+    assert json.loads(row[2]) == {"seller": {}, "user": {}, "title": "Item"}

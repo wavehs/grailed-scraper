@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 from dateutil.parser import isoparse  # type: ignore[import-untyped]
@@ -37,10 +39,20 @@ _LETTER_SIZES = {
     "ONE SIZE FITS ALL": "OS",
 }
 _FOOTWEAR_EU_TO_US = {
-    35: Decimal("3"), 36: Decimal("4"), 37: Decimal("5"), 38: Decimal("6"),
-    39: Decimal("7"), 40: Decimal("7.5"), 41: Decimal("8.5"), 42: Decimal("9"),
-    43: Decimal("10"), 44: Decimal("11"), 45: Decimal("12"), 46: Decimal("13"),
-    47: Decimal("14"), 48: Decimal("15"),
+    35: Decimal("3"),
+    36: Decimal("4"),
+    37: Decimal("5"),
+    38: Decimal("6"),
+    39: Decimal("7"),
+    40: Decimal("7.5"),
+    41: Decimal("8.5"),
+    42: Decimal("9"),
+    43: Decimal("10"),
+    44: Decimal("11"),
+    45: Decimal("12"),
+    46: Decimal("13"),
+    47: Decimal("14"),
+    48: Decimal("15"),
 }
 
 
@@ -50,7 +62,7 @@ class NormalizationContext:
     parser_run_id: int
     observed_at: datetime
     brand_id: int | None = None
-    schema_version: int = 1
+    schema_version: int | None = None
     fetch_tier: FetchTier | None = None
 
 
@@ -86,18 +98,13 @@ class ListingNormalizer:
             for normalized, source_value in mapping.conditions.items()
         }
 
-    async def normalize(
-        self, hit: RawHit, context: NormalizationContext
-    ) -> NormalizationResult:
+    async def normalize(self, hit: RawHit, context: NormalizationContext) -> NormalizationResult:
         payload = hit.payload
         failures: list[NormalizationFailure] = []
         grailed_id = _positive_int(self._mapping.value(payload, "grailed_id"))
         title = _text(self._mapping.value(payload, "title"))
         brand_name = _text(self._mapping.value(payload, "brand_name"))
-        raw_price = self._mapping.value(payload, "price_cents")
-        price_original = _money_from_cents(raw_price) if raw_price is not None else None
-        if price_original is None:
-            price_original = _money(self._mapping.value(payload, "price_float"))
+        price_original = _money(self._mapping.value(payload, "price_float"))
         if grailed_id is None:
             failures.append(NormalizationFailure("invalid", "grailed_id", "missing or invalid id"))
         if title is None:
@@ -135,10 +142,19 @@ class ListingNormalizer:
             if currency == "USD"
             else (price_original * (fx_rate or Decimal(1))).quantize(_CENT, ROUND_HALF_UP)
         )
+        sold_price_original = _money(self._mapping.value(payload, "sold_price"))
+        sold_price = None
+        if context.status == "sold":
+            sold_price = sold_price_original or price_original
+            if currency != "USD":
+                sold_price = (sold_price * (fx_rate or Decimal(1))).quantize(_CENT, ROUND_HALF_UP)
         size_raw = _text(self._mapping.value(payload, "size"))
         condition_raw = _text(self._mapping.value(payload, "condition"))
         photo_urls = _string_list(self._mapping.value(payload, "photo_urls"))
         cover = _text(self._mapping.value(payload, "cover_photo_url"))
+        cover_asset_key = _asset_key(
+            _text(self._mapping.value(payload, "cover_asset_url")) or cover
+        )
         if cover and cover not in photo_urls:
             photo_urls.insert(0, cover)
         first_seen = _utc(context.observed_at)
@@ -170,11 +186,15 @@ class ListingNormalizer:
                 condition=(
                     self._conditions.get(condition_raw.casefold()) if condition_raw else None
                 ),
+                color=_text(self._mapping.value(payload, "color")),
+                source_product_id=_positive_int(self._mapping.value(payload, "product_id")),
+                source_sku_id=_positive_int(self._mapping.value(payload, "sku_id")),
+                source_repost_id=_positive_int(self._mapping.value(payload, "repost_id")),
                 price=price,
                 price_original=price_original if currency != "USD" else None,
                 currency_original=currency,
                 fx_rate=fx_rate if currency != "USD" else None,
-                sold_price=price if context.status == "sold" else None,
+                sold_price=sold_price,
                 likes_count=_nonnegative_int(self._mapping.value(payload, "likes_count")),
                 created_at=normalized_created,
                 sold_at=sold_at,
@@ -184,8 +204,12 @@ class ListingNormalizer:
                 last_seen_at=first_seen,
                 days_on_market=days_on_market,
                 cover_photo_url=cover,
+                cover_asset_key=cover_asset_key,
                 photo_urls=photo_urls,
-                photo_count=len(photo_urls),
+                photo_count=max(
+                    _nonnegative_int(self._mapping.value(payload, "photo_count")),
+                    len(photo_urls),
+                ),
                 seller_identity=seller_identity(
                     self._mapping.value(payload, "seller_username"), self._settings
                 ),
@@ -195,7 +219,7 @@ class ListingNormalizer:
                 fetch_tier=context.fetch_tier or hit.fetch_tier,
                 parser_run_id=context.parser_run_id,
                 raw_json=_sanitize_raw_json(payload),
-                schema_version=context.schema_version,
+                schema_version=context.schema_version or self._mapping.schema_version,
             )
         except ValidationError as exc:
             failure = NormalizationFailure("invalid", detail=str(exc))
@@ -242,11 +266,6 @@ def _money(value: Any) -> Decimal | None:
         return None
 
 
-def _money_from_cents(value: Any) -> Decimal | None:
-    amount = _money(value)
-    return (amount / Decimal(100)).quantize(_CENT) if amount is not None else None
-
-
 def _timestamp(value: Any) -> datetime | None:
     if value is None or isinstance(value, bool):
         return None
@@ -254,6 +273,8 @@ def _timestamp(value: Any) -> datetime | None:
         return _utc(value)
     if isinstance(value, (int, float, Decimal)):
         numeric = Decimal(str(value))
+        if numeric <= 0:
+            return None
         if abs(numeric) > Decimal("100000000000"):
             numeric /= Decimal(1000)
         try:
@@ -301,6 +322,18 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in (_text(part) for part in value) if item is not None]
+
+
+def _asset_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme.casefold() not in {"http", "https"} or not parts.hostname:
+        return None
+    canonical = urlunsplit(
+        (parts.scheme.casefold(), parts.hostname.casefold(), parts.path, "", "")
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _category(value: Any) -> str | None:
@@ -358,4 +391,4 @@ def _sensitive_raw_key(key: str, path: tuple[str, ...]) -> bool:
         "postcode",
         "zip",
         "zipcode",
-    } or (key == "id" and "seller" in path)
+    } or (key == "id" and ("seller" in path or "user" in path))

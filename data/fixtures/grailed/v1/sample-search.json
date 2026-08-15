@@ -1,8 +1,0 @@
-{
-  "indexName": "Listing_sold_production",
-  "params": "query=Rick+Owens&hitsPerPage=2&page=0",
-  "expected": {
-    "requiredFields": ["hits", "nbHits", "page", "nbPages", "hitsPerPage", "facets"],
-    "minimumHits": 1
-  }
-}

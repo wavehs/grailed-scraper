@@ -292,14 +292,14 @@ async def listing_price_history(
     )
 
 
-async def _selected_run(
-    session: AsyncSession, window_days: int, run_id: int | None
-) -> int | None:
-    statement = select(func.max(ScoringSnapshot.parser_run_id)).join(
-        ParserRun, ParserRun.id == ScoringSnapshot.parser_run_id
-    ).where(
-        ScoringSnapshot.window_days == window_days,
-        ScoringSnapshot.model_version == MODEL_VERSION,
+async def _selected_run(session: AsyncSession, window_days: int, run_id: int | None) -> int | None:
+    statement = (
+        select(func.max(ScoringSnapshot.parser_run_id))
+        .join(ParserRun, ParserRun.id == ScoringSnapshot.parser_run_id)
+        .where(
+            ScoringSnapshot.window_days == window_days,
+            ScoringSnapshot.model_version == MODEL_VERSION,
+        )
     )
     if run_id is not None:
         statement = statement.where(ScoringSnapshot.parser_run_id == run_id)
@@ -309,9 +309,7 @@ async def _selected_run(
     return int(value) if value is not None else None
 
 
-async def _snapshots(
-    session: AsyncSession, run_id: int, window_days: int
-) -> list[ScoringSnapshot]:
+async def _snapshots(session: AsyncSession, run_id: int, window_days: int) -> list[ScoringSnapshot]:
     return list(
         await session.scalars(
             select(ScoringSnapshot)
@@ -320,9 +318,7 @@ async def _snapshots(
                 ScoringSnapshot.window_days == window_days,
                 ScoringSnapshot.model_version == MODEL_VERSION,
             )
-            .options(
-                selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand)
-            )
+            .options(selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand))
             .order_by(ScoringSnapshot.market_opportunity_score.desc(), ScoringSnapshot.id)
         )
     )
@@ -391,9 +387,7 @@ async def _group_listings(session: AsyncSession, group: ModelGroup) -> list[List
     )
     selected: list[Listing] = []
     for listing in listings:
-        matching = [
-            rule for rule in rules if rule_matches(rule, listing.title, listing.category)
-        ]
+        matching = [rule for rule in rules if rule_matches(rule, listing.title, listing.category)]
         winner = (
             min(matching, key=lambda item: (-len(item.include_keywords), item.id))
             if matching
@@ -416,9 +410,7 @@ def _metrics(snapshot: ScoringSnapshot) -> ScoreMetrics:
         active_count=snapshot.active_count,
         sell_through=snapshot.sell_through,
         median_sold_price=(
-            _cents(snapshot.median_sold_price)
-            if snapshot.median_sold_price is not None
-            else None
+            _cents(snapshot.median_sold_price) if snapshot.median_sold_price is not None else None
         ),
         median_days_to_sell=snapshot.median_days_to_sell,
         median_sold_likes_per_day=snapshot.median_sold_likes_per_day,
@@ -447,15 +439,14 @@ def _brand_aggregates(snapshots: list[ScoringSnapshot]) -> list[BrandAnalytics]:
                 groups_count=len(items),
                 sold_count=sum(item.sold_count for item in items),
                 active_count=sum(item.active_count for item in items),
-                average_liquidity_score=sum(
-                    (item.liquidity_score for item in items), Decimal(0)
-                ) / count,
-                average_confidence_score=sum(
-                    (item.confidence_score for item in items), Decimal(0)
-                ) / count,
+                average_liquidity_score=sum((item.liquidity_score for item in items), Decimal(0))
+                / count,
+                average_confidence_score=sum((item.confidence_score for item in items), Decimal(0))
+                / count,
                 average_market_opportunity_score=sum(
                     (item.market_opportunity_score for item in items), Decimal(0)
-                ) / count,
+                )
+                / count,
             )
         )
     return sorted(result, key=lambda item: item.average_market_opportunity_score, reverse=True)

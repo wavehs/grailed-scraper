@@ -122,6 +122,10 @@ class ListingRepository:
             "size_normalized",
             "condition_raw",
             "condition",
+            "color",
+            "source_product_id",
+            "source_sku_id",
+            "source_repost_id",
             "price",
             "price_original",
             "currency_original",
@@ -136,6 +140,9 @@ class ListingRepository:
             "removed_checked_at",
             "days_on_market",
             "cover_photo_url",
+            "cover_asset_key",
+            "cover_content_sha256",
+            "cover_dhash",
             "photo_urls",
             "photo_count",
             "seller_identity",
@@ -147,6 +154,7 @@ class ListingRepository:
             "raw_json",
             "raw_json_purged_at",
             "schema_version",
+            "identity_version",
         )
 
     @staticmethod

@@ -19,7 +19,6 @@ SettingOrigin = Literal["default", "env", "database"]
 
 SETTING_GROUPS: dict[str, tuple[str, ...]] = {
     "source": (
-        "source_mode",
         "fetch_tier_preferred",
         "fetch_tier_allow_browser",
         "fetch_tier_allow_dom",
@@ -37,6 +36,8 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
         "parser_max_retries",
         "parser_max_concurrency",
         "parser_max_requests_per_run",
+        "parser_max_items_per_brand",
+        "identity_image_requests_per_run",
     ),
     "proxy": (
         "proxy_enabled",
@@ -52,8 +53,7 @@ EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in
 class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    source_mode: Literal["mock", "replay"] | None = None
-    fetch_tier_preferred: Literal["T0", "T1", "T2", "T3"] | None = None
+    fetch_tier_preferred: Literal["T1", "T2", "T3"] | None = None
     fetch_tier_allow_browser: bool | None = None
     fetch_tier_allow_dom: bool | None = None
     algolia_hits_per_page: int | None = Field(default=None, ge=1)
@@ -68,6 +68,8 @@ class SettingsPatch(BaseModel):
     parser_max_retries: int | None = Field(default=None, ge=1)
     parser_max_concurrency: int | None = Field(default=None, ge=1, le=3)
     parser_max_requests_per_run: int | None = Field(default=None, ge=1)
+    parser_max_items_per_brand: int | None = Field(default=None, ge=1)
+    identity_image_requests_per_run: int | None = Field(default=None, ge=0, le=100)
     proxy_enabled: bool | None = None
     proxy_rotation_mode: Literal["round_robin", "random", "weighted"] | None = None
     proxy_allow_direct_fallback: bool | None = None

@@ -9,7 +9,7 @@ import { renderApp } from '@/test/render';
 
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
-const health = { status: 'ok', service: 'test', source_mode: 'mock', request_id: 'test' };
+const health = { status: 'ok', service: 'test', source_mode: 'live', request_id: 'test' };
 const brand = {
   id: 1,
   name: 'Rick Owens',
@@ -81,7 +81,16 @@ describe('stage 10 screens', () => {
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith('/health')) return json(health);
-        if (url.endsWith('/brands')) return json({ data: [brand] });
+        if (url.endsWith('/brands'))
+          return json({
+            data: [
+              {
+                ...brand,
+                status: 'verified',
+                mappings: [{ ...brand.mappings[0], state: 'verified' }],
+              },
+            ],
+          });
         if (url.includes('/parser/runs?'))
           return json({ data: [], total: 0, limit: 50, offset: 0 });
         if (url.endsWith('/parser/run') && init?.method === 'POST') {
@@ -91,6 +100,7 @@ describe('stage 10 screens', () => {
               dry_run: true,
               plan: {
                 mode: 'delta',
+                confirmation_token: 'confirmed-plan',
                 budget: {
                   estimated_requests: 4,
                   estimated_hits: 400,
@@ -138,11 +148,18 @@ describe('stage 10 screens', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Start run' }));
     expect(await screen.findByText('Run #11')).toBeInTheDocument();
     expect(runCalls).toBe(2);
+    const confirmed = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      String(input).endsWith('/parser/run'),
+    )[1];
+    expect(JSON.parse(String(confirmed[1]?.body))).toMatchObject({
+      dry_run: false,
+      confirmation_token: 'confirmed-plan',
+    });
   });
 
   it('edits safe settings and sends a flat validated patch', async () => {
     const groups = {
-      source: { source_mode: { value: 'mock', origin: 'default' } },
+      source: { fetch_tier_preferred: { value: 'T1', origin: 'default' } },
       parser: { requests_per_minute: { value: 90, origin: 'default' } },
       proxy: { proxy_enabled: { value: false, origin: 'default' } },
       discovery: { discovery_ttl_hours: { value: 12, origin: 'default' } },

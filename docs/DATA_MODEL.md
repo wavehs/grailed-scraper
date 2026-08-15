@@ -4,6 +4,7 @@
 
 ```yaml
 source: grailed
+schema_version: 2
 indices:
   active: Listing_production
   active_sorted_by_date: Listing_by_date_added_production
@@ -26,17 +27,17 @@ fields:
   subcategory:     ["subcategory", "category_path_root"]
   size:            ["size"]
   condition:       ["condition"]
-  price_cents:     ["price_i"]
-  price_float:     ["price"]
+  price_float:     ["price", "price_i"]
+  sold_price:      ["sold_price"]
   currency:        ["currency", "_default:USD"]
-  likes_count:     ["hearts_count", "hearts", "_default:0"]
+  likes_count:     ["followerno", "hearts_count", "hearts", "_default:0"]
   created_at:      ["created_at", "created_at_i"]
   sold_at:         ["sold_at", "sold_at_i"]
   updated_at:      ["updated_at", "updated_at_i"]
   cover_photo_url: ["cover_photo.url", "photos[0].url"]
   photo_urls:      ["photos[*].url"]
-  seller_id:       ["seller.id"]
-  seller_username: ["seller.username"]
+  seller_id:       ["user.id", "seller.id"]
+  seller_username: ["user.username", "seller.username"]
   sticker:         ["sticker", "sticker.type"]
   location:        ["location", "seller.country"]
 conditions:
@@ -86,7 +87,7 @@ seller_id: int | None
 seller_username_hash: str | None   # см. §14
 seller_country: str | None
 quality_flags: list[str] = []      # ["outlier_price","possible_replica","lot",...]
-fetch_tier: Literal["T0","T1","T2","T3"]
+fetch_tier: Literal["T1","T2","T3"]
 parser_run_id: int
 raw_json: dict
 schema_version: int
@@ -94,7 +95,7 @@ schema_version: int
 
 ### 9.3. Нормализации
 
-**Цена.** Приоритет `price_i / 100` (целые центы, без float-погрешности), иначе `Decimal(str(price))`. Всё считается в `Decimal`, **никогда в float**. Валюта ≠ USD → конверсия по курсу на `sold_at` (кэш курсов, таблица `fx_rates`, дневная гранулярность); `fx_rate` сохраняется, чтобы результат был воспроизводим.
+**Цена.** Фактическая live schema 2026-08-14 хранит `price` и fallback `price_i` в целых единицах валюты, не в центах; `sold_price` хранится отдельно. Все три поля читаются через `Decimal(str(value))`, **никогда через float**. Валюта ≠ USD → конверсия по курсу на `sold_at` (кэш курсов, таблица `fx_rates`, дневная гранулярность); `fx_rate` сохраняется, чтобы результат был воспроизводим.
 
 **Время.** Unix seconds vs milliseconds автоопределяются: `> 10^11` → ms. Всё в UTC, timezone-aware. Отсутствует `created_at` → `first_seen_at`.
 
@@ -114,11 +115,26 @@ schema_version: int
 | `price_outlier` | цена вне [median × 0.05, median × 20] в группе (бренд+категория) по MAD | исключается из медиан/скоринга |
 | `possible_replica` | ключевые слова в title/description: `rep`, `replica`, `inspired`, `1:1`, `unauthorized`, `dhgate` | исключается |
 | `lot_or_bundle` | `bundle`, `lot of`, `x2`, `set of`, `read description` + цена ≫ | исключается из цен |
-| `repost` | тот же `seller_id` + fuzzy title ≥ 95 + Δцена < 10% + Δвремя < 30д | схлопывается в один «товар» для volume-метрик |
 | `wrong_brand` | бренд в title не совпадает с `designers[0]` | warning |
 | `no_photos` | `photo_count == 0` | понижает confidence |
 
 Все пороги — в `app_settings`, чтобы крутить без релиза.
+
+### 9.5. Идентичность объявления
+
+Идентичность разделена на два уровня:
+
+- `listing_model_assignments` объединяет одну модель товара; размер и расцветка
+  намеренно не участвуют в model key;
+- `physical_item_members` объединяет только перевыставления одного продавца.
+  Проданное объявление завершает цепочку: последующие объявления, включая объявления
+  других продавцов, с ним не связываются.
+
+`identity_matches` хранит объяснимые кандидаты и решения. Автоподтверждение физического
+перевыставления требует того же продавца, отсутствия временного пересечения и сильного
+совпадения asset/image/title; неоднозначные пары отправляются на ручную проверку.
+Сохраняются только URL-independent asset key, SHA-256 и dHash — байты изображений не
+сохраняются.
 
 Реализация этапа 7 возвращает из нормализатора `NormalizationResult`: либо строгий
 `ListingData`, либо список безопасных причин отклонения. Невалидный hit не пишется

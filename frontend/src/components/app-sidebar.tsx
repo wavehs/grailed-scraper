@@ -11,6 +11,7 @@ const links = [
   ['brands', '/brands'],
   ['parserRuns', '/parser-runs'],
   ['modelRules', '/model-rules'],
+  ['identityReview', '/identity-review'],
   ['settings', '/settings'],
 ] as const;
 

@@ -59,10 +59,14 @@ class LifecycleRepository:
         await self._session.flush()
         return item
 
-    async def refresh_candidates(self, brand_id: int | None = None) -> list[Listing]:
+    async def refresh_candidates(
+        self, brand_id: int | None = None, *, limit: int | None = None
+    ) -> list[Listing]:
         statement = select(Listing).where(Listing.status.in_(("active", "removed_pending")))
         if brand_id is not None:
             statement = statement.where(Listing.brand_id == brand_id)
+        if limit is not None:
+            statement = statement.limit(limit)
         return list(await self._session.scalars(statement.order_by(Listing.grailed_id)))
 
     async def apply_missing(

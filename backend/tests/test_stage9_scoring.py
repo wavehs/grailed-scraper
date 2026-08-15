@@ -148,7 +148,7 @@ def _listing(
         seller_identity_mode="hashed",
         seller_country="US",
         quality_flags=flags or (["no_photos"] if no_photos else []),
-        fetch_tier="T0",
+        fetch_tier="T1",
         parser_run_id=run_id,
         raw_json={"id": listing_id},
         schema_version=1,
@@ -174,7 +174,7 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
             phase="scoring",
             dry_run=False,
             degraded_mode=False,
-            tier_used="T0",
+            tier_used="T1",
             requests_made=2,
             coverage_avg=Decimal(1),
             warnings=[],
@@ -327,7 +327,7 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
     assert first == second
     assert first == {
         "status": "completed",
-        "model_version": "opportunity-v1",
+        "model_version": "opportunity-v2",
         "windows": [30, 90],
         "groups": 3,
         "snapshots": 6,
@@ -346,11 +346,12 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
             if item.window_days == 30 and item.model_group_id == specific_group_id
         )
     assert len(snapshots) == 6
-    assert specific.sold_count == specific.active_count == 1
+    assert specific.sold_count == 1
+    assert specific.active_count == 2
     assert specific.quality_summary == {
         "candidates": 4,
-        "usable": 2,
-        "excluded": 2,
+        "usable": 3,
+        "excluded": 1,
         "no_photos": 1,
         "price_excluded": 0,
     }

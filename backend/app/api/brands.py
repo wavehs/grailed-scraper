@@ -21,7 +21,6 @@ from app.db.models import Brand, BrandSourceMap, SourceCredential
 from app.db.session import get_db
 from app.repositories.brands import BrandRepository
 from app.services.normalization.brands import BrandMappingService
-from app.services.parser.mock.generator import ACTIVE_INDEX
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
@@ -103,28 +102,21 @@ async def get_brand_service(
             "Live mode requires compliance acknowledgement",
         ) from exc
     transport = create_http_transport(settings)
-    if settings.source_mode == "mock":
-        credentials = _Credentials("fixture-app", "fixture-key", "fixture-agent")
-        active_index = ACTIVE_INDEX
-        mock = True
-    else:
-        cached = await session.scalar(
-            select(SourceCredential).where(SourceCredential.source == "grailed")
+    cached = await session.scalar(
+        select(SourceCredential).where(SourceCredential.source == "grailed")
+    )
+    if cached is None or cached.active_index is None:
+        await transport.close()
+        raise ApiError(
+            503,
+            "discovery_required",
+            "Refresh Grailed discovery before auto-mapping brands",
         )
-        if cached is None or cached.active_index is None:
-            await transport.close()
-            raise ApiError(
-                503,
-                "discovery_required",
-                "Refresh Grailed discovery before auto-mapping brands",
-            )
-        credentials = _Credentials(cached.app_id, cached.api_key, cached.algolia_agent)
-        active_index = cached.active_index
-        mock = False
+    credentials = _Credentials(cached.app_id, cached.api_key, cached.algolia_agent)
+    active_index = cached.active_index
     client = AlgoliaClient(
         transport,
         credentials,
-        mock=mock,
         requests_per_minute=settings.requests_per_minute,
         max_concurrency=settings.max_concurrent_requests,
         max_retries=settings.parser_max_retries,
@@ -245,8 +237,6 @@ async def _listing_count(session: AsyncSession, brand_id: int) -> int:
     from app.db.models import Listing
 
     return int(
-        await session.scalar(
-            select(func.count(Listing.id)).where(Listing.brand_id == brand_id)
-        )
+        await session.scalar(select(func.count(Listing.id)).where(Listing.brand_id == brand_id))
         or 0
     )

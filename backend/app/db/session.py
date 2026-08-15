@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -28,11 +30,32 @@ def get_database_url(settings: Settings) -> str:
     return settings.database_url
 
 
+def create_database_engine(settings: Settings) -> AsyncEngine:
+    """Create the configured engine and apply SQLite safety settings per connection."""
+
+    engine = create_async_engine(get_database_url(settings), pool_pre_ping=True)
+    if engine.url.get_backend_name() == "sqlite":
+        timeout = settings.sqlite_busy_timeout_ms
+
+        def configure_sqlite(dbapi_connection: Any, _: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.execute(f"PRAGMA busy_timeout={timeout}")
+            finally:
+                cursor.close()
+
+        event.listen(engine.sync_engine, "connect", configure_sqlite)
+    return engine
+
+
 @lru_cache
 def get_engine() -> AsyncEngine:
     """Create the process-wide async engine without opening a connection yet."""
 
-    return create_async_engine(get_database_url(get_settings()), pool_pre_ping=True)
+    return create_database_engine(get_settings())
 
 
 @lru_cache

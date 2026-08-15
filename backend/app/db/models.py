@@ -103,7 +103,7 @@ class Listing(Base):
             "status IN ('active', 'sold', 'removed_pending', 'removed')",
             name="ck_listings_status",
         ),
-        CheckConstraint("fetch_tier IN ('T0', 'T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
+        CheckConstraint("fetch_tier IN ('T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
         CheckConstraint(
             "seller_identity_mode IN ('none', 'hashed', 'plain')",
             name="ck_listings_seller_identity_mode",
@@ -111,6 +111,8 @@ class Listing(Base):
         CheckConstraint("price > 0", name="ck_listings_price_positive"),
         Index("ix_listings_brand_status_sold_at", "brand_id", "status", "sold_at"),
         Index("ix_listings_status_last_seen_at", "status", "last_seen_at"),
+        Index("ix_listings_source_product", "source", "source_product_id"),
+        Index("ix_listings_seller_created", "seller_identity", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -129,6 +131,10 @@ class Listing(Base):
     size_normalized: Mapped[str | None] = mapped_column(String(128))
     condition_raw: Mapped[str | None] = mapped_column(String(128))
     condition: Mapped[str | None] = mapped_column(String(128))
+    color: Mapped[str | None] = mapped_column(String(128))
+    source_product_id: Mapped[int | None] = mapped_column(Integer)
+    source_sku_id: Mapped[int | None] = mapped_column(Integer)
+    source_repost_id: Mapped[int | None] = mapped_column(Integer)
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     price_original: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     currency_original: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -144,6 +150,9 @@ class Listing(Base):
     removed_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     days_on_market: Mapped[int | None] = mapped_column(Integer)
     cover_photo_url: Mapped[str | None] = mapped_column(Text)
+    cover_asset_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    cover_content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    cover_dhash: Mapped[str | None] = mapped_column(String(16), index=True)
     photo_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     seller_identity: Mapped[str | None] = mapped_column(Text)
@@ -157,6 +166,7 @@ class Listing(Base):
     raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_json_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    identity_version: Mapped[str | None] = mapped_column(String(32))
 
     brand: Mapped[Brand | None] = relationship(back_populates="listings")
     parser_run: Mapped[ParserRun] = relationship(back_populates="listings")
@@ -187,7 +197,10 @@ class ModelGroup(Base):
 
     __tablename__ = "model_groups"
     __table_args__ = (
-        CheckConstraint("group_type IN ('rule', 'fallback')", name="ck_model_groups_type"),
+        CheckConstraint(
+            "group_type IN ('rule', 'fallback', 'source_product', 'resolved')",
+            name="ck_model_groups_type",
+        ),
         Index("ix_model_groups_brand_type", "brand_id", "group_type"),
     )
 
@@ -199,6 +212,11 @@ class ModelGroup(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str | None] = mapped_column(String(255))
     group_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    merged_into_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "model_groups.id", name="fk_model_groups_merged_into", ondelete="SET NULL"
+        )
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -207,6 +225,86 @@ class ModelGroup(Base):
         back_populates="group", cascade="all, delete-orphan", uselist=False
     )
     snapshots: Mapped[list[ScoringSnapshot]] = relationship(back_populates="model_group")
+
+
+class ListingModelAssignment(Base):
+    """Auditable exact-model assignment; fallback analytics groups are not stored here."""
+
+    __tablename__ = "listing_model_assignments"
+    __table_args__ = (Index("ix_listing_model_assignments_group", "model_group_id"),)
+
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
+    )
+    model_group_id: Mapped[int] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="RESTRICT"), nullable=False
+    )
+    method: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PhysicalItem(Base):
+    """One physical item across same-seller relists before its sale."""
+
+    __tablename__ = "physical_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PhysicalItemMember(Base):
+    __tablename__ = "physical_item_members"
+    __table_args__ = (Index("ix_physical_item_members_item", "physical_item_id"),)
+
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
+    )
+    physical_item_id: Mapped[int] = mapped_column(
+        ForeignKey("physical_items.id", ondelete="CASCADE"), nullable=False
+    )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class IdentityMatch(Base):
+    """Explainable model/relist pair and its automatic or manual decision."""
+
+    __tablename__ = "identity_matches"
+    __table_args__ = (
+        CheckConstraint("level IN ('model', 'physical')", name="ck_identity_matches_level"),
+        CheckConstraint(
+            "status IN ('pending', 'auto_confirmed', 'confirmed', 'rejected')",
+            name="ck_identity_matches_status",
+        ),
+        CheckConstraint(
+            "relation_type IS NULL OR relation_type = 'relist'",
+            name="ck_identity_matches_relation",
+        ),
+        CheckConstraint("left_listing_id < right_listing_id", name="ck_identity_matches_order"),
+        UniqueConstraint(
+            "level", "left_listing_id", "right_listing_id", name="uq_identity_matches_pair"
+        ),
+        Index("ix_identity_matches_queue", "status", "level", "confidence"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    level: Mapped[str] = mapped_column(String(16), nullable=False)
+    left_listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+    )
+    right_listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+    )
+    relation_type: Mapped[str | None] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ModelRule(Base):
@@ -285,9 +383,7 @@ class ScoringSnapshot(Base):
     liquidity_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     price_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     confidence_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    market_opportunity_score: Mapped[Decimal] = mapped_column(
-        Numeric(6, 2), nullable=False
-    )
+    market_opportunity_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     component_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     confidence_factors: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     quality_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -423,7 +519,7 @@ class ParserRunTask(Base):
             name="ck_parser_run_tasks_status",
         ),
         CheckConstraint(
-            "fetch_tier IS NULL OR fetch_tier IN ('T0', 'T1', 'T2', 'T3')",
+            "fetch_tier IS NULL OR fetch_tier IN ('T1', 'T2', 'T3')",
             name="ck_tasks_fetch_tier",
         ),
         Index("ix_parser_run_tasks_run_status", "run_id", "status"),

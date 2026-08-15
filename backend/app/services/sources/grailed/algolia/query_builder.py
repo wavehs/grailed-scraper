@@ -16,12 +16,10 @@ BASE_RESPONSE_FIELDS = (
     "hitsPerPage",
     "exhaustiveNbHits",
     "facets",
-    "cursor",
-    "queryID",
 )
 
 
-def build_params(query: AlgoliaQuery) -> str:
+def build_params(query: AlgoliaQuery, *, include_cursor: bool = False) -> str:
     """Encode nested filters as compact JSON and Unicode as UTF-8 percent escapes."""
 
     params: dict[str, Any] = {
@@ -34,7 +32,9 @@ def build_params(query: AlgoliaQuery) -> str:
         "analytics": "false",
         "clickAnalytics": "false",
         "enableABTest": "false",
-        "responseFields": _json(BASE_RESPONSE_FIELDS),
+        "responseFields": _json(
+            (*BASE_RESPONSE_FIELDS, "cursor") if include_cursor else BASE_RESPONSE_FIELDS
+        ),
         "attributesToRetrieve": _json(query.attributes_to_retrieve),
     }
     if query.filters is not None:

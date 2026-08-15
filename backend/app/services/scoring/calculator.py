@@ -123,18 +123,13 @@ def finalize_brand(drafts: list[MetricDraft]) -> dict[int, FinalMetrics]:
     prices = percentile_scores(
         {draft.group_id: draft.median_sold_price for draft in drafts}, reverse=True
     )
-    likes = percentile_scores(
-        {draft.group_id: draft.median_sold_likes_per_day for draft in drafts}
-    )
+    likes = percentile_scores({draft.group_id: draft.median_sold_likes_per_day for draft in drafts})
     result: dict[int, FinalMetrics] = {}
     for draft in drafts:
         price = prices[draft.group_id]
         demand = likes[draft.group_id]
         liquidity = (
-            (
-                draft.sell_through_score * Decimal(40)
-                + draft.velocity_score * Decimal(25)
-            )
+            (draft.sell_through_score * Decimal(40) + draft.velocity_score * Decimal(25))
             / Decimal(65)
         ).quantize(TWO_PLACES, ROUND_HALF_UP)
         opportunity = (

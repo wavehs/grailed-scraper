@@ -43,7 +43,7 @@ class SchemaAlertResponse(BaseModel):
 class DiscoveryResponse(BaseModel):
     source: Literal["grailed"]
     status: Literal["ready", "stale", "discovering", "degraded", "unavailable"]
-    method: Literal["intercept", "bundle", "mock", "manual"] | None = None
+    method: Literal["intercept", "bundle", "manual"] | None = None
     discovered_at: datetime | None = None
     expires_at: datetime | None = None
     app_id: str | None = None
@@ -119,9 +119,11 @@ async def get_discovery_service(
     try:
         yield DiscoveryService(session, settings, transport, browser)
     finally:
-        if browser is not None:
-            await browser.close()
-        await transport.close()
+        try:
+            if browser is not None:
+                await browser.close()
+        finally:
+            await transport.close()
 
 
 @router.post("/discovery/refresh", response_model=DiscoveryResponse)

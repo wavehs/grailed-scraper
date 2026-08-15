@@ -1,4 +1,5 @@
 source: grailed
+schema_version: 2
 indices:
   active: Listing_production
   active_sorted_by_date: Listing_by_date_added_production
@@ -20,25 +21,31 @@ fields:
   brand_name:      ["designers[0].name", "designer_names[0]"]
   brand_slug:      ["designers[0].slug"]
   category:        ["category", "category_path"]
-  subcategory:     ["subcategory", "category_path_root"]
+  subcategory:     ["subcategory", "category_path"]
   size:            ["size"]
   condition:       ["condition"]
-  price_cents:     ["price_i"]
-  price_float:     ["price"]
+  color:           ["color", "traits[color]"]
+  product_id:      ["product_id"]
+  sku_id:          ["sku_id"]
+  repost_id:       ["repost_id"]
+  price_float:     ["price", "price_i"]
+  sold_price:      ["sold_price"]
   currency:        ["currency", "_default:USD"]
-  likes_count:     ["hearts_count", "hearts", "_default:0"]
+  likes_count:     ["followerno", "hearts_count", "hearts", "_default:0"]
   created_at:      ["created_at", "created_at_i"]
   sold_at:         ["sold_at", "sold_at_i"]
   updated_at:      ["updated_at", "updated_at_i"]
   cover_photo_url: ["cover_photo.url", "photos[0].url"]
+  cover_asset_url: ["cover_photo.image_url", "cover_photo.url", "photos[0].url"]
   photo_urls:      ["photos[*].url"]
-  seller_id:       ["seller.id"]
-  seller_username: ["seller.username"]
+  photo_count:     ["photo_count"]
+  seller_id:       ["user.id", "seller.id"]
+  seller_username: ["user.username", "seller.username"]
   sticker:         ["sticker", "sticker.type"]
   location:        ["location", "seller.country"]
 conditions:
-  is_new: "New/Never worn"
-  is_gently_used: "Gently used"
-  is_used: "Used"
-  is_worn: "Worn"
-  is_not_specified: "Not specified"
+  is_new: "is_new"
+  is_gently_used: "is_gently_used"
+  is_used: "is_used"
+  is_worn: "is_worn"
+  is_not_specified: "is_not_specified"

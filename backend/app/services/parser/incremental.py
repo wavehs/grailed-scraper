@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.db.models import Listing
 from app.domain.listings import FetchTier, ListingStatus
 from app.repositories.lifecycle import LifecycleRepository
-from app.repositories.listings import ListingRepository
+from app.repositories.listings import ListingRepository, UpsertResult
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.parser.fetching import FetchApi
 from app.services.sources.base.models import RawHit
@@ -33,6 +33,8 @@ class RefreshActiveResult:
     sold: int
     pending: int
     removed: int
+    inserted: int
+    updated: int
 
 
 class IncrementalPlanner:
@@ -103,6 +105,8 @@ class RefreshActiveService:
         *,
         active_index: str,
         sold_index: str,
+        checkpoint: Callable[[], Awaitable[None]] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> None:
         self._fetcher = fetcher
         self._lifecycle = lifecycle
@@ -111,6 +115,8 @@ class RefreshActiveService:
         self._settings = settings
         self._active_index = active_index
         self._sold_index = sold_index
+        self._checkpoint = checkpoint
+        self._should_stop = should_stop
 
     async def run(
         self,
@@ -120,39 +126,40 @@ class RefreshActiveService:
         now: datetime | None = None,
     ) -> RefreshActiveResult:
         observed = now or datetime.now(UTC)
-        candidates = await self._lifecycle.refresh_candidates(brand_id)
+        candidates = await self._lifecycle.refresh_candidates(
+            brand_id, limit=self._settings.parser_refresh_active_limit
+        )
         active_count = sold_count = pending_count = removed_count = 0
+        inserted_count = updated_count = 0
         for offset in range(0, len(candidates), self.batch_size):
+            if self._should_stop is not None and self._should_stop():
+                break
             batch = candidates[offset : offset + self.batch_size]
             by_id = {item.grailed_id: item for item in batch}
-            active_page = await self._fetcher.search(
-                self._active_index, _id_query(tuple(by_id))
-            )
+            active_page = await self._fetcher.search(self._active_index, _id_query(tuple(by_id)))
             active_ids = {
-                identifier
-                for hit in active_page.hits
-                if (identifier := _hit_id(hit)) is not None
+                identifier for hit in active_page.hits if (identifier := _hit_id(hit)) is not None
             }
             active_count += len(active_ids)
-            await self._normalize_and_upsert(
+            active_upsert = await self._normalize_and_upsert(
                 active_page.hits, "active", parser_run_id, observed, by_id
             )
+            inserted_count += active_upsert.inserted
+            updated_count += active_upsert.updated
             missing_ids = tuple(identifier for identifier in by_id if identifier not in active_ids)
             sold_ids: set[int] = set()
             if missing_ids:
                 sold_page = await self._fetcher.search(self._sold_index, _id_query(missing_ids))
                 sold_ids = {
-                    identifier
-                    for hit in sold_page.hits
-                    if (identifier := _hit_id(hit)) is not None
+                    identifier for hit in sold_page.hits if (identifier := _hit_id(hit)) is not None
                 }
                 sold_count += len(sold_ids)
-                await self._normalize_and_upsert(
+                sold_upsert = await self._normalize_and_upsert(
                     sold_page.hits, "sold", parser_run_id, observed, by_id
                 )
-            still_missing = [
-                by_id[item_id] for item_id in missing_ids if item_id not in sold_ids
-            ]
+                inserted_count += sold_upsert.inserted
+                updated_count += sold_upsert.updated
+            still_missing = [by_id[item_id] for item_id in missing_ids if item_id not in sold_ids]
             pending, removed = await self._lifecycle.apply_missing(
                 still_missing,
                 now=observed,
@@ -160,8 +167,16 @@ class RefreshActiveService:
             )
             pending_count += pending
             removed_count += removed
+            if self._checkpoint is not None:
+                await self._checkpoint()
         return RefreshActiveResult(
-            len(candidates), active_count, sold_count, pending_count, removed_count
+            len(candidates),
+            active_count,
+            sold_count,
+            pending_count,
+            removed_count,
+            inserted_count,
+            updated_count,
         )
 
     async def _normalize_and_upsert(
@@ -171,7 +186,7 @@ class RefreshActiveService:
         parser_run_id: int,
         observed: datetime,
         existing: Mapping[int, Listing],
-    ) -> None:
+    ) -> UpsertResult:
         normalized = []
         tier = _tier(self._fetcher)
         for payload in hits:
@@ -197,7 +212,8 @@ class RefreshActiveService:
                     )
                 )
         if normalized:
-            await self._listings.upsert_batch(normalized)
+            return await self._listings.upsert_batch(normalized)
+        return UpsertResult(0, 0, 0)
 
 
 def _id_query(ids: tuple[int, ...]) -> AlgoliaQuery:
@@ -217,4 +233,4 @@ def _hit_id(payload: Mapping[str, Any]) -> int | None:
 
 def _tier(fetcher: FetchApi) -> FetchTier:
     value = getattr(fetcher, "current_tier", "T1")
-    return cast(FetchTier, value) if value in {"T0", "T1", "T2", "T3"} else "T1"
+    return cast(FetchTier, value) if value in {"T1", "T2", "T3"} else "T1"

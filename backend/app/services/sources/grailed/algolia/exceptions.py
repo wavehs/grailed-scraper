@@ -37,3 +37,7 @@ class AlgoliaTransient(AlgoliaError):
 
 class WafChallenge(AlgoliaError):
     pass
+
+
+class RequestBudgetExceeded(RuntimeError):
+    """Stop before issuing a network request beyond the configured run cap."""

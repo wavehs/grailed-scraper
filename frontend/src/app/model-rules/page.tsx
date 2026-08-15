@@ -64,7 +64,6 @@ export default function ModelRulesPage() {
         </h1>
         <p className="text-slate-600">{t('modelRulesIntro')}</p>
       </div>
-      {!health.isLoading && !health.writable && <Notice error>{t('mockRequired')}</Notice>}
       <Notice>{notice}</Notice>
       {error && (
         <ErrorState

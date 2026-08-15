@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.discovery import (
     DiscoveryRefreshRequest,
@@ -21,14 +23,23 @@ from app.api.errors import ApiError
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
-from app.db.models import ParserRun, ParserRunTask, SchemaAlert, SourceCredential, SourceSchema
+from app.db.models import (
+    Brand,
+    ParserRun,
+    ParserRunTask,
+    SchemaAlert,
+    SourceCredential,
+    SourceSchema,
+)
 from app.db.session import get_db
 from app.repositories.runs import RunRepository
-from app.services.parser.planner import ParserPlanner
+from app.services.parser.planner import FetchPlan, ParserPlanner
 from app.services.parser.runtime import ParserRuntime
+from app.services.sources.grailed.algolia.client import AlgoliaClient
+from app.services.sources.grailed.algolia.exceptions import AlgoliaError
 from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.transport.capabilities import probe_capabilities
-from app.services.transport.factory import create_proxy_manager
+from app.services.transport.factory import create_http_transport, create_proxy_manager
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 RunStatus = Literal[
@@ -41,6 +52,15 @@ class RunRequest(BaseModel):
     brand_ids: list[int] | None = None
     dry_run: bool = False
     confirm_over_budget: bool = False
+    confirmation_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Credentials:
+    app_id: str
+    api_key: str
+    algolia_agent: str | None
+    session_headers: tuple[tuple[str, str], ...] = ()
 
 
 class RunSummary(BaseModel):
@@ -97,9 +117,15 @@ class ProgressResponse(BaseModel):
     tasks_done: int = 0
     hits_fetched: int = 0
     requests_made: int = 0
+    coverage: Decimal | None = None
+    partial: bool = False
+    truncated: bool = False
+    current_brand: str | None = None
+    tasks_failed: int = 0
     eta_seconds: int | None = None
     heartbeat_at: datetime | None
     warnings: list[str]
+    errors: list[dict[str, Any]] = []
 
 
 class ParserHealthResponse(BaseModel):
@@ -117,6 +143,7 @@ class ParserHealthResponse(BaseModel):
     circuits: list[dict[str, Any]] = []
     compliance: dict[str, Any] = {}
     last_run: dict[str, Any] | None = None
+    runtime: dict[str, Any] = {}
 
 
 class RunMetricsResponse(BaseModel):
@@ -162,17 +189,31 @@ async def start_run(
         raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     mode = payload.mode or settings.parser_mode
     try:
-        plan = await ParserPlanner(session, settings).build(
-            mode=mode, brand_ids=payload.brand_ids
-        )
+        plan = await ParserPlanner(session, settings).build(mode=mode, brand_ids=payload.brand_ids)
     except LookupError as exc:
         raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
     except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Refresh discovery before starting the parser") from exc
+        code = str(exc)
+        status = 409 if code == "brand_mapping_required" else 503
+        raise ApiError(status, code, "Parser prerequisites are incomplete") from exc
     if payload.dry_run:
+        try:
+            plan = await _probe_plan(session, settings, plan)
+        except AlgoliaError as exc:
+            raise ApiError(503, "dry_run_probe_failed", "Live dry-run probes failed") from exc
         await session.rollback()
         response.status_code = 200
         return {"dry_run": True, "plan": plan.public()}
+    if payload.confirmation_token != plan.digest():
+        raise ApiError(
+            409,
+            "dry_run_required",
+            "Run the live dry-run again before confirming this parser run",
+        )
+    try:
+        plan = await _probe_plan(session, settings, plan)
+    except AlgoliaError as exc:
+        raise ApiError(503, "run_probe_failed", "Live pre-run probes failed") from exc
     if plan.budget["over_limit"] and not payload.confirm_over_budget:
         raise ApiError(
             409,
@@ -228,7 +269,20 @@ async def run_progress(
     run = await RunRepository(session).get(run_id)
     if run is None:
         raise ApiError(404, "run_not_found", "Parser run does not exist")
+    tasks = await RunRepository(session).tasks(run_id)
     progress = dict(run.stats.get("progress", {}))
+    fetching = dict(run.stats.get("fetching", {}))
+    running_task = next((item for item in tasks if item.status == "running"), None)
+    errors = [
+        {
+            "task_id": item.id,
+            "brand_id": item.brand_id,
+            "index_type": item.index_type,
+            "code": item.error,
+        }
+        for item in tasks
+        if item.error
+    ]
     return ProgressResponse(
         status=run.status,
         phase=run.phase,
@@ -240,8 +294,21 @@ async def run_progress(
         tasks_done=int(progress.get("tasks_done", 0)),
         hits_fetched=int(progress.get("hits_fetched", 0)),
         requests_made=run.requests_made,
+        coverage=run.coverage_avg,
+        partial=run.status == "partial"
+        or bool(fetching.get("partial"))
+        or bool(fetching.get("poor")),
+        truncated=bool(fetching.get("truncated"))
+        or any(item.status == "truncated" for item in tasks),
+        current_brand=(
+            str((running_task.bucket_spec or {}).get("brand_name"))
+            if running_task is not None
+            else None
+        ),
+        tasks_failed=sum(item.status == "failed" for item in tasks),
         heartbeat_at=run.heartbeat_at,
         warnings=list(run.warnings),
+        errors=errors,
     )
 
 
@@ -298,6 +365,16 @@ async def resume_run(
     except RuntimeError as exc:
         raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     repository = RunRepository(session)
+    existing = await repository.get(run_id)
+    if existing is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    task_brand_ids = sorted(
+        {task.brand_id for task in await repository.tasks(run_id) if task.brand_id is not None}
+    )
+    try:
+        await ParserPlanner(session, settings).build(mode=existing.mode, brand_ids=task_brand_ids)
+    except RuntimeError as exc:
+        raise ApiError(503, str(exc), "Parser prerequisites are incomplete") from exc
     try:
         run = await repository.prepare_resume(run_id)
     except LookupError as exc:
@@ -314,6 +391,7 @@ async def resume_run(
 
 @router.get("/health", response_model=ParserHealthResponse)
 async def parser_health(
+    request: Request,
     response: Response,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
@@ -343,19 +421,26 @@ async def parser_health(
         )
     )
     last_run = await session.scalar(select(ParserRun).order_by(ParserRun.id.desc()).limit(1))
+    brands = list(await session.scalars(select(Brand).options(selectinload(Brand.source_mappings))))
     capabilities = probe_capabilities()
     health_snapshot = getattr(runtime, "health_snapshot", None)
-    runtime_health = health_snapshot() if callable(health_snapshot) else {
-        "circuits": [], "proxies": [], "metrics": {}, "tier": None
-    }
-    mock = settings.source_mode in {"mock", "replay"}
+    runtime_health = (
+        health_snapshot()
+        if callable(health_snapshot)
+        else {"circuits": [], "proxies": [], "metrics": {}, "tier": None}
+    )
     reasons = compliance_reasons(settings)
     unavailable_reasons = {
         "live_compliance_not_acknowledged",
         "credentials_missing",
+        "schema_missing",
     }
-    if not mock and credential is None:
+    if credential is None:
         reasons.append("credentials_missing")
+    if schema is None:
+        reasons.append("schema_missing")
+    if not brands or any(not _verified_mapping(brand) for brand in brands):
+        reasons.append("brand_mapping_required")
     now = datetime.now(UTC)
     if credential is not None:
         discovered_at = credential.discovered_at
@@ -390,16 +475,13 @@ async def parser_health(
         status=health_status,
         source_mode=settings.source_mode,
         transports={
-            "T0": mock,
-            "T1": mock or capabilities.t1_available,
+            "T1": capabilities.t1_available,
             "T2": bool(settings.fetch_tier_allow_browser and capabilities.t2_available),
             "T3": bool(settings.fetch_tier_allow_dom and capabilities.t2_available),
         },
         discovery={
-            "available": mock or credential is not None,
-            "status": "mock"
-            if mock
-            else (credential.verification_status if credential else "missing"),
+            "available": credential is not None,
+            "status": credential.verification_status if credential else "missing",
             "discovered_at": credential.discovered_at.isoformat() if credential else None,
             "valid_until": credential.valid_until.isoformat()
             if credential and credential.valid_until
@@ -450,6 +532,7 @@ async def parser_health(
             if last_run is not None
             else None
         ),
+        runtime=getattr(request.app.state, "runtime_report", {}),
     )
 
 
@@ -498,4 +581,41 @@ def _task(task: ParserRunTask) -> TaskResponse:
         coverage=task.coverage,
         tier=task.fetch_tier,
         error=task.error,
+    )
+
+
+async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan) -> FetchPlan:
+    credential = await session.scalar(
+        select(SourceCredential).where(SourceCredential.source == "grailed")
+    )
+    if credential is None:
+        raise RuntimeError("discovery_required")
+    proxy_manager = create_proxy_manager(settings)
+    proxy = proxy_manager.select("grailed-dry-run", pool="http") if settings.proxy_enabled else None
+    transport = create_http_transport(settings, proxy=proxy)
+    client = AlgoliaClient(
+        transport,
+        _Credentials(credential.app_id, credential.api_key, credential.algolia_agent),
+        requests_per_minute=settings.requests_per_minute,
+        max_concurrency=settings.max_concurrent_requests,
+        max_retries=settings.parser_max_retries,
+        max_requests=settings.parser_max_requests_per_run,
+        multiquery_batch_size=settings.algolia_multiquery_batch_size,
+        timeout_s=settings.parser_request_timeout_s,
+        proxy_key=proxy or "direct",
+        proxy_manager=proxy_manager,
+        proxy_url=proxy,
+    )
+    try:
+        return await ParserPlanner(session, settings).probe(plan, client)
+    finally:
+        await transport.close()
+
+
+def _verified_mapping(brand: Brand) -> bool:
+    return any(
+        item.verified
+        and item.rejected_at is None
+        and (brand.include_subbrands or not item.is_subbrand)
+        for item in brand.source_mappings
     )

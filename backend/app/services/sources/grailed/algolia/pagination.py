@@ -19,9 +19,7 @@ PaginationStrategy = Literal["auto", "browse", "keyset", "range_split"]
 class AlgoliaReadClient(Protocol):
     async def search(self, index_name: str, query: AlgoliaQuery) -> AlgoliaPage: ...
 
-    async def multi_query(
-        self, requests: list[AlgoliaRequest]
-    ) -> tuple[AlgoliaPage, ...]: ...
+    async def multi_query(self, requests: list[AlgoliaRequest]) -> tuple[AlgoliaPage, ...]: ...
 
     async def browse(
         self, index_name: str, query: AlgoliaQuery, *, cursor: str | None = None
@@ -41,10 +39,13 @@ class PaginationSpec:
     hits_per_page: int = 200
     fetch_tier: FetchTier = "T1"
     resume_cursor: str | None = None
+    max_hits: int | None = None
 
     def __post_init__(self) -> None:
         if self.pagination_limit < 1 or self.hits_per_page < 1:
             raise ValueError("Pagination limits must be positive")
+        if self.max_hits is not None and self.max_hits < 1:
+            raise ValueError("max_hits must be positive")
 
 
 class PaginationRun:
@@ -55,7 +56,11 @@ class PaginationRun:
         self._started = False
         self._report: CoverageReport | None = None
         self.seen_ids: set[str] = set()
+        self.duplicate_hits = 0
+        self.missing_object_ids = 0
         self.expected_hits = 0
+        self.source_estimated_hits = 0
+        self.expected_exhaustive = True
         self.truncated = False
         self.warnings: list[str] = []
 
@@ -72,6 +77,12 @@ class PaginationRun:
         return self._report
 
     def finish(self) -> None:
+        if not self.expected_exhaustive and self.seen_ids and not self.truncated:
+            self.warnings.append(
+                "Algolia nbHits was non-exhaustive; expected count reconciled from "
+                "exhausted ID ranges"
+            )
+            self.expected_hits = len(self.seen_ids)
         self._report = CoverageReport.calculate(
             expected_hits=self.expected_hits,
             collected_hits=len(self.seen_ids),
@@ -96,13 +107,13 @@ class PaginationPlanner:
     def fetch(self, spec: PaginationSpec) -> PaginationRun:
         return PaginationRun(lambda run: self._execute(run, spec))
 
-    async def _execute(
-        self, run: PaginationRun, spec: PaginationSpec
-    ) -> AsyncIterator[FetchBatch]:
+    async def _execute(self, run: PaginationRun, spec: PaginationSpec) -> AsyncIterator[FetchBatch]:
         probe = await self._client.search(
             spec.index_name, replace(spec.query, hits_per_page=0, page=0)
         )
         run.expected_hits = probe.nb_hits
+        run.source_estimated_hits = probe.nb_hits
+        run.expected_exhaustive = probe.exhaustive_nb_hits
         if probe.nb_hits == 0:
             run.finish()
             return
@@ -113,9 +124,27 @@ class PaginationPlanner:
         elif strategy == "keyset":
             iterator = self._keyset(run, spec)
         else:
-            iterator = self._range_split(run, spec, spec.index_name, spec.query)
+            range_attrs = tuple(dict.fromkeys((*spec.secondary_attrs, *spec.key_attrs)))
+            iterator = self._range_split(
+                run, replace(spec, key_attrs=range_attrs), spec.index_name, spec.query
+            )
+        remaining = spec.max_hits
         async for batch in iterator:
-            yield batch
+            if remaining is None:
+                yield batch
+                continue
+            kept = batch.hits[:remaining]
+            for hit in batch.hits[remaining:]:
+                if hit.object_id is not None:
+                    run.seen_ids.discard(hit.object_id)
+            remaining -= len(kept)
+            if kept:
+                yield replace(batch, hits=kept, truncated=remaining == 0)
+            if remaining == 0:
+                if len(run.seen_ids) < run.expected_hits:
+                    run.truncated = True
+                    run.warnings.append(f"Bounded collection limit reached ({spec.max_hits} hits)")
+                break
         run.finish()
 
     @staticmethod
@@ -128,9 +157,7 @@ class PaginationPlanner:
             return "keyset"
         return "range_split"
 
-    async def _browse(
-        self, run: PaginationRun, spec: PaginationSpec
-    ) -> AsyncIterator[FetchBatch]:
+    async def _browse(self, run: PaginationRun, spec: PaginationSpec) -> AsyncIterator[FetchBatch]:
         cursor: str | None = spec.resume_cursor
         while True:
             page = await self._client.browse(
@@ -145,9 +172,7 @@ class PaginationPlanner:
                 return
             cursor = page.cursor
 
-    async def _keyset(
-        self, run: PaginationRun, spec: PaginationSpec
-    ) -> AsyncIterator[FetchBatch]:
+    async def _keyset(self, run: PaginationRun, spec: PaginationSpec) -> AsyncIterator[FetchBatch]:
         index_name = spec.sorted_index or spec.index_name
         key_attr = spec.key_attrs[0]
         try:
@@ -260,27 +285,47 @@ class PaginationPlanner:
                     f"{attr}<{bucket.hi}",
                 )
                 if probe.nb_hits <= spec.pagination_limit:
-                    async for batch in self._fetch_bounded(
-                        run,
-                        spec,
-                        index_name,
-                        base_query,
-                        filters,
-                        probe.nb_hits,
-                        completed=completed,
-                    ):
-                        yield batch
-                    continue
+                    if not probe.exhaustive_nb_hits:
+                        page = await self._client.search(
+                            index_name,
+                            replace(
+                                base_query,
+                                hits_per_page=spec.hits_per_page,
+                                page=0,
+                                numeric_filters=filters,
+                            ),
+                        )
+                        if len(page.hits) < spec.hits_per_page:
+                            signature = _range_signature(filters, 0)
+                            completed.add(signature)
+                            batch = self._batch(
+                                run,
+                                page,
+                                spec.fetch_tier,
+                                _range_cursor(completed),
+                                strategy="range_split",
+                            )
+                            if batch is not None:
+                                yield batch
+                            continue
+                    else:
+                        async for batch in self._fetch_bounded(
+                            run,
+                            spec,
+                            index_name,
+                            base_query,
+                            filters,
+                            probe.nb_hits,
+                            completed=completed,
+                        ):
+                            yield batch
+                        continue
                 if bucket.hi - bucket.lo > 1 and depth < self._max_split_depth:
                     (lower_lo, lower_hi), (upper_lo, upper_hi) = bisect_interval(
                         bucket.lo, bucket.hi
                     )
-                    lower = _Bucket(
-                        bucket.attr_position, lower_lo, lower_hi, bucket.filters
-                    )
-                    upper = _Bucket(
-                        bucket.attr_position, upper_lo, upper_hi, bucket.filters
-                    )
+                    lower = _Bucket(bucket.attr_position, lower_lo, lower_hi, bucket.filters)
+                    upper = _Bucket(bucket.attr_position, upper_lo, upper_hi, bucket.filters)
                     queue.append((lower, depth + 1))
                     queue.append((upper, depth + 1))
                     continue
@@ -398,9 +443,11 @@ class PaginationPlanner:
             raw = RawHit(dict(hit), tier)
             object_id = raw.object_id
             if object_id is None:
+                run.missing_object_ids += 1
                 run.warnings.append("Hit without objectID was excluded from coverage")
                 continue
             if object_id in run.seen_ids:
+                run.duplicate_hits += 1
                 continue
             run.seen_ids.add(object_id)
             raw_hits.append(raw)
@@ -428,6 +475,9 @@ def _numeric(hit: dict[str, object], attr: str) -> int | None:
 
 def _bounds(attr: str) -> tuple[int, int]:
     lowered = attr.casefold()
+    if lowered in {"id", "objectid"}:
+        # ponytail: Grailed IDs fit uint31; discover bounds if the source crosses it.
+        return 0, 2**31
     if "_at" in lowered or "timestamp" in lowered:
         return 0, 4_102_444_800  # 2100-01-01 UTC
     if "price" in lowered:

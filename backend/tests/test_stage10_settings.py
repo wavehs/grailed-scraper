@@ -41,7 +41,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_settings] = lambda: Settings(
-        source_mode="mock", requests_per_minute=12
+        requests_per_minute=12
     )
     try:
         with TestClient(app) as client:
@@ -75,7 +75,7 @@ async def test_runtime_captures_settings_snapshot_for_each_started_run(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     engine, factory = await _database(tmp_path)
-    runtime = ParserRuntime(factory, Settings(source_mode="mock", requests_per_minute=10))
+    runtime = ParserRuntime(factory, Settings(requests_per_minute=10))
     captured: list[int] = []
 
     async def execute(run_id: int, _: asyncio.Event, settings: Settings) -> None:
@@ -83,7 +83,7 @@ async def test_runtime_captures_settings_snapshot_for_each_started_run(
         captured.append(settings.requests_per_minute)
 
     monkeypatch.setattr(runtime, "_execute", execute)
-    runtime.start(1, settings=Settings(source_mode="mock", requests_per_minute=20))
+    runtime.start(1, settings=Settings(requests_per_minute=20))
     for _ in range(20):
         if captured:
             break

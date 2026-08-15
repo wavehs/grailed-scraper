@@ -149,7 +149,7 @@ class RunRepository:
             update(ParserRunTask)
             .where(
                 ParserRunTask.run_id == run_id,
-                ParserRunTask.status.in_(("running", "failed")),
+                ParserRunTask.status.in_(("running", "failed", "truncated")),
             )
             .values(status="pending", error=None, finished_at=None)
         )
@@ -162,9 +162,7 @@ class RunRepository:
 
     async def reconcile_interrupted(self) -> int:
         run_ids = list(
-            await self._session.scalars(
-                select(ParserRun.id).where(ParserRun.status == "running")
-            )
+            await self._session.scalars(select(ParserRun.id).where(ParserRun.status == "running"))
         )
         if not run_ids:
             return 0
@@ -176,21 +174,20 @@ class RunRepository:
         )
         await self._session.execute(
             update(ParserRunTask)
-            .where(
-                ParserRunTask.run_id.in_(run_ids), ParserRunTask.status == "running"
-            )
+            .where(ParserRunTask.run_id.in_(run_ids), ParserRunTask.status == "running")
             .values(status="pending")
         )
         return len(run_ids)
 
     async def aggregate_status(self, run_id: int) -> str:
         tasks = await self.tasks(run_id)
+        failed = sum(item.status == "failed" for item in tasks)
+        truncated = sum(item.status == "truncated" for item in tasks)
         successful = sum(item.status in {"done", "skipped"} for item in tasks)
-        imperfect = sum(item.status in {"failed", "truncated"} for item in tasks)
-        if imperfect and successful:
-            return "partial"
-        if imperfect and not successful:
+        if failed and not (successful or truncated):
             return "failed"
+        if failed or truncated:
+            return "partial"
         return "completed"
 
     async def coverage_by_brand(self, run_id: int) -> dict[int, Decimal | None]:

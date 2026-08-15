@@ -15,12 +15,12 @@
 | [BRAND_MAPPING.md](BRAND_MAPPING.md) | Автосопоставление брендов и фасетов. |
 | [OPERATIONS.md](OPERATIONS.md) | Лимиты, бюджет, прокси и персистентность. |
 | [OBSERVABILITY.md](OBSERVABILITY.md) | Логи, метрики и health. |
-| [TESTING.md](TESTING.md) | Fixtures, fake Algolia и offline test harness. |
+| [TESTING.md](TESTING.md) | Source-independent checks and required live gates. |
 | [CONFIGURATION.md](CONFIGURATION.md) | Настройки приложения и source mapping. |
 | [COMPLIANCE.md](COMPLIANCE.md) | Этика, ToS и ограничения. |
 | [SCORING.md](SCORING.md) | Контракт скоринга до утверждения формулы. |
 | [TASKS.md](TASKS.md) | Упорядоченный план реализации. |
 | [ROADMAP.md](ROADMAP.md) | Направления после MVP. |
 | [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) | Обязательные критерии готовности. |
-| [RUNBOOK.md](RUNBOOK.md) | Offline/browser/live release gate, tag и rollback. |
+| [RUNBOOK.md](RUNBOOK.md) | Live release gate, tag and rollback. |
 | [ENVIRONMENT.md](ENVIRONMENT.md) | Runtime versions, reproducible install, dependency audit и compatibility debt. |

@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from app.core.config import Settings
+from app.services.parser.observability import RunMetrics
+from app.services.parser.runtime import _Resources
 from app.services.sources.grailed.browser.factory import create_browser_session_pool
 from app.services.sources.grailed.browser.session_pool import BrowserSessionPool
 from app.services.transport.capabilities import CapabilityReport
@@ -40,6 +42,19 @@ class _Session:
         self.closed = True
 
 
+class _BrokenBrowser:
+    async def close(self) -> None:
+        raise RuntimeError("browser close failed")
+
+
+class _ClosingTransport:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 @pytest.mark.asyncio
 async def test_browser_pool_reuses_page_and_closes_everything() -> None:
     session = _Session()
@@ -55,6 +70,23 @@ async def test_browser_pool_reuses_page_and_closes_everything() -> None:
     await pool.close()
     assert session.closed
     assert session.pages[0].closed
+
+
+@pytest.mark.asyncio
+async def test_run_resources_close_transport_when_browser_close_fails() -> None:
+    transport = _ClosingTransport()
+    resources = _Resources(
+        fetcher=cast(Any, None),
+        transport=cast(Any, transport),
+        browser=cast(Any, _BrokenBrowser()),
+        metrics=RunMetrics(),
+        algolia=cast(Any, None),
+    )
+
+    with pytest.raises(RuntimeError, match="browser close failed"):
+        await resources.close()
+
+    assert transport.closed
 
 
 def test_capability_report_is_safe_json() -> None:

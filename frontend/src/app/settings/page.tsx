@@ -12,8 +12,7 @@ import type { DiscoveryResponse, ProxyStatus, SettingEntry, SettingsResponse } f
 
 type ProxyTest = { enabled: boolean; direct_fallback_allowed: boolean; proxies: ProxyStatus[] };
 const selects: Record<string, string[]> = {
-  source_mode: ['mock', 'replay'],
-  fetch_tier_preferred: ['T0', 'T1', 'T2', 'T3'],
+  fetch_tier_preferred: ['T1', 'T2', 'T3'],
   algolia_pagination_strategy: ['auto', 'browse', 'keyset', 'range_split'],
   algolia_attributes_mode: ['full', 'lean'],
   parser_mode: ['delta', 'full'],
@@ -79,7 +78,6 @@ export default function SettingsPage() {
         </h1>
         <p className="text-slate-600">{t('settingsIntro')}</p>
       </div>
-      {!health.isLoading && !health.writable && <Notice error>{t('mockRequired')}</Notice>}
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => settings.refetch()} />}
       <form
@@ -100,13 +98,10 @@ export default function SettingsPage() {
                   name={key}
                   value={values[key] ?? entry.value}
                   update={update}
-                  locked={key === 'source_mode' && entry.value === 'live'}
+                  locked={false}
                 />
               ))}
             </div>
-            {groupName === 'source' && (
-              <p className="mt-3 text-sm text-amber-800">{t('liveLocked')}</p>
-            )}
           </Card>
         ))}
         {values.store_seller_identity === 'plain' && (

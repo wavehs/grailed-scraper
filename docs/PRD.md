@@ -1,20 +1,9 @@
-# PRD — Grailed Liquidity Analyzer
+# Product requirements
 
-## Назначение
+Grailed Liquidity Analyzer collects real active and sold Grailed listings, normalizes them, maintains lifecycle state, and ranks model-level liquidity.
 
-Проект собирает данные активных и проданных листингов Grailed, приводит их к единой модели и передаёт их в слои нормализации, скоринга и аналитики. Канонические продуктовые и технические требования разнесены по тематическим документам этого каталога.
+The product has one source mode: live. A run requires compliance acknowledgement, current discovered credentials/schema, verified brand mappings, a bounded request budget, explicit coverage reporting, and resumable persistence. Incomplete collection is always visible as partial/truncated.
 
-## Границы
+The default path is direct Algolia over Scrapling HTTP. Browser-mediated Algolia and allowed DOM parsing are fallbacks driven by observed live failures. CAPTCHA, prohibited automation, or repeated throttling stops the run.
 
-- Источник MVP: Grailed через Algolia, browser-mediated и DOM fallback tiers.
-- Разработка и CI должны работать в mock/replay режиме без сети и браузера.
-- Пагинация обязана сообщать coverage и не может молча терять записи.
-- Секреты, персональные данные продавцов и антибот-ограничения обрабатываются по правилам compliance.
-
-## Навигация
-
-- Архитектура и tiers: [PARSING.md](PARSING.md), [BROWSER_FALLBACKS.md](BROWSER_FALLBACKS.md).
-- Discovery и Algolia: [DISCOVERY.md](DISCOVERY.md), [ALGOLIA.md](ALGOLIA.md), [PAGINATION.md](PAGINATION.md).
-- Данные: [DATA_MODEL.md](DATA_MODEL.md), [LIFECYCLE.md](LIFECYCLE.md), [BRAND_MAPPING.md](BRAND_MAPPING.md).
-- Эксплуатация: [OPERATIONS.md](OPERATIONS.md), [OBSERVABILITY.md](OBSERVABILITY.md), [TESTING.md](TESTING.md).
-- Приёмка: [TASKS.md](TASKS.md), [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md).
+Credentials and proxy secrets are masked. Seller identity is not stored in plaintext unless explicitly enabled. Money uses `Decimal`; listings are unique by `grailed_id`; disappearance never implies sale.

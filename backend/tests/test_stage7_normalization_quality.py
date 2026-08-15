@@ -20,22 +20,27 @@ async def test_yaml_normalizer_maps_decimal_fx_ms_and_sold_fallback() -> None:
         "objectID": "42",
         "title": "Archive shoes",
         "description": "Genuine pair",
-        "designers": [{"name": "Maison Margiela", "slug": "margiela"}],
+        "designers": [{"id": 15, "name": "Maison Margiela", "slug": "margiela"}],
         "category": "footwear",
+        "category_path": "footwear.sneakers",
         "size": "EU 42",
-        "condition": "Gently used",
-        "price_i": 10000,
-        "price": "999.99",
+        "condition": "is_gently_used",
+        "price_i": 100,
+        "price": 100,
+        "sold_price": 90,
         "currency": "EUR",
         "created_at_i": 1_754_568_000_000,
+        "sold_at_i": 0,
         "updated_at_i": 1_754_654_400,
-        "photos": [{"url": "https://img.test/42.jpg"}],
-        "seller": {"id": 7, "username": "must-not-be-stored"},
+        "cover_photo": {"url": "https://img.test/42.jpg"},
+        "photo_count": 19,
+        "followerno": 23,
+        "user": {"id": 7, "username": "must-not-be-stored"},
         "location": "fr",
     }
     rates = StaticFxRateProvider({("EUR", date(2025, 8, 8)): Decimal("1.20")})
     result = await ListingNormalizer(load_source_mapping(), rates).normalize(
-        RawHit(payload, "T0"),
+        RawHit(payload, "T1"),
         NormalizationContext(status="sold", parser_run_id=1, observed_at=observed),
     )
 
@@ -44,16 +49,21 @@ async def test_yaml_normalizer_maps_decimal_fx_ms_and_sold_fallback() -> None:
     assert listing is not None
     assert listing.price == Decimal("120.00")
     assert listing.price_original == Decimal("100.00")
+    assert listing.sold_price == Decimal("108.00")
     assert listing.fx_rate == Decimal("1.20")
     assert listing.size_normalized == "US 9"
     assert listing.condition == "is_gently_used"
+    assert listing.subcategory == "footwear.sneakers"
+    assert listing.photo_count == 19
+    assert listing.likes_count == 23
+    assert listing.schema_version == 2
     assert listing.created_at == datetime(2025, 8, 7, 12, tzinfo=UTC)
     assert listing.sold_at == datetime(2025, 8, 8, 12, tzinfo=UTC)
     assert listing.sold_at_is_estimated
     assert listing.seller_identity is not None and len(listing.seller_identity) == 64
     assert listing.seller_identity_mode == "hashed"
-    assert "username" not in listing.raw_json["seller"]
-    assert "id" not in listing.raw_json["seller"]
+    assert "username" not in listing.raw_json["user"]
+    assert "id" not in listing.raw_json["user"]
     assert listing.raw_json["location"] == "FR"
 
 
@@ -74,7 +84,7 @@ conditions: {}
     result = await ListingNormalizer(load_source_mapping(mapping_path)).normalize(
         RawHit(
             {"objectID": "9", "renamed_title": "Renamed", "designer": "Brand", "amount": "5"},
-            "T0",
+            "T1",
         ),
         NormalizationContext(
             status="active",
@@ -96,7 +106,7 @@ async def test_missing_fx_rate_and_invalid_hits_are_rejected() -> None:
         status="active", parser_run_id=1, observed_at=datetime(2026, 8, 8, tzinfo=UTC)
     )
     normalizer = ListingNormalizer(load_source_mapping())
-    invalid = await normalizer.normalize(RawHit({"title": "No id"}, "T0"), context)
+    invalid = await normalizer.normalize(RawHit({"title": "No id"}, "T1"), context)
     no_rate = await normalizer.normalize(
         RawHit(
             {
@@ -106,7 +116,7 @@ async def test_missing_fx_rate_and_invalid_hits_are_rejected() -> None:
                 "price_i": 100,
                 "currency": "EUR",
             },
-            "T0",
+            "T1",
         ),
         context,
     )
@@ -131,7 +141,7 @@ def test_quality_processor_flags_each_supported_case() -> None:
     )
     flags = {item.grailed_id: set(item.quality_flags) for item in processed}
 
-    assert "repost" in flags[2]
+    assert "repost" not in flags[2]
     assert "possible_replica" in flags[3]
     assert "lot_or_bundle" in flags[4]
     assert {"wrong_brand", "no_photos"}.issubset(flags[5])
@@ -163,7 +173,7 @@ def _listing(
         photo_count=photos,
         seller_identity="seller-100",
         seller_identity_mode="hashed",
-        fetch_tier="T0",
+        fetch_tier="T1",
         parser_run_id=1,
         raw_json={"id": identifier},
         schema_version=1,

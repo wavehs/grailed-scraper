@@ -15,9 +15,20 @@ outside `transport/` and `sources/grailed/{browser,dom}/`. Everything else
 depends only on the `HttpTransport` / `BrowserSession` Protocols in
 `services/transport/protocols.py`. This isolates us from upstream API drift.
 
-### Four-tier fetch strategy
-- T0 mock/replay (fixtures, fake Algolia server) — used in dev/CI
-- T1 direct Algolia over Scrapling HTTP — DEFAULT, 95% of traffic
+### Live-first product rule — HIGHEST PRIORITY
+
+This repository exists to parse the real Grailed source. Do not add or maintain
+mock/replay source modes, T0 transports, fake Algolia servers, synthetic listing
+generators, offline parser fixtures, or offline e2e flows. They are not acceptable
+evidence that the parser works.
+
+Small source-independent checks are allowed for money, privacy, migrations, database
+constraints, and duplicate prevention, but every parser milestone must pass a bounded
+live canary. This rule supersedes older documentation that describes T0/mock/replay;
+update those documents when touching them.
+
+### Three-tier live fetch strategy
+- T1 direct Algolia over Scrapling HTTP — DEFAULT
 - T2 browser-mediated Algolia (in-page `fetch()` via `page.evaluate`, or
   `page.on("response")` interception) — auto-escalation on 401/403/429/WAF
 - T3 DOM fallback with Scrapling adaptive selectors + `__NEXT_DATA__`
@@ -60,13 +71,15 @@ Adding/renaming a source field must be a YAML change.
 - Do NOT treat a disappeared active listing as sold; use `removed_pending`.
 - Do NOT store seller usernames in plaintext unless explicitly enabled.
 - Do NOT exceed 90 req/min or 3 concurrent requests by default.
-- Do NOT require network or a browser for the default test suite.
+- Do NOT build mock/replay/offline substitutes for Grailed.
+- Do NOT treat offline tests, fixtures, or snapshots as parser acceptance.
 
 ### Always
 - upsert by `grailed_id`, never duplicate;
 - persist `raw_json` and `schema_version`;
 - write `parser_run_tasks` so a run is resumable;
 - update `parser_run` progress at least every 2 seconds;
+- prove parser changes with the smallest permitted live canary;
 - pin `scrapling==X.Y.Z` and let Scrapling pull its compatible Camoufox.
 
 ### Repository path map — read before changing a subsystem
@@ -88,7 +101,7 @@ Documentation index: `docs/INDEX.md`.
 | Brand source mapping | `docs/BRAND_MAPPING.md` |
 | Rate limits, proxies, persistence | `docs/OPERATIONS.md` |
 | Logs, metrics, health | `docs/OBSERVABILITY.md` |
-| Fixtures, fake server, offline tests | `docs/TESTING.md` |
+| Live verification and source-independent checks | `docs/TESTING.md` |
 | Runtime settings and field mapping | `docs/CONFIGURATION.md`, `config/sources/grailed.yaml` |
 | Scoring contract | `docs/SCORING.md` |
 | Legal and ethical limits | `docs/COMPLIANCE.md` |
@@ -107,14 +120,12 @@ backend/app/services/sources/grailed/algolia/
 backend/app/services/sources/grailed/browser/
 backend/app/services/sources/grailed/dom/
 backend/app/services/parser/
-backend/app/services/parser/mock/
 backend/app/services/normalization/
 backend/app/services/scoring/
 backend/app/services/analytics/
 backend/tests/
 config/sources/grailed.yaml
 data/cache/
-data/fixtures/
 data/logs/
 frontend/src/app/
 frontend/src/components/
@@ -143,10 +154,10 @@ its task match is clear; they are supplemental playbooks, not project policy.
 
 #### Conflict resolution for installed skills
 
-This file and the canonical documents in `docs/` always take precedence over
+This file, root `TASKS.md`, and the canonical documents in `docs/` always take precedence over
 an installed skill. In particular, when applying `web-scraper`, retain the
-Scrapling + Camoufox toolchain, four-tier fetch strategy, 90 req/min and three
-concurrent-request limits, robots/ToS requirements, and offline default test
-suite. Do not substitute Selenium, Puppeteer, or undetected-chromedriver; do
+Scrapling + Camoufox toolchain, three-tier live fetch strategy, 90 req/min and three
+concurrent-request limits, and robots/ToS requirements. Do not substitute
+Selenium, Puppeteer, or undetected-chromedriver; do
 not bypass CAPTCHAs; and do not weaken the `Decimal`, lifecycle, masking, or
 coverage requirements above.

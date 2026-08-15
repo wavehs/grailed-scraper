@@ -5,7 +5,6 @@ from __future__ import annotations
 from app.core.config import Settings
 from app.services.transport.capabilities import probe_capabilities
 from app.services.transport.httpx_http import HttpxTransport
-from app.services.transport.mock_http import MockHttpTransport
 from app.services.transport.protocols import HttpTransport
 from app.services.transport.proxy_manager import ProxyManager
 from app.services.transport.scrapling_http import ScraplingHttpTransport
@@ -24,8 +23,6 @@ def create_proxy_manager(settings: Settings) -> ProxyManager:
 def create_http_transport(settings: Settings, *, proxy: str | None = None) -> HttpTransport:
     """Prefer Scrapling T1, then fall back to httpx when it is unavailable."""
 
-    if settings.source_mode == "mock":
-        return MockHttpTransport()
     configured_proxy = proxy
     if settings.proxy_enabled and configured_proxy is None:
         configured_proxy = create_proxy_manager(settings).select("default")

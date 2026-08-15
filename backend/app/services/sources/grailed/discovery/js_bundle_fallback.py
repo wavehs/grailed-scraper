@@ -10,14 +10,14 @@ from app.services.sources.grailed.discovery.models import DiscoverySeed
 from app.services.transport.protocols import HttpTransport
 
 APP_PATTERN = re.compile(
-    r'''["']?(?:appId|applicationId|ALGOLIA_APP_ID)["']?\s*[:=]\s*["']([A-Z0-9]{8,12})["']'''
+    r"""["']?(?:appId|applicationId|ALGOLIA_APP_ID)["']?\s*[:=]\s*["']([A-Z0-9]{8,12})["']"""
 )
 KEY_PATTERN = re.compile(
-    r'''["']?(?:apiKey|searchApiKey|ALGOLIA_[A-Z_]*KEY)["']?\s*[:=]\s*["']([a-f0-9]{32})["']''',
+    r"""["']?(?:apiKey|searchApiKey|ALGOLIA_[A-Z_]*KEY)["']?\s*[:=]\s*["']([a-f0-9]{32})["']""",
     re.IGNORECASE,
 )
-INDEX_PATTERN = re.compile(r'''["']([A-Za-z_]+_(?:production|prod))["']''')
-SCRIPT_PATTERN = re.compile(r'''<script[^>]+src=["']([^"']+)["']''', re.IGNORECASE)
+INDEX_PATTERN = re.compile(r"""["']([A-Za-z_]+_(?:production|prod))["']""")
+SCRIPT_PATTERN = re.compile(r"""<script[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
 
 
 def extract_bundle_candidates(text: str) -> list[DiscoverySeed]:

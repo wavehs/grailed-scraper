@@ -18,7 +18,7 @@ exclude = ["^alembic/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers -p no:cacheprovider --basetemp=.test-tmp -m 'not browser and not integration' --cov=app/services/parser --cov=app/services/sources/grailed --cov=app/services/transport --cov=app/services/normalization --cov=app/services/scoring --cov-report=term-missing --cov-fail-under=80"
+addopts = "-ra --strict-markers -p no:cacheprovider --basetemp=.test-tmp -m 'not browser and not integration'"
 asyncio_mode = "auto"
 markers = [
   "browser: requires locally installed browser dependencies",

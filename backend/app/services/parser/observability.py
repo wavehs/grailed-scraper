@@ -30,28 +30,43 @@ class RunMetrics:
     proxy_failures: int = 0
 
     @classmethod
-    def resume(cls, snapshot: dict[str, Any] | None) -> RunMetrics:
+    def resume(
+        cls,
+        snapshot: dict[str, Any] | None,
+        *,
+        minimum_requests: int = 0,
+        tier: str = "T1",
+    ) -> RunMetrics:
         metrics = cls()
-        if not snapshot:
-            return metrics
-        metrics.requests_by_tier.update(_dict(snapshot.get("requests_by_tier")))
-        metrics.http_errors_by_code.update(_dict(snapshot.get("http_errors_by_code")))
-        for key in (
-            "retries", "rate_limit_hits", "cache_hits", "cache_misses",
-            "hits_fetched", "listings_inserted", "listings_updated",
-            "listings_invalid", "browser_restarts", "proxy_failures",
-        ):
-            setattr(metrics, key, int(snapshot.get(key, 0)))
-        metrics.quality_flags_counts.update(_dict(snapshot.get("quality_flags_counts")))
-        samples = snapshot.get("_latency_samples_ms", [])
-        if isinstance(samples, list):
-            metrics.latencies_ms = [float(value) for value in samples]
-        metrics.elapsed_before_s = float(snapshot.get("duration_s", 0.0))
-        coverage = snapshot.get("coverage_by_brand", {})
-        if isinstance(coverage, dict):
-            metrics.coverage_by_brand = {
-                str(k): None if v is None else str(v) for k, v in coverage.items()
-            }
+        if snapshot:
+            metrics.requests_by_tier.update(_dict(snapshot.get("requests_by_tier")))
+            metrics.http_errors_by_code.update(_dict(snapshot.get("http_errors_by_code")))
+            for key in (
+                "retries",
+                "rate_limit_hits",
+                "cache_hits",
+                "cache_misses",
+                "hits_fetched",
+                "listings_inserted",
+                "listings_updated",
+                "listings_invalid",
+                "browser_restarts",
+                "proxy_failures",
+            ):
+                setattr(metrics, key, int(snapshot.get(key, 0)))
+            metrics.quality_flags_counts.update(_dict(snapshot.get("quality_flags_counts")))
+            samples = snapshot.get("_latency_samples_ms", [])
+            if isinstance(samples, list):
+                metrics.latencies_ms = [float(value) for value in samples]
+            metrics.elapsed_before_s = float(snapshot.get("duration_s", 0.0))
+            coverage = snapshot.get("coverage_by_brand", {})
+            if isinstance(coverage, dict):
+                metrics.coverage_by_brand = {
+                    str(k): None if v is None else str(v) for k, v in coverage.items()
+                }
+        missing = minimum_requests - sum(metrics.requests_by_tier.values())
+        if missing > 0:
+            metrics.requests_by_tier[tier] += missing
         return metrics
 
     def record_response(self, tier: str, status_code: int, duration_ms: float) -> None:

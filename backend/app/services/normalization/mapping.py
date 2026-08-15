@@ -18,6 +18,7 @@ class SourceMappingConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     source: str
+    schema_version: int = Field(default=1, ge=1)
     fields: dict[str, list[str]]
     conditions: dict[str, str] = Field(default_factory=dict)
 

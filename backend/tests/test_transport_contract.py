@@ -1,7 +1,8 @@
-"""Offline contract shared by the two HTTP transport implementations."""
+"""Contract shared by the two HTTP transport implementations."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -11,15 +12,16 @@ import pytest
 
 from app.services.transport.httpx_http import HttpxTransport
 from app.services.transport.protocols import HttpTransport
-from app.services.transport.scrapling_http import ScraplingHttpTransport
+from app.services.transport.scrapling_http import ScraplingHttpTransport, _SecretFilter
 
 
 @dataclass
 class _FakeResponse:
     status: int
     headers: dict[str, str]
-    content: bytes
+    content: bytes | None
     url: str
+    body: bytes | None = None
 
 
 class _FakeSession:
@@ -40,7 +42,9 @@ class _FakeSession:
         self.calls.append({"method": method, "url": url, "headers": headers, **kwargs})
         if url.endswith("/first"):
             self.cookie = "session=kept"
-            return _FakeResponse(200, {"set-cookie": self.cookie}, b'{"ok":true}', url)
+            return _FakeResponse(
+                200, {"set-cookie": self.cookie}, None, url, body=b'{"ok":true}'
+            )
         return _FakeResponse(201, {"content-type": "text/plain"}, b"plain", url)
 
     def get(self, url: str, **kwargs: Any) -> _FakeResponse:
@@ -68,6 +72,23 @@ def _httpx_transport() -> HttpTransport:
 
 def _scrapling_transport() -> HttpTransport:
     return ScraplingHttpTransport(session_factory=_FakeSession)
+
+
+def test_scrapling_log_filter_masks_algolia_keys() -> None:
+    record = logging.LogRecord(
+        "scrapling",
+        logging.INFO,
+        "",
+        0,
+        "GET /1/keys/secret-value?x-algolia-api-key=another-secret",
+        (),
+        None,
+    )
+
+    assert _SecretFilter().filter(record)
+    assert record.getMessage() == (
+        "GET /1/keys/[redacted]?x-algolia-api-key=[redacted]"
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,4 @@
-"""Offline unit tests for rate, retry, cache, breaker and proxy policies."""
+"""Source-independent tests for rate, retry, cache, breaker and proxy policies."""
 
 from __future__ import annotations
 
@@ -16,11 +16,17 @@ from app.services.transport.response_cache import ResponseCache
 
 
 def test_response_cache_uses_stable_request_key() -> None:
-    cache = ResponseCache()
+    cache = ResponseCache(max_entries=2)
     key = cache.key("POST", "https://example.test", {"b": "2"}, {"a": 1})
     response = HttpResponse(200, {}, b"{}", "https://example.test")
     cache.set(key, response)
     assert cache.get(key) == response
+    second = cache.key("POST", "https://example.test/2", None, None)
+    third = cache.key("POST", "https://example.test/3", None, None)
+    cache.set(second, response)
+    cache.set(third, response)
+    assert cache.get(key) is None
+    assert cache.get(second) == response
 
 
 def test_host_rotator_cycles_hosts() -> None:

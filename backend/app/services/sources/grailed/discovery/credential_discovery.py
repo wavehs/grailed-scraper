@@ -31,15 +31,11 @@ def extract_seed_from_request(
     app_id = normalized_headers.get("x-algolia-application-id") or _first(
         query, "x-algolia-application-id"
     )
-    api_key = normalized_headers.get("x-algolia-api-key") or _first(
-        query, "x-algolia-api-key"
-    )
+    api_key = normalized_headers.get("x-algolia-api-key") or _first(query, "x-algolia-api-key")
     agent = normalized_headers.get("x-algolia-agent") or _first(query, "x-algolia-agent")
     if not app_id:
         app_id = (
-            parsed.netloc.split("-", maxsplit=1)[0]
-            if "-dsn.algolia" in parsed.netloc
-            else None
+            parsed.netloc.split("-", maxsplit=1)[0] if "-dsn.algolia" in parsed.netloc else None
         )
     if not app_id or not api_key:
         return None
@@ -150,9 +146,7 @@ def _merge_seeds(seeds: list[DiscoverySeed]) -> DiscoverySeed | None:
         return None
     first = seeds[0]
     compatible = [
-        item
-        for item in seeds
-        if item.app_id == first.app_id and item.api_key == first.api_key
+        item for item in seeds if item.app_id == first.app_id and item.api_key == first.api_key
     ]
     return DiscoverySeed(
         app_id=first.app_id,

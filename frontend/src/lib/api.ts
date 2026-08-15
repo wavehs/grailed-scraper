@@ -47,6 +47,7 @@ export async function requestApi<T>(
   path: string,
   options: RequestInit = {},
   retries = options.method && options.method !== 'GET' ? 0 : 2,
+  acceptedStatuses: number[] = [],
 ): Promise<T> {
   try {
     const response = await fetch(`${apiUrl}${path}`, {
@@ -57,7 +58,8 @@ export async function requestApi<T>(
         ...options.headers,
       },
     });
-    if (!response.ok) throw await responseError(response);
+    if (!response.ok && !acceptedStatuses.includes(response.status))
+      throw await responseError(response);
     if (response.status === 204) return undefined as T;
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
@@ -66,12 +68,15 @@ export async function requestApi<T>(
     const retryable = !(error instanceof ApiError) || error.status >= 500;
     if (!retryable || retries <= 0) throw error;
     await wait(250 * 2 ** (2 - retries) + Math.random() * 80, options.signal ?? undefined);
-    return requestApi<T>(path, options, retries - 1);
+    return requestApi<T>(path, options, retries - 1, acceptedStatuses);
   }
 }
 
 export const getApi = <T>(path: string, signal?: AbortSignal) =>
   requestApi<T>(path, { method: 'GET', signal });
+
+export const getHealthApi = <T>(path: string, signal?: AbortSignal) =>
+  requestApi<T>(path, { method: 'GET', signal }, 2, [503]);
 
 export const api = <T>(
   path: string,

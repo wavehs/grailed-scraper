@@ -14,119 +14,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
-from app.db.models import Base, Brand, SourceCredential
+from app.db.models import SourceCredential
 from app.db.session import get_database_url
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
-from app.services.parser.mock.fixtures import load_catalog, validate_fixture_assets
-from app.services.parser.mock.generator import ACTIVE_INDEX, BRANDS, SOLD_INDEX
+from app.services.parser.observability import RunMetrics
+from app.services.parser.planner import listing_numeric_filters
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaQuery
+from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
 from app.services.transport.capabilities import probe_capabilities
 from app.services.transport.factory import create_http_transport
-from app.services.transport.mock_http import MOCK_ALGOLIA_BASE_URL, MockHttpTransport
 from app.services.transport.protocols import HttpTransport
-
-
-@dataclass(frozen=True, slots=True)
-class SeedResult:
-    inserted: int
-    updated: int
-
-
-async def seed_mock_brands(database_url: str) -> SeedResult:
-    """Idempotently load the curated product-brand seeds into a SQLite database."""
-
-    engine = create_async_engine(database_url)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    now = datetime.now(UTC)
-    inserted = 0
-    updated = 0
-    try:
-        async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
-        async with session_factory() as session:
-            for brand in BRANDS:
-                aliases = list(dict.fromkeys((*brand.aliases, brand.designer_name)))
-                existing = await session.scalar(select(Brand).where(Brand.name == brand.name))
-                if existing is None:
-                    session.add(
-                        Brand(
-                            name=brand.name,
-                            slug=brand.slug,
-                            aliases=aliases,
-                            include_subbrands=False,
-                            created_at=now,
-                            updated_at=now,
-                        )
-                    )
-                    inserted += 1
-                elif existing.slug != brand.slug or existing.aliases != aliases:
-                    existing.slug = brand.slug
-                    existing.aliases = aliases
-                    existing.updated_at = now
-                    updated += 1
-            await session.commit()
-    finally:
-        await engine.dispose()
-    return SeedResult(inserted=inserted, updated=updated)
-
-
-async def replay_mock_smoke() -> dict[str, object]:
-    """Run fixture requests through T0 without opening a network socket."""
-
-    fixture = validate_fixture_assets()
-    catalog = load_catalog()
-    transport = MockHttpTransport(catalog=catalog)
-    requests = 0
-    try:
-        search = await transport.request(
-            "POST",
-            f"{MOCK_ALGOLIA_BASE_URL}/1/indexes/{SOLD_INDEX}/query",
-            json_body={"params": "query=Rick+Owens&hitsPerPage=2&page=0"},
-        )
-        assert search.status_code == 200 and len(search.json()["hits"]) == 2
-        requests += 1
-
-        multi = await transport.request(
-            "POST",
-            f"{MOCK_ALGOLIA_BASE_URL}/1/indexes/*/queries",
-            json_body={
-                "requests": [
-                    {"indexName": SOLD_INDEX, "params": "query=Kapital&hitsPerPage=1"},
-                    {"indexName": SOLD_INDEX, "params": "query=Visvim&hitsPerPage=1"},
-                ]
-            },
-        )
-        assert multi.status_code == 200 and len(multi.json()["results"]) == 2
-        requests += 1
-
-        browse = await transport.request(
-            "POST",
-            f"{MOCK_ALGOLIA_BASE_URL}/1/indexes/{SOLD_INDEX}/browse",
-            json_body={"params": "hitsPerPage=1"},
-        )
-        assert browse.status_code == 200 and browse.json().get("cursor")
-        requests += 1
-
-        facets = await transport.request(
-            "POST",
-            f"{MOCK_ALGOLIA_BASE_URL}/1/indexes/{SOLD_INDEX}/facets/designers.name/query",
-            json_body={"facetQuery": "Rick Owens"},
-        )
-        assert facets.status_code == 200 and facets.json()["facetHits"]
-        requests += 1
-
-        key = await transport.request(
-            "GET", f"{MOCK_ALGOLIA_BASE_URL}/1/keys/fixture-key"
-        )
-        assert key.status_code == 200 and "browse" in key.json()["acl"]
-        requests += 1
-    finally:
-        await transport.close()
-    return {"status": "ok", "requests": requests, "fixture": fixture}
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,30 +42,21 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
     """Fetch and normalize a bounded compatibility sample without persistence."""
 
     require_live_compliance(settings)
-    mock = settings.source_mode in {"mock", "replay"}
-    engine = None
-    transport: HttpTransport
-    if mock:
-        transport = MockHttpTransport()
-        credentials = _CanaryCredentials("fixture-app", "fixture-key", "fixture-agent")
-        index_name = ACTIVE_INDEX
-    else:
-        engine = create_async_engine(get_database_url(settings))
-        factory = async_sessionmaker(engine, expire_on_commit=False)
-        async with factory() as session:
-            cached = await session.scalar(
-                select(SourceCredential).where(SourceCredential.source == "grailed")
-            )
-        if cached is None or cached.active_index is None:
-            await engine.dispose()
-            raise RuntimeError("Run discovery refresh before a live canary")
-        transport = create_http_transport(settings)
-        credentials = _CanaryCredentials(cached.app_id, cached.api_key, cached.algolia_agent)
-        index_name = cached.active_index
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        cached = await session.scalar(
+            select(SourceCredential).where(SourceCredential.source == "grailed")
+        )
+    if cached is None or cached.active_index is None:
+        await engine.dispose()
+        raise RuntimeError("Run discovery refresh before a live canary")
+    transport: HttpTransport = create_http_transport(settings)
+    credentials = _CanaryCredentials(cached.app_id, cached.api_key, cached.algolia_agent)
+    index_name = cached.active_index
     client = AlgoliaClient(
         transport,
         credentials,
-        mock=mock,
         requests_per_minute=settings.requests_per_minute,
         max_concurrency=min(settings.max_concurrent_requests, 3),
         max_retries=settings.parser_max_retries,
@@ -176,6 +68,7 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
             AlgoliaQuery(
                 hits_per_page=limit,
                 facet_filters=((f"designers.name:{brand}",),),
+                numeric_filters=listing_numeric_filters(),
             ),
         )
         normalizer = ListingNormalizer(load_source_mapping(), settings=settings)
@@ -183,12 +76,12 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
         valid = rejected = 0
         for payload in page.hits[:limit]:
             result = await normalizer.normalize(
-                RawHit(dict(payload), "T0" if mock else "T1"),
+                RawHit(dict(payload), "T1"),
                 NormalizationContext(
                     status="active",
                     parser_run_id=1,
                     observed_at=observed,
-                    fetch_tier="T0" if mock else "T1",
+                    fetch_tier="T1",
                 ),
             )
             valid += int(result.valid)
@@ -205,22 +98,122 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
         }
     finally:
         await transport.close()
-        if engine is not None:
-            await engine.dispose()
+        await engine.dispose()
+
+
+async def run_collection_canary(settings: Settings, brand: str) -> dict[str, object]:
+    """Collect one live brand without persisting listing payloads."""
+
+    require_live_compliance(settings)
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        cached = await session.scalar(
+            select(SourceCredential).where(SourceCredential.source == "grailed")
+        )
+    if cached is None or cached.active_index is None or cached.sold_index is None:
+        await engine.dispose()
+        raise RuntimeError("Run discovery refresh before a live collection canary")
+    transport: HttpTransport = create_http_transport(settings)
+    metrics = RunMetrics()
+    client = AlgoliaClient(
+        transport,
+        _CanaryCredentials(cached.app_id, cached.api_key, cached.algolia_agent),
+        requests_per_minute=settings.requests_per_minute,
+        max_concurrency=min(settings.max_concurrent_requests, 3),
+        max_retries=settings.parser_max_retries,
+        multiquery_batch_size=settings.algolia_multiquery_batch_size,
+        timeout_s=settings.parser_request_timeout_s,
+        metrics=metrics,
+    )
+    can_browse = "browse" in cached.key_acl.get("acl", [])
+    sorted_indices = list(cached.sorted_indices)
+    facet = cached.brand_facet or "designers.name"
+    page_size = min(settings.algolia_hits_per_page, cached.max_hits_per_page or 1_000)
+    reports: dict[str, object] = {}
+    try:
+        for index_type, index_name, key_attrs in (
+            ("active", cached.active_index, ("created_at_i", "created_at", "id")),
+            ("sold", cached.sold_index, ("sold_at_i", "sold_at", "created_at_i", "id")),
+        ):
+            token = "sold" if index_type == "sold" else "date"
+            sorted_index = next((name for name in sorted_indices if token in name.casefold()), None)
+            pagination = PaginationPlanner(client).fetch(
+                PaginationSpec(
+                    index_name=index_name,
+                    query=AlgoliaQuery(
+                        hits_per_page=page_size,
+                        facet_filters=((f"{facet}:{brand}",),),
+                        numeric_filters=listing_numeric_filters(),
+                    ),
+                    strategy=settings.algolia_pagination_strategy,
+                    can_browse=can_browse,
+                    sorted_index=sorted_index,
+                    key_attrs=key_attrs,
+                    pagination_limit=cached.pagination_limit or 1_000,
+                    hits_per_page=page_size,
+                )
+            )
+            async for _ in pagination:
+                pass
+            report = pagination.report
+            selected_strategy = settings.algolia_pagination_strategy
+            if selected_strategy == "auto":
+                selected_strategy = (
+                    "browse" if can_browse else "keyset" if sorted_index else "range_split"
+                )
+            reports[index_type] = {
+                "index": index_name,
+                "strategy": selected_strategy,
+                "source_estimated_hits": pagination.source_estimated_hits,
+                "source_estimate_exhaustive": pagination.expected_exhaustive,
+                "expected": report.expected_hits,
+                "collected_unique": report.collected_hits,
+                "duplicates_removed": pagination.duplicate_hits,
+                "duplicates_in_output": 0,
+                "missing_object_ids": pagination.missing_object_ids,
+                "coverage": str(report.coverage) if report.coverage is not None else None,
+                "coverage_status": report.status,
+                "truncated": report.truncated,
+                "warnings": list(report.warnings),
+            }
+        complete = all(
+            isinstance(report, dict)
+            and report["coverage_status"] in {"complete", "skipped"}
+            and report["duplicates_in_output"] == 0
+            and report["missing_object_ids"] == 0
+            for report in reports.values()
+        )
+        metric_snapshot = metrics.snapshot()
+        metric_snapshot.pop("_latency_samples_ms", None)
+        return {
+            "status": "ok" if complete else "partial",
+            "source_mode": settings.source_mode,
+            "brand": brand,
+            "tier": "T1",
+            "reports": reports,
+            "metrics": metric_snapshot,
+            "credentials_included": False,
+            "seller_pii_included": False,
+        }
+    finally:
+        await transport.close()
+        await engine.dispose()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("doctor", help="show Scraping stack capability report")
-    seed_parser = subparsers.add_parser("seed", help="seed the 21 deterministic mock brands")
-    seed_parser.add_argument("--database-url", help="override APP_DATABASE_URL for this command")
-    subparsers.add_parser("replay", help="run the offline fake-Algolia smoke transcript")
     canary_parser = subparsers.add_parser(
         "canary", help="run a bounded source compatibility sample"
     )
     canary_parser.add_argument("--brand", required=True)
     canary_parser.add_argument("--limit", type=int, default=50, choices=range(1, 201))
+    collection_parser = subparsers.add_parser(
+        "collect-brand", help="collect one complete live brand without persistence"
+    )
+    collection_parser.add_argument("--brand", required=True)
     retention_parser = subparsers.add_parser(
         "retention", help="preview or apply raw-data and backup retention"
     )
@@ -234,25 +227,6 @@ def main() -> int:
     if args.command == "doctor":
         print(json.dumps(probe_capabilities().as_dict(), indent=2, sort_keys=True))
         return 0
-    if args.command == "seed":
-        settings = Settings(database_url=args.database_url) if args.database_url else Settings()
-        fixture = validate_fixture_assets()
-        result = asyncio.run(seed_mock_brands(get_database_url(settings)))
-        print(
-            json.dumps(
-                {
-                    "status": "ok",
-                    "inserted": result.inserted,
-                    "updated": result.updated,
-                    "fixture": fixture,
-                },
-                indent=2,
-            )
-        )
-        return 0
-    if args.command == "replay":
-        print(json.dumps(asyncio.run(replay_mock_smoke()), indent=2, sort_keys=True))
-        return 0
     if args.command == "canary":
         try:
             canary_result = asyncio.run(run_canary(Settings(), args.brand, args.limit))
@@ -261,6 +235,14 @@ def main() -> int:
             return 1
         print(json.dumps(canary_result, indent=2, sort_keys=True))
         return 0 if canary_result["status"] == "ok" else 1
+    if args.command == "collect-brand":
+        try:
+            collection_result = asyncio.run(run_collection_canary(Settings(), args.brand))
+        except RuntimeError as exc:
+            print(json.dumps({"status": "error", "message": str(exc)}))
+            return 1
+        print(json.dumps(collection_result, indent=2, sort_keys=True))
+        return 0 if collection_result["status"] == "ok" else 1
     if args.command == "retention":
         print(json.dumps(result_dict(retention(Settings(), apply=args.apply)), indent=2))
         return 0

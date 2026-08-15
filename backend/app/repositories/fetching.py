@@ -12,7 +12,7 @@ from app.db.models import ParserRun, ParserRunTask
 from app.domain.listings import FetchTier
 from app.services.sources.base.models import CoverageReport
 
-_TIER_ORDER = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
+_TIER_ORDER = {"T1": 1, "T2": 2, "T3": 3}
 
 
 class FetchReportRepository:
@@ -36,8 +36,10 @@ class FetchReportRepository:
         task.coverage = report.coverage
         task.cursor = cursor
         task.fetch_tier = fetch_tier
-        task.status = "truncated" if report.truncated else (
-            "skipped" if report.status == "skipped" else "done"
+        task.status = (
+            "truncated"
+            if report.truncated
+            else ("skipped" if report.status == "skipped" else "done")
         )
         task.finished_at = now or datetime.now(UTC)
         if report.warnings:
@@ -51,9 +53,7 @@ class FetchReportRepository:
         if parser_run is None:
             raise LookupError(f"Parser run {run_id} does not exist")
         tasks = tuple(
-            await self._session.scalars(
-                select(ParserRunTask).where(ParserRunTask.run_id == run_id)
-            )
+            await self._session.scalars(select(ParserRunTask).where(ParserRunTask.run_id == run_id))
         )
         coverages = [task.coverage for task in tasks if task.coverage is not None]
         parser_run.coverage_avg = (
@@ -75,13 +75,11 @@ class FetchReportRepository:
             "fetching": {
                 "tasks": len(tasks),
                 "partial": sum(
-                    task.coverage is not None
-                    and Decimal("0.70") <= task.coverage < Decimal("0.98")
+                    task.coverage is not None and Decimal("0.70") <= task.coverage < Decimal("0.98")
                     for task in tasks
                 ),
                 "poor": sum(
-                    task.coverage is not None and task.coverage < Decimal("0.70")
-                    for task in tasks
+                    task.coverage is not None and task.coverage < Decimal("0.70") for task in tasks
                 ),
                 "truncated": sum(task.status == "truncated" for task in tasks),
             },

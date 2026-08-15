@@ -1,4 +1,4 @@
-"""Offline contracts for the phase-two data model and listing repository."""
+"""Source-independent contracts for the data model and listing repository."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def make_listing(**changes: object) -> ListingData:
         "currency_original": "usd",
         "first_seen_at": now,
         "last_seen_at": now,
-        "fetch_tier": "T0",
+        "fetch_tier": "T1",
         "parser_run_id": 1,
         "raw_json": {"id": 1001},
         "schema_version": 1,
@@ -82,7 +82,7 @@ async def test_listing_upsert_preserves_first_seen_and_tracks_only_price_changes
                 status="running",
                 dry_run=False,
                 degraded_mode=False,
-                tier_used="T0",
+                tier_used="T1",
                 requests_made=0,
                 warnings=[],
                 stats={},

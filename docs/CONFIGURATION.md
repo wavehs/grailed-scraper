@@ -2,7 +2,11 @@
 
 | Ключ | Default | Описание |
 |---|---|---|
-| `source_mode` | `live` | `live` \| `mock` \| `replay` |
+| `environment` | `development` | `development` \| `test` \| `production` |
+| `revision` | auto | env → `data/release.json` → Git commit; `unknown` запрещён в production |
+| `backend_bind_host` / `frontend_bind_host` | `127.0.0.1` | в production разрешены только loopback-адреса |
+| `cors_origins` | `["http://127.0.0.1:3000"]` | в production список должен точно совпадать с default |
+| `source_mode` | `live` | `live` only |
 | `fetch_tier_preferred` | `T1` | стартовый tier |
 | `fetch_tier_allow_browser` | `true` | разрешена ли эскалация на T2 |
 | `fetch_tier_allow_dom` | `true` | разрешён ли T3 |
@@ -20,11 +24,13 @@
 | `parser_request_delay_ms` | 400 | |
 | `requests_per_minute` | 90 | жёсткий максимум 90 |
 | `max_concurrent_requests` | 3 | жёсткий максимум 3 на host |
-| `parser_max_concurrency` | 3 | жёсткий максимум 3 worker-задачи |
+| `parser_max_concurrency` | 1 | один worker: бренды и индексы обрабатываются последовательно |
 | `parser_progress_interval_s` | 2 | heartbeat/progress для polling API |
 | `parser_request_timeout_s` | 15 | |
 | `parser_max_retries` | 3 | |
-| `parser_max_requests_per_run` | 5000 | защита от «убежавшего» прогона |
+| `parser_max_requests_per_run` | 800 | защита от «убежавшего» прогона; включает adaptive range probes |
+| `parser_max_items_per_brand` | 500 | общий bounded-лимит active + sold на бренд; превышение явно даёт `truncated` |
+| `parser_refresh_active_limit` | null | ограничение active listings для bounded canary; полный run не задаёт |
 | `parser_default_window_days` | 90 | |
 | scoring windows | `30, 90` | фиксированы моделью `opportunity-v1` |
 | scoring sample target | `20 sold + 20 active` | влияет на confidence, не скрывает score |
@@ -46,15 +52,14 @@
 | `quality_price_outlier_mad_k` | 6 | |
 | `quality_filter_replicas` | true | |
 | `quality_lot_price_multiplier` | 1.5 | минимальное отношение к медиане для lot/bundle |
-| `quality_repost_title_score` | 95 | fuzzy-порог repost |
-| `quality_repost_price_delta` | 0.10 | максимальная относительная разница цены repost |
-| `quality_repost_window_days` | 30 | временное окно repost |
+| `identity_image_requests_per_run` | 100 | максимум cover-image запросов после текстового blocking; 0 отключает |
 | `parser_watermark_overlap_hours` | 2 | overlap delta-watermark |
 | `store_seller_identity` | `hashed` | `none` \| `hashed` \| `plain` |
 | `seller_identity_salt` | generated | секрет из env или `data/secrets/`; не доступен через API |
 | `live_compliance_acknowledged` | `false` | только env; обязателен для всех live entry points |
 | `raw_data_retention_days` | 90 | срок raw JSON; применяется явной CLI-командой |
 | `backup_retention_days` | 30 | срок backup-файлов; применяется явной CLI-командой |
+| `sqlite_busy_timeout_ms` | 5000 | ожидание SQLite write lock перед ошибкой |
 | `fx_provider` | `static` | локальная `fx_rates`; внешний provider оставлен post-MVP |
 
 Через UI редактируется только безопасное подмножество. Соль и live acknowledgement

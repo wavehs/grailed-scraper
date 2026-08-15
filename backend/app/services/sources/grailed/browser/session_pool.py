@@ -108,23 +108,24 @@ class BrowserSessionPool:
 
     async def close(self) -> None:
         async with self._lock:
-            while not self._pages.empty():
-                page = self._pages.get_nowait()
-                close = getattr(page, "close", None)
-                if close is not None:
-                    result = close()
-                    if hasattr(result, "__await__"):
-                        await result
             session, self._session = self._session, None
             self._created_pages = 0
-            if session is None:
-                return
-            exit_session = getattr(session, "__aexit__", None)
-            if exit_session is not None:
-                await exit_session(None, None, None)
-                return
-            close = getattr(session, "close", None)
-            if close is not None:
-                result = close()
-                if hasattr(result, "__await__"):
-                    await result
+            try:
+                while not self._pages.empty():
+                    page = self._pages.get_nowait()
+                    close = getattr(page, "close", None)
+                    if close is not None:
+                        result = close()
+                        if hasattr(result, "__await__"):
+                            await result
+            finally:
+                if session is not None:
+                    exit_session = getattr(session, "__aexit__", None)
+                    if exit_session is not None:
+                        await exit_session(None, None, None)
+                    else:
+                        close = getattr(session, "close", None)
+                        if close is not None:
+                            result = close()
+                            if hasattr(result, "__await__"):
+                                await result

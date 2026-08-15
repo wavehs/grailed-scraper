@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
 from app.services.transport.protocols import HttpResponse
+
+_KEY_PATH = re.compile(r"(?i)(/1/keys/)[^?\s>]+")
+_KEY_PARAM = re.compile(r"(?i)(x-algolia-api-key(?:=|%3D))[^&\s>]+")
+
+
+class _SecretFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _KEY_PARAM.sub(
+            r"\1[redacted]", _KEY_PATH.sub(r"\1[redacted]", record.getMessage())
+        )
+        record.args = ()
+        return True
 
 
 class ScraplingHttpTransport:
@@ -23,6 +37,9 @@ class ScraplingHttpTransport:
         if session_factory is None:
             fetchers = importlib.import_module("scrapling.fetchers")
             session_factory = fetchers.FetcherSession
+        for handler in logging.getLogger("scrapling").handlers:
+            if not any(isinstance(item, _SecretFilter) for item in handler.filters):
+                handler.addFilter(_SecretFilter())
         self._manager = session_factory(proxy=proxy, timeout=timeout_s)
         self._session: Any | None = None
         self._timeout_s = timeout_s
@@ -52,7 +69,9 @@ class ScraplingHttpTransport:
         )
         if inspect.isawaitable(response):
             response = await response
-        response_content = getattr(response, "content", None)
+        response_content = getattr(response, "body", None)
+        if response_content is None:
+            response_content = getattr(response, "content", None)
         if response_content is None:
             response_content = str(getattr(response, "text", "")).encode()
         return HttpResponse(

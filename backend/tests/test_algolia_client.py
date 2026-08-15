@@ -1,7 +1,8 @@
-"""Offline contracts for Algolia request construction and error handling."""
+"""Source-independent contracts for Algolia request construction and errors."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -14,6 +15,7 @@ from app.services.sources.grailed.algolia.exceptions import (
     AlgoliaIndexNotFound,
     AlgoliaRateLimited,
     AlgoliaTransient,
+    RequestBudgetExceeded,
     WafChallenge,
 )
 from app.services.sources.grailed.algolia.models import AlgoliaQuery, AlgoliaRequest
@@ -69,6 +71,10 @@ def test_query_builder_encodes_nested_quotes_and_unicode() -> None:
     assert "Yohji 山本" in params["facetFilters"][0]
     assert params["analytics"] == ["false"]
     assert params["attributesToHighlight"] == ["[]"]
+    assert "cursor" not in params["responseFields"][0]
+    assert "cursor" in parse_qs(build_params(AlgoliaQuery(), include_cursor=True))[
+        "responseFields"
+    ][0]
 
 
 @pytest.mark.asyncio
@@ -87,15 +93,66 @@ async def test_multi_query_chunks_requests_at_eight() -> None:
 
 
 @pytest.mark.asyncio
+async def test_request_budget_stops_before_the_next_network_call() -> None:
+    transport = StubTransport([response(200, b'{"hits":[],"nbHits":0}')])
+    api = client(transport, max_requests=1)
+
+    await api.search("index", AlgoliaQuery(query="first"))
+    with pytest.raises(RequestBudgetExceeded, match="1 requests"):
+        await api.search("index", AlgoliaQuery(query="second"))
+
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_transient_response_rotates_host() -> None:
+    sleeps: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
     transport = StubTransport(
         [response(503, b'{"message":"down"}'), response(200, b'{"hits":[],"nbHits":0}')]
     )
-    page = await client(transport).search("index", AlgoliaQuery())
+    page = await client(transport, sleep=sleep).search("index", AlgoliaQuery())
     assert page.nb_hits == 0
+    assert sleeps == [1.0]
     assert [call["url"].split("/")[2] for call in transport.calls] == [
         "one.test",
         "two.test",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_auth_failure_refreshes_credentials_once_for_concurrent_requests() -> None:
+    transport = StubTransport(
+        [
+            response(401, b'{"message":"expired"}'),
+            response(403, b'{"message":"expired"}'),
+            response(200, b'{"hits":[],"nbHits":0}'),
+            response(200, b'{"hits":[],"nbHits":0}'),
+        ]
+    )
+    refreshes = 0
+
+    async def refresh_credentials() -> DiscoverySeed:
+        nonlocal refreshes
+        refreshes += 1
+        await asyncio.sleep(0)
+        return DiscoverySeed("APP", "fresh-key")
+
+    api = client(transport, max_retries=0, refresh_credentials=refresh_credentials)
+    await asyncio.gather(
+        api.search("index", AlgoliaQuery(query="one")),
+        api.search("index", AlgoliaQuery(query="two")),
+    )
+
+    assert refreshes == 1
+    assert [call["headers"]["x-algolia-api-key"] for call in transport.calls] == [
+        "very-secret-key",
+        "very-secret-key",
+        "fresh-key",
+        "fresh-key",
     ]
 
 

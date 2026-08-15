@@ -46,8 +46,7 @@ def retention(
         with sqlite3.connect(database) as connection:
             raw_rows = int(
                 connection.execute(
-                    "SELECT count(*) FROM listings "
-                    "WHERE last_seen_at < ? AND raw_json != '{}'",
+                    "SELECT count(*) FROM listings WHERE last_seen_at < ? AND raw_json != '{}'",
                     (raw_cutoff.isoformat(),),
                 ).fetchone()[0]
             )
@@ -58,12 +57,16 @@ def retention(
                     (current.isoformat(), raw_cutoff.isoformat()),
                 )
                 connection.commit()
-    expired = [
-        item
-        for item in backups.glob("*.sqlite3")
-        if item.is_file()
-        and datetime.fromtimestamp(item.stat().st_mtime, tz=UTC) < backup_cutoff
-    ] if backups.exists() else []
+    expired = (
+        [
+            item
+            for item in backups.glob("*.sqlite3")
+            if item.is_file()
+            and datetime.fromtimestamp(item.stat().st_mtime, tz=UTC) < backup_cutoff
+        ]
+        if backups.exists()
+        else []
+    )
     if apply:
         for item in expired:
             item.unlink()

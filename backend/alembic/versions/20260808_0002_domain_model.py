@@ -100,7 +100,7 @@ def upgrade() -> None:
             "status IN ('active', 'sold', 'removed_pending', 'removed')",
             name="ck_listings_status",
         ),
-        sa.CheckConstraint("fetch_tier IN ('T0', 'T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
+        sa.CheckConstraint("fetch_tier IN ('T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
         sa.CheckConstraint("price > 0", name="ck_listings_price_positive"),
     )
     op.create_index("ix_listings_grailed_id", "listings", ["grailed_id"])
@@ -192,7 +192,7 @@ def upgrade() -> None:
             name="ck_parser_run_tasks_status",
         ),
         sa.CheckConstraint(
-            "fetch_tier IS NULL OR fetch_tier IN ('T0', 'T1', 'T2', 'T3')", name="ck_tasks_fetch_tier"
+            "fetch_tier IS NULL OR fetch_tier IN ('T1', 'T2', 'T3')", name="ck_tasks_fetch_tier"
         ),
     )
     op.create_index("ix_parser_run_tasks_run_status", "parser_run_tasks", ["run_id", "status"])

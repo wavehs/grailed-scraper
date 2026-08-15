@@ -111,9 +111,7 @@ async def update_model_rule(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> ModelRuleResponse:
     rule = await session.scalar(
-        select(ModelRule)
-        .where(ModelRule.id == rule_id)
-        .options(selectinload(ModelRule.group))
+        select(ModelRule).where(ModelRule.id == rule_id).options(selectinload(ModelRule.group))
     )
     if rule is None:
         raise ApiError(404, "model_rule_not_found", "Model rule does not exist")
@@ -159,9 +157,7 @@ async def list_rule_matches(
         raise ApiError(404, "model_rule_not_found", "Model rule does not exist")
     listings = list(
         await session.scalars(
-            select(Listing)
-            .where(Listing.brand_id == rule.brand_id)
-            .order_by(Listing.id)
+            select(Listing).where(Listing.brand_id == rule.brand_id).order_by(Listing.id)
         )
     )
     return [

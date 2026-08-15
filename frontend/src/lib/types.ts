@@ -1,4 +1,4 @@
-export type SourceMode = 'live' | 'mock' | 'replay';
+export type SourceMode = 'live';
 export type RunStatus =
   'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'interrupted' | 'cancelled';
 
@@ -97,9 +97,20 @@ export type RunProgress = {
   tasks_done: number;
   hits_fetched: number;
   requests_made: number;
+  coverage?: string;
+  partial: boolean;
+  truncated: boolean;
+  current_brand?: string;
+  tasks_failed: number;
   eta_seconds?: number;
   heartbeat_at?: string;
   warnings: string[];
+  errors: Array<{
+    task_id: number;
+    brand_id?: number;
+    index_type: string;
+    code: string;
+  }>;
 };
 export type RunReport = {
   run: RunSummary;
@@ -125,6 +136,7 @@ export type RunMetrics = {
 };
 export type FetchPlan = {
   mode: string;
+  confirmation_token: string;
   budget: Record<string, number | boolean>;
   warnings: string[];
   tasks: Array<{
@@ -134,6 +146,7 @@ export type FetchPlan = {
     index: string;
     status: string;
     strategy: string;
+    max_hits: number;
   }>;
 };
 export type RunStartResponse =
@@ -230,6 +243,42 @@ export type ModelRule = {
   matches_count: number;
 };
 export type RuleMatch = { id: number; title: string; status: string };
+
+export type IdentityListing = {
+  id: number;
+  grailed_id: number;
+  title: string;
+  status: string;
+  price: number;
+  brand: string;
+  category?: string;
+  size?: string;
+  color?: string;
+  cover_photo_url?: string;
+};
+export type IdentityCandidate = {
+  id: number;
+  level: 'model' | 'physical';
+  relation_type?: 'relist';
+  status: 'pending' | 'auto_confirmed' | 'confirmed' | 'rejected';
+  confidence: string;
+  evidence: Record<string, unknown>;
+  left: IdentityListing;
+  right: IdentityListing;
+};
+export type IdentityCandidateList = {
+  data: IdentityCandidate[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+export type IdentityHistory = {
+  listing: IdentityListing;
+  model_group?: { id: number; name: string; type: string; method: string; confidence: string };
+  physical_item_id?: number;
+  members: IdentityListing[];
+  matches: Array<Record<string, unknown>>;
+};
 
 export type SettingOrigin = 'default' | 'env' | 'database';
 export type SettingEntry = { value: string | number | boolean; origin: SettingOrigin };

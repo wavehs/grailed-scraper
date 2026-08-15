@@ -1,4 +1,4 @@
-"""Exact, offline-first foreign-exchange rate lookup."""
+"""Exact foreign-exchange rate lookup."""
 
 from __future__ import annotations
 
@@ -26,15 +26,15 @@ class DatabaseFxRateProvider:
         return cast(
             Decimal | None,
             await self._session.scalar(
-            select(FxRate.rate_to_usd).where(
-                FxRate.currency == currency.upper(), FxRate.rate_date == rate_date
-            )
+                select(FxRate.rate_to_usd).where(
+                    FxRate.currency == currency.upper(), FxRate.rate_date == rate_date
+                )
             ),
         )
 
 
 class StaticFxRateProvider:
-    """Small deterministic provider used by unit tests and replay workflows."""
+    """Small deterministic provider for configured exchange rates."""
 
     def __init__(self, rates: dict[tuple[str, date], Decimal] | None = None) -> None:
         self._rates = rates or {}

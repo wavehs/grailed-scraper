@@ -40,12 +40,8 @@ class DomAlgoliaClient:
             hits_per_page=query.hits_per_page,
         )
 
-    async def multi_query(
-        self, requests: Sequence[AlgoliaRequest]
-    ) -> tuple[AlgoliaPage, ...]:
-        return tuple(
-            [await self.search(request.index_name, request.query) for request in requests]
-        )
+    async def multi_query(self, requests: Sequence[AlgoliaRequest]) -> tuple[AlgoliaPage, ...]:
+        return tuple([await self.search(request.index_name, request.query) for request in requests])
 
     async def browse(
         self, index_name: str, query: AlgoliaQuery, *, cursor: str | None = None

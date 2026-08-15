@@ -112,4 +112,4 @@ def _sensitive_key(key: str, path: tuple[str, ...]) -> bool:
         "postcode",
         "zip",
         "zipcode",
-    } or (key == "id" and "seller" in path)
+    } or (key == "id" and ("seller" in path or "user" in path))

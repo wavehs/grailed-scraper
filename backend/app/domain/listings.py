@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ListingStatus = Literal["active", "sold", "removed_pending", "removed"]
-FetchTier = Literal["T0", "T1", "T2", "T3"]
+FetchTier = Literal["T1", "T2", "T3"]
 
 
 class ListingData(BaseModel):
@@ -32,6 +32,10 @@ class ListingData(BaseModel):
     size_normalized: str | None = None
     condition_raw: str | None = None
     condition: str | None = None
+    color: str | None = None
+    source_product_id: int | None = Field(default=None, gt=0)
+    source_sku_id: int | None = Field(default=None, gt=0)
+    source_repost_id: int | None = Field(default=None, gt=0)
     price: Decimal = Field(gt=0)
     price_original: Decimal | None = Field(default=None, gt=0)
     currency_original: str = Field(min_length=3, max_length=3)
@@ -47,6 +51,9 @@ class ListingData(BaseModel):
     removed_checked_at: datetime | None = None
     days_on_market: int | None = Field(default=None, ge=0)
     cover_photo_url: str | None = None
+    cover_asset_key: str | None = Field(default=None, min_length=64, max_length=64)
+    cover_content_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    cover_dhash: str | None = Field(default=None, min_length=16, max_length=16)
     photo_urls: list[str] = Field(default_factory=list)
     photo_count: int = Field(default=0, ge=0)
     seller_identity: str | None = None
@@ -58,6 +65,7 @@ class ListingData(BaseModel):
     raw_json: dict[str, Any]
     raw_json_purged_at: datetime | None = None
     schema_version: int = Field(ge=1)
+    identity_version: str | None = None
 
     @field_validator("price", "price_original", "fx_rate", "sold_price", mode="before")
     @classmethod

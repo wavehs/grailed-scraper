@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.repositories.discovery import DiscoveryRepository, as_utc
-from app.services.parser.mock.generator import ACTIVE_INDEX, SOLD_INDEX
 from app.services.sources.grailed.discovery.client import (
     DiscoveryAlgoliaClient,
     DiscoveryHttpError,
@@ -33,13 +32,14 @@ from app.services.sources.grailed.discovery.schema_sampler import (
 )
 from app.services.transport.protocols import BrowserSession, HttpTransport
 
-MOCK_SEED = DiscoverySeed(
-    app_id="MOCKAPP1",
-    api_key="0123456789abcdef0123456789abcdef",
-    algolia_agent="GrailedFixture (discovery)",
-    indices=(ACTIVE_INDEX, SOLD_INDEX),
-    facet_filters=("designers.name:Rick Owens",),
-    method="mock",
+KNOWN_LISTING_INDICES = (
+    "Listing_production",
+    "Listing_by_date_added_production",
+    "Listing_by_low_price_production",
+    "Listing_by_high_price_production",
+    "Listing_by_popularity_production",
+    "Listing_sold_production",
+    "Listing_sold_by_date_added_production",
 )
 
 
@@ -63,14 +63,27 @@ class DiscoveryService:
         self._browser = browser
 
     async def refresh(self, *, force: bool = True) -> DiscoveryResult:
+        return await self._singleflight(force=force, invalidate=False)
+
+    async def invalidate_and_refresh(self) -> DiscoveryResult:
+        """Mark rejected credentials stale and run one shared forced discovery."""
+
+        return await self._singleflight(force=True, invalidate=True)
+
+    async def _singleflight(self, *, force: bool, invalidate: bool) -> DiscoveryResult:
         loop = asyncio.get_running_loop()
         key = (id(loop), "grailed")
         task = self._inflight.get(key)
         if task is None:
-            task = loop.create_task(self._run(force=force))
+            task = loop.create_task(self._invalidate_then_run(force, invalidate))
             self._inflight[key] = task
             task.add_done_callback(lambda finished: self._clear_inflight(key, finished))
         return await asyncio.shield(task)
+
+    async def _invalidate_then_run(self, force: bool, invalidate: bool) -> DiscoveryResult:
+        if invalidate:
+            await self._repository.mark_stale()
+        return await self._run(force=force)
 
     async def status(self) -> DiscoveryResult | None:
         credential = await self._repository.credential()
@@ -131,20 +144,16 @@ class DiscoveryService:
         previous = await self._repository.latest_schema()
         for auth_attempt in range(2):
             seed = await self._discover_seed()
-            is_mock = self._settings.source_mode in {"mock", "replay"}
             client = DiscoveryAlgoliaClient(
                 self._transport,
                 seed,
-                mock=is_mock,
-                requests_per_minute=None if is_mock else self._settings.requests_per_minute,
+                requests_per_minute=self._settings.requests_per_minute,
             )
             try:
                 capabilities = await introspect_key(client, seed.api_key)
-                if not is_mock and capabilities.max_queries_per_ip_per_hour:
+                if capabilities.max_queries_per_ip_per_hour:
                     hourly_safe_rpm = max(capabilities.max_queries_per_ip_per_hour // 120, 1)
-                    client.set_rate_limit(
-                        min(self._settings.requests_per_minute, hourly_safe_rpm)
-                    )
+                    client.set_rate_limit(min(self._settings.requests_per_minute, hourly_safe_rpm))
                 candidates = self._allowed_indices(seed, capabilities)
                 probes = await probe_indices(client, candidates)
                 active_index, sold_index = self._index_roles(probes)
@@ -184,8 +193,6 @@ class DiscoveryService:
         )
 
     async def _discover_seed(self) -> DiscoverySeed:
-        if self._settings.source_mode in {"mock", "replay"}:
-            return MOCK_SEED
         if self._browser is not None:
             seed = await capture_browser_seed(
                 self._browser, timeout_s=self._settings.discovery_page_timeout_s
@@ -198,7 +205,7 @@ class DiscoveryService:
         raise DiscoveryUnavailableError("Grailed discovery produced no validated candidate")
 
     async def _validate_candidate(self, seed: DiscoverySeed) -> bool:
-        index = seed.indices[0] if seed.indices else ACTIVE_INDEX
+        index = seed.indices[0] if seed.indices else KNOWN_LISTING_INDICES[0]
         client = DiscoveryAlgoliaClient(self._transport, seed)
         response = await client.request(
             "POST", client.index_path(index), json_body={"params": "hitsPerPage=1"}
@@ -212,17 +219,16 @@ class DiscoveryService:
         return min(ttl_expiry, as_utc(valid_until) - timedelta(minutes=10))
 
     @staticmethod
-    def _allowed_indices(
-        seed: DiscoverySeed, capabilities: KeyCapabilities
-    ) -> tuple[str, ...]:
-        names = list(seed.indices)
+    def _allowed_indices(seed: DiscoverySeed, capabilities: KeyCapabilities) -> tuple[str, ...]:
+        names = [name for name in seed.indices if _is_listing_index(name)]
+        names.extend(KNOWN_LISTING_INDICES)
         if capabilities.indexes:
             names = [
                 name
                 for name in names
                 if any(_index_matches(name, pattern) for pattern in capabilities.indexes)
             ]
-        return tuple(dict.fromkeys(names or (ACTIVE_INDEX, SOLD_INDEX)))
+        return tuple(dict.fromkeys(names))
 
     @staticmethod
     def _index_roles(probes: tuple[object, ...]) -> tuple[str | None, str | None]:
@@ -246,9 +252,7 @@ class DiscoveryService:
             acl=tuple(str(item) for item in raw_acl if isinstance(item, str))
             if isinstance(raw_acl, list)
             else (),
-            indexes=tuple(
-                str(item) for item in raw_indexes if isinstance(item, str)
-            )
+            indexes=tuple(str(item) for item in raw_indexes if isinstance(item, str))
             if isinstance(raw_indexes, list)
             else (),
             valid_until=as_utc(valid_until) if valid_until else None,
@@ -287,9 +291,7 @@ class DiscoveryService:
         )
 
     @classmethod
-    def _clear_inflight(
-        cls, key: tuple[int, str], task: asyncio.Task[DiscoveryResult]
-    ) -> None:
+    def _clear_inflight(cls, key: tuple[int, str], task: asyncio.Task[DiscoveryResult]) -> None:
         if cls._inflight.get(key) is task:
             cls._inflight.pop(key, None)
 
@@ -302,3 +304,8 @@ def _index_matches(name: str, pattern: str) -> bool:
     if pattern.endswith("*"):
         return name.startswith(pattern[:-1])
     return name == pattern
+
+
+def _is_listing_index(name: str) -> bool:
+    lowered = name.casefold()
+    return "listing" in lowered and "suggestion" not in lowered

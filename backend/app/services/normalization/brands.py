@@ -140,10 +140,13 @@ class BrandMappingService:
     @staticmethod
     def _score(brand: Brand, candidate: FacetValue, max_count: int) -> Decimal:
         names = (brand.name, *brand.aliases)
-        fuzzy = max(
-            ratio(normalize_brand_name(name), normalize_brand_name(candidate.value))
-            for name in names
-        ) / 100
+        fuzzy = (
+            max(
+                ratio(normalize_brand_name(name), normalize_brand_name(candidate.value))
+                for name in names
+            )
+            / 100
+        )
         popularity = math.log1p(candidate.count) / math.log1p(max_count)
         return Decimal(str(0.7 * fuzzy + 0.3 * popularity)).quantize(Decimal("0.00001"))
 
@@ -156,6 +159,4 @@ def normalize_brand_name(value: str) -> str:
 
 def _is_subbrand(brand: Brand, candidate: str) -> bool:
     normalized = normalize_brand_name(candidate)
-    return normalized not in {
-        normalize_brand_name(name) for name in (brand.name, *brand.aliases)
-    }
+    return normalized not in {normalize_brand_name(name) for name in (brand.name, *brand.aliases)}

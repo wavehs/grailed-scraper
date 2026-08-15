@@ -1,16 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth } from '@/lib/queries';
+import { useApiHealth, useParserHealth } from '@/lib/queries';
 import type {
   BrandList,
+  DiscoveryResponse,
   FetchPlan,
   RunList,
   RunProgress,
@@ -20,22 +22,50 @@ import type {
 } from '@/lib/types';
 
 const terminal = new Set(['completed', 'partial', 'failed', 'cancelled']);
+const blockingReasons = new Set([
+  'live_compliance_not_acknowledged',
+  'credentials_missing',
+  'schema_missing',
+]);
 const pct = (value?: string | null) => (value ? `${(Number(value) * 100).toFixed(1)}%` : '—');
 
 export default function ParserRunsPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const client = useQueryClient();
-  const health = useApiHealth();
+  const apiHealth = useApiHealth();
+  const parserHealth = useParserHealth();
   const [mode, setMode] = useState<'delta' | 'full' | 'refresh_active'>('delta');
   const [brandIds, setBrandIds] = useState<number[]>([]);
   const [plan, setPlan] = useState<FetchPlan | null>(null);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
   const [notice, setNotice] = useState('');
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const openRun = (runId: number) => {
+    returnFocus.current = document.activeElement as HTMLElement | null;
+    setSelectedRun(runId);
+  };
+  const closeRun = () => {
+    setSelectedRun(null);
+    window.setTimeout(() => returnFocus.current?.focus(), 0);
+  };
   useEffect(() => {
     const value = Number(searchParams.get('run'));
     if (value) setSelectedRun(value);
   }, [searchParams]);
+  useEffect(() => {
+    if (selectedRun === null) return;
+    closeButton.current?.focus();
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedRun(null);
+        window.setTimeout(() => returnFocus.current?.focus(), 0);
+      }
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [selectedRun]);
   const brands = useQuery({
     queryKey: ['brands'],
     queryFn: ({ signal }) => getApi<BrandList>('/brands', signal),
@@ -60,8 +90,22 @@ export default function ParserRunsPage() {
     queryFn: ({ signal }) => getApi<RunReport>(`/parser/runs/${selectedRun}/report`, signal),
   });
   const refresh = () => client.invalidateQueries({ queryKey: ['runs'] });
+  const discovery = useMutation({
+    mutationFn: () =>
+      api<DiscoveryResponse>('/parser/discovery/refresh', 'POST', { force: true }),
+    onSuccess: () => {
+      setPlan(null);
+      setNotice(t('success'));
+      client.invalidateQueries({ queryKey: ['parser-health'] });
+      client.invalidateQueries({ queryKey: ['brands'] });
+    },
+  });
   const start = useMutation({
-    mutationFn: (payload: { dry_run: boolean; confirm_over_budget?: boolean }) =>
+    mutationFn: (payload: {
+      dry_run: boolean;
+      confirm_over_budget?: boolean;
+      confirmation_token?: string;
+    }) =>
       api<RunStartResponse>('/parser/run', 'POST', {
         mode,
         brand_ids: brandIds.length ? brandIds : null,
@@ -73,7 +117,7 @@ export default function ParserRunsPage() {
         setNotice('');
       } else {
         setPlan(null);
-        setSelectedRun(result.run.id);
+        openRun(result.run.id);
         setNotice(t('success'));
         refresh();
       }
@@ -83,18 +127,35 @@ export default function ParserRunsPage() {
     mutationFn: ({ id, action }: { id: number; action: 'cancel' | 'resume' }) =>
       api<RunSummary>(`/parser/runs/${id}/${action}`, 'POST'),
     onSuccess: (run) => {
-      setSelectedRun(run.id);
+      openRun(run.id);
       setNotice(t('success'));
       refresh();
       client.invalidateQueries({ queryKey: ['run-progress', run.id] });
     },
   });
   const overLimit = Boolean(plan?.budget.over_limit);
+  const blockers = (parserHealth.data?.reasons ?? []).filter((reason) =>
+    blockingReasons.has(reason),
+  );
+  const selectedBrands = brandIds.length
+    ? (brands.data?.data ?? []).filter((brand) => brandIds.includes(brand.id))
+    : (brands.data?.data ?? []);
+  const mappingsReady =
+    selectedBrands.length > 0 && selectedBrands.every((brand) => brand.status === 'verified');
+  const canPlan = Boolean(
+    apiHealth.writable && parserHealth.data && blockers.length === 0 && mappingsReady,
+  );
   const progressValue = progress.data?.tasks_total
     ? Math.round((progress.data.tasks_done / progress.data.tasks_total) * 100)
     : 0;
   const error =
-    brands.error ?? runs.error ?? start.error ?? control.error ?? progress.error ?? report.error;
+    brands.error ??
+    runs.error ??
+    discovery.error ??
+    start.error ??
+    control.error ??
+    progress.error ??
+    report.error;
   if (brands.isLoading && runs.isLoading) return <LoadingState />;
   return (
     <section className="space-y-6" aria-labelledby="runs-heading">
@@ -104,7 +165,6 @@ export default function ParserRunsPage() {
         </h1>
         <p className="text-slate-600">{t('runIntro')}</p>
       </div>
-      {!health.isLoading && !health.writable && <Notice error>{t('mockRequired')}</Notice>}
       <Notice>{notice}</Notice>
       {error && (
         <ErrorState
@@ -115,6 +175,53 @@ export default function ParserRunsPage() {
           }}
         />
       )}
+      <Card className="p-4">
+        <h2 className="font-semibold">{t('liveWorkflow')}</h2>
+        <ol className="mt-3 grid gap-3 md:grid-cols-4">
+          <li className="rounded border p-3">
+            <p className="font-medium">1. {t('discovery')}</p>
+            <p className="text-sm text-slate-600">
+              {t(parserHealth.data?.discovery?.status ?? 'unavailable')}
+            </p>
+            <Button
+              className="mt-2"
+              disabled={
+                !apiHealth.writable ||
+                discovery.isPending ||
+                blockers.includes('live_compliance_not_acknowledged')
+              }
+              onClick={() => discovery.mutate()}
+            >
+              {discovery.isPending ? t('refreshing') : t('refreshDiscovery')}
+            </Button>
+          </li>
+          <li className="rounded border p-3">
+            <p className="font-medium">2. {t('brandMapping')}</p>
+            <p className="text-sm text-slate-600">
+              {mappingsReady ? t('ready') : t('incomplete')}
+            </p>
+            <Link className="mt-3 inline-block underline" href="/brands">
+              {t('reviewMappings')}
+            </Link>
+          </li>
+          <li className="rounded border p-3">
+            <p className="font-medium">3. {t('dryRun')}</p>
+            <p className="text-sm text-slate-600">{plan ? t('completed') : t('pending')}</p>
+          </li>
+          <li className="rounded border p-3">
+            <p className="font-medium">4. {t('confirmation')}</p>
+            <p className="text-sm text-slate-600">{plan ? t('ready') : t('blocked')}</p>
+          </li>
+        </ol>
+        {blockers.length > 0 && (
+          <ul className="mt-3 list-disc pl-5 text-red-800" role="alert">
+            {blockers.map((reason) => (
+              <li key={reason}>{t(reason)}</li>
+            ))}
+          </ul>
+        )}
+        {!mappingsReady && <Notice error>{t('brand_mapping_required')}</Notice>}
+      </Card>
       <Card className="p-4">
         <form
           className="grid gap-4 lg:grid-cols-[220px_1fr_auto]"
@@ -128,7 +235,10 @@ export default function ParserRunsPage() {
             <select
               className="mt-1 w-full rounded border px-3"
               value={mode}
-              onChange={(event) => setMode(event.target.value as typeof mode)}
+              onChange={(event) => {
+                setMode(event.target.value as typeof mode);
+                setPlan(null);
+              }}
             >
               <option value="delta">{t('delta')}</option>
               <option value="full">{t('full')}</option>
@@ -145,11 +255,12 @@ export default function ParserRunsPage() {
                     type="checkbox"
                     checked={brandIds.includes(brand.id)}
                     onChange={(event) =>
-                      setBrandIds((old) =>
-                        event.target.checked
+                      setBrandIds((old) => {
+                        setPlan(null);
+                        return event.target.checked
                           ? [...old, brand.id]
-                          : old.filter((id) => id !== brand.id),
-                      )
+                          : old.filter((id) => id !== brand.id);
+                      })
                     }
                   />
                   {brand.name}
@@ -159,12 +270,15 @@ export default function ParserRunsPage() {
             <button
               type="button"
               className="mt-2 text-sm underline"
-              onClick={() => setBrandIds([])}
+              onClick={() => {
+                setBrandIds([]);
+                setPlan(null);
+              }}
             >
               {t('allBrands')}
             </button>
           </fieldset>
-          <Button className="self-end" type="submit" disabled={!health.writable || start.isPending}>
+          <Button className="self-end" type="submit" disabled={!canPlan || start.isPending}>
             {start.isPending ? t('planning') : t('dryRun')}
           </Button>
         </form>
@@ -196,8 +310,14 @@ export default function ParserRunsPage() {
           )}
           <Button
             className="mt-4"
-            disabled={!health.writable || start.isPending}
-            onClick={() => start.mutate({ dry_run: false, confirm_over_budget: overLimit })}
+            disabled={!canPlan || start.isPending}
+            onClick={() =>
+              start.mutate({
+                dry_run: false,
+                confirm_over_budget: overLimit,
+                confirmation_token: plan.confirmation_token,
+              })
+            }
           >
             {start.isPending ? t('starting') : overLimit ? t('confirmBudget') : t('startRun')}
           </Button>
@@ -227,13 +347,13 @@ export default function ParserRunsPage() {
                 <td className="p-3">{run.requests_made}</td>
                 <td className="p-3">
                   <span className="flex flex-wrap gap-2">
-                    <button className="underline" onClick={() => setSelectedRun(run.id)}>
+                    <button className="underline" onClick={() => openRun(run.id)}>
                       {t('progress')}
                     </button>
                     {['pending', 'running'].includes(run.status) && (
                       <button
                         className="text-red-700 underline"
-                        disabled={!health.writable || control.isPending}
+                        disabled={!apiHealth.writable || control.isPending}
                         onClick={() => control.mutate({ id: run.id, action: 'cancel' })}
                       >
                         {t('cancel')}
@@ -242,7 +362,7 @@ export default function ParserRunsPage() {
                     {['interrupted', 'cancelled', 'failed', 'partial'].includes(run.status) && (
                       <button
                         className="underline"
-                        disabled={!health.writable || control.isPending}
+                        disabled={!canPlan || control.isPending}
                         onClick={() => control.mutate({ id: run.id, action: 'resume' })}
                       >
                         {t('resume')}
@@ -262,13 +382,21 @@ export default function ParserRunsPage() {
           aria-modal="true"
           aria-labelledby="run-detail-title"
           className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-4"
+          onKeyDown={(event) => {
+            if (event.key === 'Tab') {
+              event.preventDefault();
+              closeButton.current?.focus();
+            }
+          }}
         >
           <Card className="mx-auto mt-8 max-w-5xl p-5">
             <div className="flex justify-between gap-3">
               <h2 id="run-detail-title" className="text-xl font-semibold">
                 {t('run')} #{selectedRun}
               </h2>
-              <Button onClick={() => setSelectedRun(null)}>{t('close')}</Button>
+              <Button ref={closeButton} onClick={closeRun}>
+                {t('close')}
+              </Button>
             </div>
             {progress.isLoading ? (
               <LoadingState />
@@ -284,7 +412,7 @@ export default function ParserRunsPage() {
                   >
                     <div className="h-full bg-emerald-600" style={{ width: `${progressValue}%` }} />
                   </div>
-                  <dl className="grid gap-3 sm:grid-cols-4">
+                  <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
                     <div>
                       <dt>{t('status')}</dt>
                       <dd className="font-semibold">{t(progress.data.status)}</dd>
@@ -303,11 +431,38 @@ export default function ParserRunsPage() {
                       <dt>{t('requests')}</dt>
                       <dd className="font-semibold">{progress.data.requests_made}</dd>
                     </div>
+                    <div>
+                      <dt>{t('tier')}</dt>
+                      <dd className="font-semibold">{progress.data.tier ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('coverage')}</dt>
+                      <dd className="font-semibold">{pct(progress.data.coverage)}</dd>
+                    </div>
                   </dl>
+                  {progress.data.current_brand && (
+                    <p>
+                      {t('currentBrand')}: <strong>{progress.data.current_brand}</strong>
+                    </p>
+                  )}
+                  {(progress.data.partial || progress.data.truncated) && (
+                    <Notice error>
+                      {progress.data.truncated ? t('truncatedResult') : t('partialResult')}
+                    </Notice>
+                  )}
                   {progress.data.warnings.length > 0 && (
                     <ul className="list-disc pl-5 text-amber-800">
                       {progress.data.warnings.map((warning) => (
                         <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {(progress.data.errors ?? []).length > 0 && (
+                    <ul className="list-disc pl-5 text-red-800" role="alert">
+                      {(progress.data.errors ?? []).map((item) => (
+                        <li key={`${item.task_id}-${item.code}`}>
+                          {t('task')} #{item.task_id} · {item.index_type}: {item.code}
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -341,6 +496,8 @@ export default function ParserRunsPage() {
                         <th className="p-2">{t('status')}</th>
                         <th className="p-2">{t('hits')}</th>
                         <th className="p-2">{t('coverage')}</th>
+                        <th className="p-2">{t('tier')}</th>
+                        <th className="p-2">{t('sourceError')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -353,6 +510,8 @@ export default function ParserRunsPage() {
                             {task.hits_collected}/{task.expected_hits ?? '—'}
                           </td>
                           <td className="p-2">{pct(task.coverage)}</td>
+                          <td className="p-2">{task.tier ?? '—'}</td>
+                          <td className="p-2 text-red-800">{task.error ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>

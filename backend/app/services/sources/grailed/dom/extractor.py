@@ -121,9 +121,7 @@ class DomExtractor:
         if raw_id is None:
             return None
         title = _first(card.css("a::text").getall()) or card.get_all_text().strip()
-        price_attr = _first(
-            card.css("[data-price-cents]::attr(data-price-cents)").getall()
-        )
+        price_attr = _first(card.css("[data-price-cents]::attr(data-price-cents)").getall())
         hit: dict[str, Any] = {
             "objectID": str(raw_id),
             "id": int(raw_id) if str(raw_id).isdecimal() else raw_id,

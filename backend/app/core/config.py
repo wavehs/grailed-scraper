@@ -7,15 +7,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///./data/grailed.db"
+DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'data' / 'grailed.db').as_posix()}"
 
 
 class Settings(BaseSettings):
-    """Settings safe to use in local development and in offline tests."""
+    """Validated settings for the live Grailed parser."""
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -27,16 +27,21 @@ class Settings(BaseSettings):
 
     app_name: str = "Grailed Liquidity Analyzer"
     environment: Literal["development", "test", "production"] = "development"
-    source_mode: Literal["live", "mock", "replay"] = "mock"
+    revision: str | None = None
+    backend_bind_host: str = "127.0.0.1"
+    frontend_bind_host: str = "127.0.0.1"
+    source_mode: Literal["live"] = "live"
     database_url: str = DEFAULT_DATABASE_URL
+    sqlite_busy_timeout_ms: int = 5_000
     log_level: str = "INFO"
+    data_directory: Path = PROJECT_ROOT / "data"
     log_directory: Path = PROJECT_ROOT / "data" / "logs"
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
     proxy_url: str | None = None
     proxy_list_browser: list[str] | str = []
     proxy_list_http: list[str] | str = []
-    fetch_tier_preferred: Literal["T0", "T1", "T2", "T3"] = "T1"
+    fetch_tier_preferred: Literal["T1", "T2", "T3"] = "T1"
     fetch_tier_allow_browser: bool = True
     fetch_tier_allow_dom: bool = True
     algolia_hits_per_page: int = 200
@@ -46,8 +51,10 @@ class Settings(BaseSettings):
     parser_request_timeout_s: float = 15.0
     parser_max_retries: int = 3
     parser_request_delay_ms: int = 400
-    parser_max_concurrency: int = 3
-    parser_max_requests_per_run: int = 5_000
+    parser_max_concurrency: int = 1
+    parser_max_requests_per_run: int = 800
+    parser_max_items_per_brand: int = 500
+    identity_image_requests_per_run: int = Field(default=100, ge=0, le=100)
     parser_progress_interval_s: float = 2.0
     browser_max_pages: int = 2
     browser_restart_every_requests: int = 300
@@ -59,18 +66,16 @@ class Settings(BaseSettings):
     proxy_enabled: bool = False
     proxy_allow_direct_fallback: bool = True
     proxy_rotation_mode: Literal["round_robin", "random", "weighted"] = "weighted"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: list[str] = ["http://127.0.0.1:3000"]
     parser_mode: Literal["delta", "full"] = "delta"
     parser_full_refresh_days: int = 7
     parser_refresh_active_enabled: bool = True
+    parser_refresh_active_limit: int | None = Field(default=None, ge=1)
     parser_removed_confirm_hours: int = 48
     parser_watermark_overlap_hours: int = 2
     quality_price_outlier_mad_k: float = 6.0
     quality_filter_replicas: bool = True
     quality_lot_price_multiplier: float = 1.5
-    quality_repost_title_score: int = 95
-    quality_repost_price_delta: float = 0.10
-    quality_repost_window_days: int = 30
     fx_provider: Literal["static"] = "static"
     store_seller_identity: Literal["none", "hashed", "plain"] = "hashed"
     seller_identity_salt: str | None = None
@@ -95,6 +100,7 @@ class Settings(BaseSettings):
         "parser_request_delay_ms",
         "parser_max_concurrency",
         "parser_max_requests_per_run",
+        "parser_max_items_per_brand",
         "parser_progress_interval_s",
         "browser_max_pages",
         "algolia_hits_per_page",
@@ -109,23 +115,15 @@ class Settings(BaseSettings):
         "parser_watermark_overlap_hours",
         "quality_price_outlier_mad_k",
         "quality_lot_price_multiplier",
-        "quality_repost_title_score",
-        "quality_repost_window_days",
         "raw_data_retention_days",
         "backup_retention_days",
+        "sqlite_busy_timeout_ms",
     )
     @classmethod
     def require_positive_limit(cls, value: int | float) -> int | float:
         if value < 1:
             msg = "Must be at least 1"
             raise ValueError(msg)
-        return value
-
-    @field_validator("quality_repost_price_delta")
-    @classmethod
-    def require_fraction(cls, value: float) -> float:
-        if not 0 < value < 1:
-            raise ValueError("Must be between 0 and 1")
         return value
 
     @field_validator("algolia_multiquery_batch_size")
@@ -147,6 +145,13 @@ class Settings(BaseSettings):
     def cap_concurrency(cls, value: int) -> int:
         if value > 3:
             raise ValueError("Compliance limit is 3 concurrent requests")
+        return value
+
+    @field_validator("parser_progress_interval_s")
+    @classmethod
+    def cap_progress_interval(cls, value: float) -> float:
+        if value > 2:
+            raise ValueError("Parser progress must be persisted at least every 2 seconds")
         return value
 
     @field_validator("proxy_list_browser", "proxy_list_http", mode="before")

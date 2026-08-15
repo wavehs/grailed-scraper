@@ -42,17 +42,13 @@ def test_brand_mapping_api_happy_path_and_errors(tmp_path) -> None:  # type: ign
 
     asyncio.run(prepare())
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_settings] = lambda: Settings(source_mode="mock")
+    app.dependency_overrides[get_settings] = lambda: Settings()
     try:
         with TestClient(app) as client:
-            mapped = client.post("/api/brands/auto-map", json={})
-            assert mapped.status_code == 200
-            assert mapped.json()["processed"] == 1
-
             listed = client.get("/api/brands")
             assert listed.status_code == 200
             brand = listed.json()["data"][0]
-            assert brand["status"] == "verified"
+            assert brand["status"] == "unresolved"
             assert "api_key" not in listed.text
 
             updated = client.patch(
@@ -69,11 +65,11 @@ def test_brand_mapping_api_happy_path_and_errors(tmp_path) -> None:  # type: ign
             cors = client.options(
                 "/api/brands",
                 headers={
-                    "Origin": "http://localhost:3000",
+                    "Origin": "http://127.0.0.1:3000",
                     "Access-Control-Request-Method": "GET",
                 },
             )
-            assert cors.headers["access-control-allow-origin"] == "http://localhost:3000"
+            assert cors.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
     finally:
         app.dependency_overrides.clear()
         asyncio.run(engine.dispose())
