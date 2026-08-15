@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import Brand, BrandSourceMap, Listing, UnmatchedBrand
+from app.domain.listings import slugify
 
 
 class BrandRepository:
@@ -71,7 +72,7 @@ class BrandRepository:
                 brand_id=brand_id,
                 source="grailed",
                 source_designer_name=source_name,
-                source_slug=_slug(source_name),
+                source_slug=slugify(source_name),
                 source_designer_id=None,
                 listings_count=listings_count,
                 match_score=score,
@@ -142,10 +143,3 @@ class BrandRepository:
         await self._session.flush()
         return item
 
-
-def _slug(value: str) -> str:
-    import re
-    import unicodedata
-
-    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")

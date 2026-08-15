@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import msvcrt
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -67,10 +68,21 @@ def resolve_revision(explicit: str | None = None) -> str:
             return revision.strip()
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
+    git_bin = shutil.which("git")
+    if not git_bin and os.name == "nt":
+        for candidate in (
+            Path(r"C:\Program Files\Git\cmd\git.exe"),
+            Path(r"C:\Program Files\Git\bin\git.exe"),
+        ):
+            if candidate.exists():
+                git_bin = str(candidate)
+                break
+    if not git_bin:
+        git_bin = "git"
     try:
         return (
             subprocess.run(
-                ["git", "rev-parse", "HEAD"],
+                [git_bin, "rev-parse", "HEAD"],
                 cwd=PROJECT_ROOT,
                 check=True,
                 capture_output=True,

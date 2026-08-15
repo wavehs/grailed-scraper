@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -21,6 +20,7 @@ from app.db.models import (
     PhysicalItemMember,
 )
 from app.db.session import get_db
+from app.domain.listings import decimal_to_cents
 from app.services.identity import IdentityResolver
 
 router = APIRouter(prefix="/identity", tags=["identity"])
@@ -224,7 +224,7 @@ def _summary(listing: Listing) -> IdentityListingSummary:
         grailed_id=listing.grailed_id,
         title=listing.title,
         status=listing.status,
-        price=_cents(listing.price),
+        price=decimal_to_cents(listing.price),
         brand=listing.brand_name_raw,
         category=listing.category,
         size=listing.size_normalized,
@@ -232,6 +232,3 @@ def _summary(listing: Listing) -> IdentityListingSummary:
         cover_photo_url=listing.cover_photo_url,
     )
 
-
-def _cents(value: Decimal) -> int:
-    return int((value * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))

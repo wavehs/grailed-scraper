@@ -91,6 +91,7 @@ def test_scrapling_log_filter_masks_algolia_keys() -> None:
     )
 
 
+
 @pytest.mark.parametrize(
     "adapter", [_Adapter("httpx", _httpx_transport), _Adapter("scrapling", _scrapling_transport)]
 )

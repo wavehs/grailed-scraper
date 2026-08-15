@@ -40,7 +40,7 @@ class _BoundedClient:
 
 @pytest.mark.asyncio
 async def test_bounded_pagination_stops_and_reports_truncation() -> None:
-    run = PaginationPlanner(_BoundedClient()).fetch(  # type: ignore[arg-type]
+    run = PaginationPlanner(_BoundedClient()).fetch(
         PaginationSpec(
             index_name="live",
             query=AlgoliaQuery(),

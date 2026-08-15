@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, getApi } from '@/lib/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth } from '@/lib/queries';
+import { useApiHealth, useBrandsQuery } from '@/lib/queries';
 import type { Brand, BrandList, Mapping } from '@/lib/types';
 
 export default function BrandsPage() {
@@ -17,10 +17,7 @@ export default function BrandsPage() {
   const [status, setStatus] = useState('all');
   const [aliases, setAliases] = useState<Record<number, string>>({});
   const [notice, setNotice] = useState('');
-  const query = useQuery({
-    queryKey: ['brands'],
-    queryFn: ({ signal }) => getApi<BrandList>('/brands', signal),
-  });
+  const query = useBrandsQuery();
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['brands'] });
   const autoMap = useMutation({
     mutationFn: () => api('/brands/auto-map', 'POST', {}),

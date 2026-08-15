@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -37,6 +36,7 @@ from app.services.parser.planner import FetchPlan, ParserPlanner
 from app.services.parser.runtime import ParserRuntime
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.exceptions import AlgoliaError
+from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.transport.capabilities import probe_capabilities
 from app.services.transport.factory import create_http_transport, create_proxy_manager
@@ -53,14 +53,6 @@ class RunRequest(BaseModel):
     dry_run: bool = False
     confirm_over_budget: bool = False
     confirmation_token: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _Credentials:
-    app_id: str
-    api_key: str
-    algolia_agent: str | None
-    session_headers: tuple[tuple[str, str], ...] = ()
 
 
 class RunSummary(BaseModel):
@@ -595,7 +587,7 @@ async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan
     transport = create_http_transport(settings, proxy=proxy)
     client = AlgoliaClient(
         transport,
-        _Credentials(credential.app_id, credential.api_key, credential.algolia_agent),
+        AlgoliaCredentialsData(credential.app_id, credential.api_key, credential.algolia_agent),
         requests_per_minute=settings.requests_per_minute,
         max_concurrency=settings.max_concurrent_requests,
         max_retries=settings.parser_max_retries,

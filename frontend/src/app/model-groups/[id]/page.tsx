@@ -1,12 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
-import { getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useModelGroupDetailQuery } from '@/lib/queries';
+import { formatCurrency } from '@/lib/utils';
 import type { ListingExample, ModelGroupDetail } from '@/lib/types';
 
 const pretty = (value: unknown) =>
@@ -15,24 +15,12 @@ const pretty = (value: unknown) =>
 export default function ModelDetail() {
   const params = useParams<{ id: string }>();
   const { locale, t } = useI18n();
-  const query = useQuery({
-    queryKey: ['model', params.id],
-    queryFn: ({ signal }) =>
-      getApi<ModelGroupDetail>(`/analytics/model-groups/${params.id}`, signal),
-  });
+  const query = useModelGroupDetailQuery(params.id);
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorState error={query.error} retry={() => query.refetch()} />;
   if (!query.data) return <EmptyState />;
   const data = query.data;
   const m = data.metrics;
-  const money = (cents?: number) =>
-    cents === undefined
-      ? '—'
-      : new Intl.NumberFormat(locale, {
-          style: 'currency',
-          currency: 'USD',
-          maximumFractionDigits: 0,
-        }).format(cents / 100);
   const priceData = data.sold_examples.map((item) => ({
     name: item.sold_at?.slice(0, 10) ?? String(item.id),
     price: item.price / 100,
@@ -60,7 +48,7 @@ export default function ModelDetail() {
         {[
           [t('opportunity'), m.market_opportunity_score],
           [t('liquidity'), m.liquidity_score],
-          [t('medianPrice'), money(m.median_sold_price)],
+          [t('medianPrice'), formatCurrency(m.median_sold_price, locale)],
           [t('confidence'), m.confidence_score],
         ].map(([label, value]) => (
           <Card className="p-4" key={label}>
@@ -136,7 +124,7 @@ export default function ModelDetail() {
             key={String(title)}
             title={String(title)}
             items={items as ListingExample[]}
-            money={money}
+            money={(cents) => formatCurrency(cents, locale)}
             empty={t('noExamples')}
           />
         ))}

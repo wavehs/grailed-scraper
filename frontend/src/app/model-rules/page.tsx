@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth } from '@/lib/queries';
-import type { BrandList, ModelRule, RuleMatch } from '@/lib/types';
+import { useApiHealth, useBrandsQuery, useModelRulesQuery } from '@/lib/queries';
+import type { ModelRule, RuleMatch } from '@/lib/types';
 
 const keywords = (value: string) =>
   value
@@ -23,14 +23,8 @@ export default function ModelRulesPage() {
   const [editing, setEditing] = useState<ModelRule | null>(null);
   const [matches, setMatches] = useState<Record<number, RuleMatch[]>>({});
   const [notice, setNotice] = useState('');
-  const rules = useQuery({
-    queryKey: ['rules'],
-    queryFn: ({ signal }) => getApi<ModelRule[]>('/model-rules', signal),
-  });
-  const brands = useQuery({
-    queryKey: ['brands'],
-    queryFn: ({ signal }) => getApi<BrandList>('/brands', signal),
-  });
+  const rules = useModelRulesQuery();
+  const brands = useBrandsQuery();
   const refresh = () => client.invalidateQueries({ queryKey: ['rules'] });
   const save = useMutation({
     mutationFn: ({ id, body }: { id?: number; body: object }) =>
@@ -52,7 +46,11 @@ export default function ModelRulesPage() {
   });
   const loadMatches = useMutation({
     mutationFn: (id: number) => getApi<RuleMatch[]>(`/model-rules/${id}/matches`),
-    onSuccess: (data, id) => setMatches((old) => ({ ...old, [id]: data })),
+    onSuccess: (data: RuleMatch[], id: number) =>
+      setMatches((old) => ({
+        ...old,
+        [id]: data,
+      })),
   });
   const error = rules.error ?? brands.error ?? save.error ?? remove.error ?? loadMatches.error;
   if (rules.isLoading && brands.isLoading) return <LoadingState />;

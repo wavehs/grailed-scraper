@@ -113,10 +113,10 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
             budget=plan.budget,
             tasks=[item.persisted() for item in plan.tasks],
         )
-        task = (await RunRepository(session).tasks(run.id))[0]
-        task.status = "truncated"
+        persisted_task = (await RunRepository(session).tasks(run.id))[0]
+        persisted_task.status = "truncated"
         run.status = "partial"
         await RunRepository(session).prepare_resume(run.id)
-        assert task.status == "pending"
+        assert persisted_task.status == "pending"
         assert len(plan.digest()) == 64
     await engine.dispose()

@@ -160,3 +160,5 @@ def normalize_brand_name(value: str) -> str:
 def _is_subbrand(brand: Brand, candidate: str) -> bool:
     normalized = normalize_brand_name(candidate)
     return normalized not in {normalize_brand_name(name) for name in (brand.name, *brand.aliases)}
+
+

@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
-import { api, getApi } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth } from '@/lib/queries';
+import { useApiHealth, useSettingsQuery } from '@/lib/queries';
 import type { DiscoveryResponse, ProxyStatus, SettingEntry, SettingsResponse } from '@/lib/types';
 
 type ProxyTest = { enabled: boolean; direct_fallback_allowed: boolean; proxies: ProxyStatus[] };
@@ -27,10 +27,7 @@ export default function SettingsPage() {
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const [notice, setNotice] = useState('');
   const [confirmPlain, setConfirmPlain] = useState(false);
-  const settings = useQuery({
-    queryKey: ['settings'],
-    queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
-  });
+  const settings = useSettingsQuery();
   useEffect(() => {
     if (settings.data)
       setValues(

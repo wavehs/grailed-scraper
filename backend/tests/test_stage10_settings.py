@@ -55,6 +55,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
             unknown = client.patch("/api/settings", json={"algolia_api_key": "secret"})
     finally:
         app.dependency_overrides.clear()
+        asyncio.run(engine.dispose())
 
     assert before.status_code == 200
     assert before.json()["groups"]["parser"]["requests_per_minute"] == {
@@ -68,7 +69,6 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
     }
     assert invalid.status_code == unknown.status_code == 422
     assert "secret" not in after.text.casefold()
-    asyncio.run(engine.dispose())
 
 
 async def test_runtime_captures_settings_snapshot_for_each_started_run(

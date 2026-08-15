@@ -2,28 +2,23 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.errors import ApiError
-from app.db.models import (
-    Listing,
-    ListingPriceHistory,
-    ModelGroup,
-    ModelRule,
-    ParserRun,
-    ScoringSnapshot,
-)
 from app.db.session import get_db
-from app.services.scoring.service import MODEL_VERSION, rule_matches
+from app.domain.listings import decimal_to_cents
+from app.services.analytics.service import (
+    AnalyticsService,
+    BrandAnalyticsData,
+    GroupDetailData,
+    GroupRowData,
+)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -141,6 +136,11 @@ class PriceHistoryResponse(BaseModel):
     data: list[PriceHistoryRow]
 
 
+def _validate_window(window_days: int) -> None:
+    if window_days not in {30, 90}:
+        raise ApiError(422, "invalid_window", "window_days must be 30 or 90")
+
+
 @router.get("/dashboard", response_model=GroupListResponse)
 @router.get("/model-groups", response_model=GroupListResponse)
 async def list_model_groups(
@@ -149,11 +149,12 @@ async def list_model_groups(
     run_id: int | None = None,
 ) -> GroupListResponse:
     _validate_window(window_days)
-    selected_run = await _selected_run(session, window_days, run_id)
+    service = AnalyticsService(session)
+    selected_run = await service.selected_run(window_days, run_id)
     if selected_run is None:
         return GroupListResponse(data=[])
-    rows = await _group_rows(session, selected_run, window_days)
-    return GroupListResponse(data=rows)
+    rows = await service.list_group_rows(selected_run, window_days)
+    return GroupListResponse(data=[_group_row(row) for row in rows])
 
 
 @router.get("/model-groups/{group_id}", response_model=GroupDetail)
@@ -164,42 +165,14 @@ async def model_group_detail(
     run_id: int | None = None,
 ) -> GroupDetail:
     _validate_window(window_days)
-    selected_run = await _selected_run(session, window_days, run_id)
+    service = AnalyticsService(session)
+    selected_run = await service.selected_run(window_days, run_id)
     if selected_run is None:
         raise ApiError(404, "scoring_snapshot_not_found", "Scoring snapshot does not exist")
-    snapshot = await session.scalar(
-        select(ScoringSnapshot)
-        .where(
-            ScoringSnapshot.parser_run_id == selected_run,
-            ScoringSnapshot.model_group_id == group_id,
-            ScoringSnapshot.window_days == window_days,
-            ScoringSnapshot.model_version == MODEL_VERSION,
-        )
-        .options(
-            selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand),
-            selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.rule),
-        )
-    )
-    if snapshot is None:
+    detail = await service.get_group_detail(group_id, selected_run, window_days)
+    if detail is None:
         raise ApiError(404, "scoring_snapshot_not_found", "Scoring snapshot does not exist")
-    examples = await _group_listings(session, snapshot.model_group)
-    sold = [item for item in examples if item.status == "sold"][:20]
-    active = [item for item in examples if item.status == "active"][:20]
-    group = snapshot.model_group
-    return GroupDetail(
-        id=group.id,
-        name=group.name,
-        brand=group.brand.name,
-        category=group.category,
-        group_type=group.group_type,
-        model_version=snapshot.model_version,
-        window_days=snapshot.window_days,
-        run_id=snapshot.parser_run_id,
-        input_digest=snapshot.input_digest,
-        metrics=_metrics(snapshot),
-        sold_examples=[_example(item) for item in sold],
-        active_examples=[_example(item) for item in active],
-    )
+    return _group_detail(detail)
 
 
 @router.get("/brands", response_model=BrandListResponse)
@@ -209,11 +182,12 @@ async def list_brand_analytics(
     run_id: int | None = None,
 ) -> BrandListResponse:
     _validate_window(window_days)
-    selected_run = await _selected_run(session, window_days, run_id)
+    service = AnalyticsService(session)
+    selected_run = await service.selected_run(window_days, run_id)
     if selected_run is None:
         return BrandListResponse(data=[])
-    snapshots = await _snapshots(session, selected_run, window_days)
-    return BrandListResponse(data=_brand_aggregates(snapshots))
+    aggregates = await service.list_brand_analytics(selected_run, window_days)
+    return BrandListResponse(data=[_brand_analytics(item) for item in aggregates])
 
 
 @router.get("/brands/{brand_id}", response_model=BrandDetailResponse)
@@ -224,18 +198,18 @@ async def brand_analytics_detail(
     run_id: int | None = None,
 ) -> BrandDetailResponse:
     _validate_window(window_days)
-    selected_run = await _selected_run(session, window_days, run_id)
+    service = AnalyticsService(session)
+    selected_run = await service.selected_run(window_days, run_id)
     if selected_run is None:
         raise ApiError(404, "brand_analytics_not_found", "Brand analytics do not exist")
-    snapshots = [
-        item
-        for item in await _snapshots(session, selected_run, window_days)
-        if item.brand_id == brand_id
-    ]
-    if not snapshots:
+    result = await service.get_brand_detail(brand_id, selected_run, window_days)
+    if result is None:
         raise ApiError(404, "brand_analytics_not_found", "Brand analytics do not exist")
-    rows = await _group_rows(session, selected_run, window_days, brand_id=brand_id)
-    return BrandDetailResponse(brand=_brand_aggregates(snapshots)[0], groups=rows)
+    brand, groups = result
+    return BrandDetailResponse(
+        brand=_brand_analytics(brand),
+        groups=[_group_row(row) for row in groups],
+    )
 
 
 @router.get("/listings/{listing_id}", response_model=ListingAnalytics)
@@ -243,7 +217,8 @@ async def listing_analytics(
     listing_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> ListingAnalytics:
-    listing = await session.get(Listing, listing_id)
+    service = AnalyticsService(session)
+    listing = await service.get_listing(listing_id)
     if listing is None:
         raise ApiError(404, "listing_not_found", "Listing does not exist")
     return ListingAnalytics(
@@ -255,8 +230,8 @@ async def listing_analytics(
         category=listing.category,
         size=listing.size_normalized,
         condition=listing.condition,
-        price=_cents(listing.price),
-        sold_price=_cents(listing.sold_price) if listing.sold_price is not None else None,
+        price=decimal_to_cents(listing.price),
+        sold_price=decimal_to_cents(listing.sold_price) if listing.sold_price is not None else None,
         likes_count=listing.likes_count,
         days_on_market=listing.days_on_market,
         quality_flags=list(listing.quality_flags),
@@ -270,20 +245,15 @@ async def listing_price_history(
     listing_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> PriceHistoryResponse:
-    if await session.get(Listing, listing_id) is None:
+    service = AnalyticsService(session)
+    rows = await service.list_price_history(listing_id)
+    if rows is None:
         raise ApiError(404, "listing_not_found", "Listing does not exist")
-    rows = list(
-        await session.scalars(
-            select(ListingPriceHistory)
-            .where(ListingPriceHistory.listing_id == listing_id)
-            .order_by(ListingPriceHistory.observed_at)
-        )
-    )
     return PriceHistoryResponse(
         data=[
             PriceHistoryRow(
                 id=row.id,
-                price=_cents(row.price),
+                price=decimal_to_cents(row.price),
                 observed_at=row.observed_at,
                 source_run_id=row.source_run_id,
             )
@@ -292,180 +262,86 @@ async def listing_price_history(
     )
 
 
-async def _selected_run(session: AsyncSession, window_days: int, run_id: int | None) -> int | None:
-    statement = (
-        select(func.max(ScoringSnapshot.parser_run_id))
-        .join(ParserRun, ParserRun.id == ScoringSnapshot.parser_run_id)
-        .where(
-            ScoringSnapshot.window_days == window_days,
-            ScoringSnapshot.model_version == MODEL_VERSION,
-        )
-    )
-    if run_id is not None:
-        statement = statement.where(ScoringSnapshot.parser_run_id == run_id)
-    else:
-        statement = statement.where(ParserRun.status.in_(("completed", "partial")))
-    value = await session.scalar(statement)
-    return int(value) if value is not None else None
-
-
-async def _snapshots(session: AsyncSession, run_id: int, window_days: int) -> list[ScoringSnapshot]:
-    return list(
-        await session.scalars(
-            select(ScoringSnapshot)
-            .where(
-                ScoringSnapshot.parser_run_id == run_id,
-                ScoringSnapshot.window_days == window_days,
-                ScoringSnapshot.model_version == MODEL_VERSION,
-            )
-            .options(selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand))
-            .order_by(ScoringSnapshot.market_opportunity_score.desc(), ScoringSnapshot.id)
-        )
+def _group_row(row: GroupRowData) -> GroupRow:
+    return GroupRow(
+        id=row.id,
+        name=row.name,
+        brand_name=row.brand_name,
+        category=row.category,
+        available_sizes=row.available_sizes,
+        available_conditions=row.available_conditions,
+        sold_count=row.sold_count,
+        active_count=row.active_count,
+        median_sold_price=row.median_sold_price,
+        median_sold_likes_per_day=row.median_sold_likes_per_day,
+        liquidity_score=row.liquidity_score,
+        price_score=row.price_score,
+        confidence_score=row.confidence_score,
+        market_opportunity_score=row.market_opportunity_score,
+        model_version=row.model_version,
+        window_days=row.window_days,
+        run_id=row.run_id,
     )
 
 
-async def _group_rows(
-    session: AsyncSession,
-    run_id: int,
-    window_days: int,
-    *,
-    brand_id: int | None = None,
-) -> list[GroupRow]:
-    snapshots = await _snapshots(session, run_id, window_days)
-    if brand_id is not None:
-        snapshots = [item for item in snapshots if item.brand_id == brand_id]
-    rows: list[GroupRow] = []
-    for snapshot in snapshots:
-        group = snapshot.model_group
-        listings = await _group_listings(session, group)
-        rows.append(
-            GroupRow(
-                id=group.id,
-                name=group.name,
-                brand_name=group.brand.name,
-                category=group.category,
-                available_sizes=sorted(
-                    {item.size_normalized for item in listings if item.size_normalized}
-                ),
-                available_conditions=sorted(
-                    {item.condition for item in listings if item.condition}
-                ),
-                sold_count=snapshot.sold_count,
-                active_count=snapshot.active_count,
-                median_sold_price=(
-                    _cents(snapshot.median_sold_price)
-                    if snapshot.median_sold_price is not None
-                    else None
-                ),
-                median_sold_likes_per_day=snapshot.median_sold_likes_per_day,
-                liquidity_score=snapshot.liquidity_score,
-                price_score=snapshot.price_score,
-                confidence_score=snapshot.confidence_score,
-                market_opportunity_score=snapshot.market_opportunity_score,
-                model_version=snapshot.model_version,
-                window_days=snapshot.window_days,
-                run_id=snapshot.parser_run_id,
-            )
-        )
-    return rows
-
-
-async def _group_listings(session: AsyncSession, group: ModelGroup) -> list[Listing]:
-    listings = list(
-        await session.scalars(
-            select(Listing)
-            .where(Listing.brand_id == group.brand_id)
-            .order_by(Listing.sold_at.desc(), Listing.id)
-        )
-    )
-    rules = list(
-        await session.scalars(
-            select(ModelRule)
-            .where(ModelRule.brand_id == group.brand_id, ModelRule.is_active.is_(True))
-            .order_by(ModelRule.id)
-        )
-    )
-    selected: list[Listing] = []
-    for listing in listings:
-        matching = [rule for rule in rules if rule_matches(rule, listing.title, listing.category)]
-        winner = (
-            min(matching, key=lambda item: (-len(item.include_keywords), item.id))
-            if matching
-            else None
-        )
-        if group.group_type == "rule" and winner is not None and winner.group_id == group.id:
-            selected.append(listing)
-        elif (
-            group.group_type == "fallback"
-            and winner is None
-            and (listing.category or "Uncategorized") == (group.category or "Uncategorized")
-        ):
-            selected.append(listing)
-    return selected
-
-
-def _metrics(snapshot: ScoringSnapshot) -> ScoreMetrics:
-    return ScoreMetrics(
-        sold_count=snapshot.sold_count,
-        active_count=snapshot.active_count,
-        sell_through=snapshot.sell_through,
-        median_sold_price=(
-            _cents(snapshot.median_sold_price) if snapshot.median_sold_price is not None else None
+def _group_detail(detail: GroupDetailData) -> GroupDetail:
+    return GroupDetail(
+        id=detail.id,
+        name=detail.name,
+        brand=detail.brand,
+        category=detail.category,
+        group_type=detail.group_type,
+        model_version=detail.model_version,
+        window_days=detail.window_days,
+        run_id=detail.run_id,
+        input_digest=detail.input_digest,
+        metrics=ScoreMetrics(
+            sold_count=detail.metrics.sold_count,
+            active_count=detail.metrics.active_count,
+            sell_through=detail.metrics.sell_through,
+            median_sold_price=detail.metrics.median_sold_price,
+            median_days_to_sell=detail.metrics.median_days_to_sell,
+            median_sold_likes_per_day=detail.metrics.median_sold_likes_per_day,
+            liquidity_score=detail.metrics.liquidity_score,
+            price_score=detail.metrics.price_score,
+            confidence_score=detail.metrics.confidence_score,
+            market_opportunity_score=detail.metrics.market_opportunity_score,
+            components=detail.metrics.components,
+            confidence_factors=detail.metrics.confidence_factors,
+            quality_summary=detail.metrics.quality_summary,
+            warnings=detail.metrics.warnings,
         ),
-        median_days_to_sell=snapshot.median_days_to_sell,
-        median_sold_likes_per_day=snapshot.median_sold_likes_per_day,
-        liquidity_score=snapshot.liquidity_score,
-        price_score=snapshot.price_score,
-        confidence_score=snapshot.confidence_score,
-        market_opportunity_score=snapshot.market_opportunity_score,
-        components=dict(snapshot.component_breakdown),
-        confidence_factors=dict(snapshot.confidence_factors),
-        quality_summary=dict(snapshot.quality_summary),
-        warnings=list(snapshot.warnings),
-    )
-
-
-def _brand_aggregates(snapshots: list[ScoringSnapshot]) -> list[BrandAnalytics]:
-    grouped: dict[int, list[ScoringSnapshot]] = defaultdict(list)
-    for snapshot in snapshots:
-        grouped[snapshot.brand_id].append(snapshot)
-    result: list[BrandAnalytics] = []
-    for items in grouped.values():
-        count = Decimal(len(items))
-        result.append(
-            BrandAnalytics(
-                id=items[0].brand_id,
-                name=items[0].model_group.brand.name,
-                groups_count=len(items),
-                sold_count=sum(item.sold_count for item in items),
-                active_count=sum(item.active_count for item in items),
-                average_liquidity_score=sum((item.liquidity_score for item in items), Decimal(0))
-                / count,
-                average_confidence_score=sum((item.confidence_score for item in items), Decimal(0))
-                / count,
-                average_market_opportunity_score=sum(
-                    (item.market_opportunity_score for item in items), Decimal(0)
-                )
-                / count,
+        sold_examples=[
+            ListingExample(
+                id=item.id,
+                title=item.title,
+                price=item.price,
+                likes=item.likes,
+                sold_at=item.sold_at,
             )
-        )
-    return sorted(result, key=lambda item: item.average_market_opportunity_score, reverse=True)
-
-
-def _example(listing: Listing) -> ListingExample:
-    return ListingExample(
-        id=listing.id,
-        title=listing.title,
-        price=_cents(listing.sold_price or listing.price),
-        likes=listing.likes_count,
-        sold_at=listing.sold_at,
+            for item in detail.sold_examples
+        ],
+        active_examples=[
+            ListingExample(
+                id=item.id,
+                title=item.title,
+                price=item.price,
+                likes=item.likes,
+                sold_at=item.sold_at,
+            )
+            for item in detail.active_examples
+        ],
     )
 
 
-def _cents(value: Decimal) -> int:
-    return int((value * Decimal(100)).quantize(Decimal(1), ROUND_HALF_UP))
-
-
-def _validate_window(window_days: int) -> None:
-    if window_days not in {30, 90}:
-        raise ApiError(422, "invalid_window", "window_days must be 30 or 90")
+def _brand_analytics(data: BrandAnalyticsData) -> BrandAnalytics:
+    return BrandAnalytics(
+        id=data.id,
+        name=data.name,
+        groups_count=data.groups_count,
+        sold_count=data.sold_count,
+        active_count=data.active_count,
+        average_liquidity_score=data.average_liquidity_score,
+        average_confidence_score=data.average_confidence_score,
+        average_market_opportunity_score=data.average_market_opportunity_score,
+    )

@@ -9,7 +9,8 @@ from typing import ClassVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.repositories.discovery import DiscoveryRepository, as_utc
+from app.domain.listings import to_utc_datetime
+from app.repositories.discovery import DiscoveryRepository
 from app.services.sources.grailed.discovery.client import (
     DiscoveryAlgoliaClient,
     DiscoveryHttpError,
@@ -102,7 +103,7 @@ class DiscoveryService:
             source="grailed",
             status=status,
             method=credential.discovery_method,  # type: ignore[arg-type]
-            discovered_at=as_utc(credential.discovered_at),
+            discovered_at=to_utc_datetime(credential.discovered_at) or now,
             expires_at=expires_at,
             app_id=credential.app_id,
             active_index=credential.active_index,
@@ -213,10 +214,12 @@ class DiscoveryService:
         return response.status_code == 200
 
     def _expiry(self, discovered_at: datetime, valid_until: datetime | None) -> datetime:
-        ttl_expiry = as_utc(discovered_at) + timedelta(hours=self._settings.discovery_ttl_hours)
-        if valid_until is None:
+        discovered_utc = to_utc_datetime(discovered_at) or datetime.now(UTC)
+        ttl_expiry = discovered_utc + timedelta(hours=self._settings.discovery_ttl_hours)
+        valid_utc = to_utc_datetime(valid_until)
+        if valid_utc is None:
             return ttl_expiry
-        return min(ttl_expiry, as_utc(valid_until) - timedelta(minutes=10))
+        return min(ttl_expiry, valid_utc - timedelta(minutes=10))
 
     @staticmethod
     def _allowed_indices(seed: DiscoverySeed, capabilities: KeyCapabilities) -> tuple[str, ...]:
@@ -255,7 +258,7 @@ class DiscoveryService:
             indexes=tuple(str(item) for item in raw_indexes if isinstance(item, str))
             if isinstance(raw_indexes, list)
             else (),
-            valid_until=as_utc(valid_until) if valid_until else None,
+            valid_until=to_utc_datetime(valid_until),
             max_queries_per_ip_per_hour=_optional_int(payload.get("maxQueriesPerIPPerHour")),
             max_hits_per_query=_optional_int(payload.get("maxHitsPerQuery")),
         )

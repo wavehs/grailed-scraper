@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
 import {
   createColumnHelper,
   flexRender,
@@ -13,14 +12,12 @@ import {
 import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
-import { getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useParserHealth } from '@/lib/queries';
-import type { DashboardRow, RunList } from '@/lib/types';
+import { useDashboardQuery, useParserHealth, useRunsQuery } from '@/lib/queries';
+import { formatCurrency, formatPercent } from '@/lib/utils';
+import type { DashboardRow } from '@/lib/types';
 
 const column = createColumnHelper<DashboardRow>();
-const percent = (value?: string | number) =>
-  value === undefined ? '—' : `${(Number(value) * (Number(value) <= 1 ? 100 : 1)).toFixed(1)}%`;
 
 export function Dashboard() {
   const { locale, t } = useI18n();
@@ -30,16 +27,8 @@ export function Dashboard() {
     { id: 'market_opportunity_score', desc: true },
   ]);
   const health = useParserHealth();
-  const runs = useQuery({
-    queryKey: ['runs', 'recent'],
-    queryFn: ({ signal }) => getApi<RunList>('/parser/runs?limit=5', signal),
-    refetchInterval: 5_000,
-  });
-  const analytics = useQuery({
-    queryKey: ['dashboard', windowDays],
-    queryFn: ({ signal }) =>
-      getApi<{ data: DashboardRow[] }>(`/analytics/dashboard?window_days=${windowDays}`, signal),
-  });
+  const runs = useRunsQuery(5);
+  const analytics = useDashboardQuery(windowDays);
   const rows = useMemo(
     () =>
       (analytics.data?.data ?? []).filter((row) =>
@@ -79,14 +68,7 @@ export function Dashboard() {
       column.accessor('active_count', { header: t('active') }),
       column.accessor('median_sold_price', {
         header: t('medianPrice'),
-        cell: (info) =>
-          info.getValue() === undefined
-            ? '—'
-            : new Intl.NumberFormat(locale, {
-                style: 'currency',
-                currency: 'USD',
-                maximumFractionDigits: 0,
-              }).format(info.getValue()! / 100),
+        cell: (info) => formatCurrency(info.getValue(), locale),
       }),
       column.accessor('market_opportunity_score', {
         header: t('opportunity'),
@@ -207,7 +189,7 @@ export function Dashboard() {
                     </td>
                     <td className="p-2">{t(run.mode)}</td>
                     <td className="p-2">{t(run.status)}</td>
-                    <td className="p-2">{percent(run.coverage)}</td>
+                    <td className="p-2">{formatPercent(run.coverage)}</td>
                     <td className="p-2">{run.warnings.length}</td>
                   </tr>
                 ))}

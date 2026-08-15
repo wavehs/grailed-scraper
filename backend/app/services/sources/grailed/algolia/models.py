@@ -7,6 +7,14 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class AlgoliaCredentialsData:
+    app_id: str
+    api_key: str
+    algolia_agent: str | None = None
+    session_headers: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AlgoliaQuery:
     query: str = ""
     hits_per_page: int = 200

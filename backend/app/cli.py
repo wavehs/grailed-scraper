@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,19 +22,11 @@ from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import listing_numeric_filters
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
-from app.services.sources.grailed.algolia.models import AlgoliaQuery
+from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
 from app.services.transport.capabilities import probe_capabilities
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
-
-
-@dataclass(frozen=True, slots=True)
-class _CanaryCredentials:
-    app_id: str
-    api_key: str
-    algolia_agent: str | None = None
-    session_headers: tuple[tuple[str, str], ...] = ()
 
 
 async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, object]:
@@ -52,7 +43,7 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
         await engine.dispose()
         raise RuntimeError("Run discovery refresh before a live canary")
     transport: HttpTransport = create_http_transport(settings)
-    credentials = _CanaryCredentials(cached.app_id, cached.api_key, cached.algolia_agent)
+    credentials = AlgoliaCredentialsData(cached.app_id, cached.api_key, cached.algolia_agent)
     index_name = cached.active_index
     client = AlgoliaClient(
         transport,
@@ -118,7 +109,7 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
     metrics = RunMetrics()
     client = AlgoliaClient(
         transport,
-        _CanaryCredentials(cached.app_id, cached.api_key, cached.algolia_agent),
+        AlgoliaCredentialsData(cached.app_id, cached.api_key, cached.algolia_agent),
         requests_per_minute=settings.requests_per_minute,
         max_concurrency=min(settings.max_concurrent_requests, 3),
         max_retries=settings.parser_max_retries,

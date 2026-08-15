@@ -22,6 +22,7 @@ from app.db.session import get_db
 from app.repositories.brands import BrandRepository
 from app.services.normalization.brands import BrandMappingService
 from app.services.sources.grailed.algolia.client import AlgoliaClient
+from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
@@ -73,14 +74,6 @@ class MappingDecisionRequest(BaseModel):
     action: Literal["confirm", "reject"]
 
 
-@dataclass(frozen=True, slots=True)
-class _Credentials:
-    app_id: str
-    api_key: str
-    algolia_agent: str | None = None
-    session_headers: tuple[tuple[str, str], ...] = ()
-
-
 @dataclass(slots=True)
 class BrandServiceDependency:
     service: BrandMappingService
@@ -112,7 +105,7 @@ async def get_brand_service(
             "discovery_required",
             "Refresh Grailed discovery before auto-mapping brands",
         )
-    credentials = _Credentials(cached.app_id, cached.api_key, cached.algolia_agent)
+    credentials = AlgoliaCredentialsData(cached.app_id, cached.api_key, cached.algolia_agent)
     active_index = cached.active_index
     client = AlgoliaClient(
         transport,

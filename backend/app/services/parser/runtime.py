@@ -28,7 +28,7 @@ from app.services.parser.observability import RunMetrics
 from app.services.scoring import OpportunityScoringService, ScoringService
 from app.services.sources.base.models import CoverageReport
 from app.services.sources.grailed.algolia.client import AlgoliaClient
-from app.services.sources.grailed.algolia.models import AlgoliaQuery
+from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
 from app.services.sources.grailed.browser.factory import create_browser_session_pool
 from app.services.sources.grailed.browser.inpage_client import BrowserAlgoliaClient
@@ -38,14 +38,6 @@ from app.services.sources.grailed.dom.robots import RobotsPolicy
 from app.services.transport.factory import create_http_transport, create_proxy_manager
 from app.services.transport.protocols import BrowserSession, HttpTransport
 from app.services.transport.proxy_manager import ProxyManager
-
-
-@dataclass(frozen=True, slots=True)
-class _Credentials:
-    app_id: str
-    api_key: str
-    algolia_agent: str | None
-    session_headers: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(slots=True)
@@ -470,9 +462,11 @@ class ParserRuntime:
         proxy_manager = create_proxy_manager(settings)
         proxy = proxy_manager.select(f"parser-run-{run_id}") if settings.proxy_enabled else None
         transport = create_http_transport(settings, proxy=proxy)
-        seed = _Credentials(credential.app_id, credential.api_key, credential.algolia_agent)
+        seed = AlgoliaCredentialsData(
+            credential.app_id, credential.api_key, credential.algolia_agent
+        )
 
-        async def refresh_credentials() -> _Credentials:
+        async def refresh_credentials() -> AlgoliaCredentialsData:
             async with self._sessions() as session:
                 service = DiscoveryService(session, settings, transport, browser)
                 await service.invalidate_and_refresh()
@@ -481,7 +475,9 @@ class ParserRuntime:
                 )
                 if refreshed is None:
                     raise RuntimeError("discovery_required")
-                return _Credentials(refreshed.app_id, refreshed.api_key, refreshed.algolia_agent)
+                return AlgoliaCredentialsData(
+                    refreshed.app_id, refreshed.api_key, refreshed.algolia_agent
+                )
 
         browser = create_browser_session_pool(settings, proxy=proxy)
         t1 = AlgoliaClient(

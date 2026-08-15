@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Listing, ParserWatermark
+from app.domain.listings import to_utc_datetime
 
 
 class LifecycleRepository:
@@ -79,7 +80,7 @@ class LifecycleRepository:
         observed = now or datetime.now(UTC)
         pending = removed = 0
         for listing in listings:
-            checked_at = _aware(listing.removed_checked_at)
+            checked_at = to_utc_datetime(listing.removed_checked_at)
             if listing.status == "active":
                 listing.status = "removed_pending"
                 listing.removed_checked_at = observed
@@ -94,8 +95,3 @@ class LifecycleRepository:
         await self._session.flush()
         return pending, removed
 
-
-def _aware(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

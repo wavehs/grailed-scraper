@@ -107,7 +107,7 @@ class DomExtractor:
             "url": value.get("url", ""),
         }
         try:
-            hit["price_i"] = int(Decimal(str(offers.get("price"))) * 100)
+            hit["price_i"] = int(Decimal(str(offers.get("price"))))
         except (InvalidOperation, TypeError):
             pass
         return hit
@@ -128,7 +128,7 @@ class DomExtractor:
             "title": title,
             "url": urljoin(base_url, href or f"/listings/{raw_id}"),
         }
-        price = _price_cents(price_attr, card.get_all_text())
+        price = _price_amount(price_attr, card.get_all_text())
         if price is not None:
             hit["price_i"] = price
         designer = _first(card.css(".designer::text, [data-designer]::text").getall())
@@ -147,13 +147,15 @@ def _first(values: Iterable[str]) -> str | None:
     return next((value.strip() for value in values if value.strip()), None)
 
 
-def _price_cents(attribute: str | None, text: str) -> int | None:
+def _price_amount(attribute: str | None, text: str) -> int | None:
     if attribute and attribute.isdecimal():
-        return int(attribute)
+        cents = int(attribute)
+        return cents // 100 if cents >= 100 else cents
     match = _PRICE_RE.search(text)
     if match is None:
         return None
     try:
-        return int(Decimal(match.group(1).replace(",", "")) * 100)
+        return int(Decimal(match.group(1).replace(",", "")))
     except InvalidOperation:
         return None
+

@@ -9,12 +9,11 @@ import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth, useParserHealth } from '@/lib/queries';
+import { useApiHealth, useBrandsQuery, useParserHealth, useRunsQuery } from '@/lib/queries';
+import { formatPercent } from '@/lib/utils';
 import type {
-  BrandList,
   DiscoveryResponse,
   FetchPlan,
-  RunList,
   RunProgress,
   RunReport,
   RunStartResponse,
@@ -27,7 +26,6 @@ const blockingReasons = new Set([
   'credentials_missing',
   'schema_missing',
 ]);
-const pct = (value?: string | null) => (value ? `${(Number(value) * 100).toFixed(1)}%` : '—');
 
 export default function ParserRunsPage() {
   const { t } = useI18n();
@@ -66,16 +64,10 @@ export default function ParserRunsPage() {
     window.addEventListener('keydown', close);
     return () => window.removeEventListener('keydown', close);
   }, [selectedRun]);
-  const brands = useQuery({
-    queryKey: ['brands'],
-    queryFn: ({ signal }) => getApi<BrandList>('/brands', signal),
-  });
-  const runs = useQuery({
-    queryKey: ['runs'],
-    queryFn: ({ signal }) => getApi<RunList>('/parser/runs?limit=50', signal),
-    refetchInterval: (query) =>
-      query.state.data?.data.some((run) => !terminal.has(run.status)) ? 2_000 : false,
-  });
+  const brands = useBrandsQuery();
+  const runs = useRunsQuery(50, 0, (query: any) =>
+    query.state.data?.data.some((run: any) => !terminal.has(run.status)) ? 2_000 : false,
+  );
   const selectedSummary = runs.data?.data.find((run) => run.id === selectedRun);
   const progress = useQuery({
     queryKey: ['run-progress', selectedRun],
@@ -343,7 +335,7 @@ export default function ParserRunsPage() {
                 <td className="p-3">{t(run.mode)}</td>
                 <td className="p-3">{t(run.status)}</td>
                 <td className="p-3">{t(run.phase)}</td>
-                <td className="p-3">{pct(run.coverage)}</td>
+                <td className="p-3">{formatPercent(run.coverage)}</td>
                 <td className="p-3">{run.requests_made}</td>
                 <td className="p-3">
                   <span className="flex flex-wrap gap-2">
@@ -437,7 +429,7 @@ export default function ParserRunsPage() {
                     </div>
                     <div>
                       <dt>{t('coverage')}</dt>
-                      <dd className="font-semibold">{pct(progress.data.coverage)}</dd>
+                      <dd className="font-semibold">{formatPercent(progress.data.coverage)}</dd>
                     </div>
                   </dl>
                   {progress.data.current_brand && (
@@ -509,7 +501,7 @@ export default function ParserRunsPage() {
                           <td className="p-2">
                             {task.hits_collected}/{task.expected_hits ?? '—'}
                           </td>
-                          <td className="p-2">{pct(task.coverage)}</td>
+                          <td className="p-2">{formatPercent(task.coverage)}</td>
                           <td className="p-2">{task.tier ?? '—'}</td>
                           <td className="p-2 text-red-800">{task.error ?? '—'}</td>
                         </tr>

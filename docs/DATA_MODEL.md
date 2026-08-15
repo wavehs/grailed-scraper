@@ -52,7 +52,7 @@ conditions:
 
 ### 9.2. `ListingData` (pydantic v2)
 
-```
+```python
 source: str = "grailed"
 grailed_id: int
 status: Literal["active","sold","removed"]
@@ -95,15 +95,15 @@ schema_version: int
 
 ### 9.3. Нормализации
 
-**Цена.** Фактическая live schema 2026-08-14 хранит `price` и fallback `price_i` в целых единицах валюты, не в центах; `sold_price` хранится отдельно. Все три поля читаются через `Decimal(str(value))`, **никогда через float**. Валюта ≠ USD → конверсия по курсу на `sold_at` (кэш курсов, таблица `fx_rates`, дневная гранулярность); `fx_rate` сохраняется, чтобы результат был воспроизводим.
+**Цена.** Фактическая live schema 2026-08-14 хранит `price` и fallback `price_i` в целых единицах валюты, не в центах; `sold_price` хранится отдельно. Все три поля читаются через `Decimal(str(value))`, **никогда через float**. Конверсия денежных сумм в центы для API/UI выполняется строго через `decimal_to_cents` в `app/domain/listings.py`. Валюта ≠ USD → конверсия по курсу на `sold_at` (кэш курсов, таблица `fx_rates`, дневная гранулярность); `fx_rate` сохраняется, чтобы результат был воспроизводим.
 
-**Время.** Unix seconds vs milliseconds автоопределяются: `> 10^11` → ms. Всё в UTC, timezone-aware. Отсутствует `created_at` → `first_seen_at`.
+**Время.** Unix seconds vs milliseconds автоопределяются: `> 10^11` → ms. Всё в UTC, timezone-aware (канонический хелпер `to_utc_datetime` в `app/domain/listings.py`). Отсутствует `created_at` → `first_seen_at`.
 
 **Sold без `sold_at`.** Fallback-цепочка: `sold_at → updated_at → last_seen_at`. Поле `sold_at_is_estimated=true` → такой листинг **исключается из расчёта `days_to_sell`**, но участвует в объёме продаж.
 
 **Размер.** Таблица нормализации по категориям (tops: XS/S/M/L/XL; bottoms: waist 28–40; footwear: US/EU/UK/JP → US). Не распознан → `size_normalized=None`, `size_raw` сохраняется.
 
-**Бренд.** `brand_name_raw` → matching через `brand_source_map` (точное совпадение) → aliases → fuzzy (rapidfuzz, порог 92) → `unmatched` + запись в `unmatched_brands` для ручного разбора.
+**Бренд.** `brand_name_raw` → matching через `brand_source_map` (точное совпадение) → aliases → fuzzy (rapidfuzz, порог 92) → `unmatched` + запись в `unmatched_brands` для ручного разбора. Канонический slug формируется через `slugify` в `app/domain/listings.py`.
 
 ### 9.4. Data Quality (`quality.py`)
 

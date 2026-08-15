@@ -25,6 +25,7 @@ from app.services.sources.grailed.algolia.models import (
     AlgoliaQuery,
     AlgoliaRequest,
     FacetValue,
+    _integer,
 )
 from app.services.sources.grailed.algolia.query_builder import build_params
 from app.services.transport.circuit_breaker import CircuitBreaker
@@ -351,7 +352,3 @@ def raise_for_status(status_code: int, operation: str) -> None:
     else:
         error_type = AlgoliaError
     raise error_type(operation, status_code)
-
-
-def _integer(value: object, default: int) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) else default

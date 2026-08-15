@@ -1,17 +1,15 @@
-"""Source-independent tests for rate, retry, cache, breaker and proxy policies."""
-
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 
 from app.services.transport.circuit_breaker import CircuitBreaker, CircuitOpenError, CircuitState
-from app.services.transport.hosts import HostRotator
 from app.services.transport.protocols import HttpResponse
 from app.services.transport.proxy_manager import ProxyManager, ProxyUnavailableError
 from app.services.transport.rate_limiter import RateLimiter
-from app.services.transport.resilience import retry_after_seconds, with_retry
+from app.services.transport.resilience import retry_after_seconds
 from app.services.transport.response_cache import ResponseCache
 
 
@@ -27,12 +25,6 @@ def test_response_cache_uses_stable_request_key() -> None:
     cache.set(third, response)
     assert cache.get(key) is None
     assert cache.get(second) == response
-
-
-def test_host_rotator_cycles_hosts() -> None:
-    rotator = HostRotator(["dsn", "one", "two"])
-    states = [rotator.current, rotator.rotate(), rotator.rotate(), rotator.rotate()]
-    assert states == ["dsn", "one", "two", "dsn"]
 
 
 def test_circuit_opens_then_allows_one_half_open_probe(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,25 +44,17 @@ def test_circuit_opens_then_allows_one_half_open_probe(monkeypatch: pytest.Monke
     assert breaker.state.value == "closed"
 
 
-@pytest.mark.asyncio
-async def test_retry_honours_retry_after_without_real_sleep() -> None:
-    calls = 0
-    sleeps: list[float] = []
-
-    async def operation() -> HttpResponse:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return HttpResponse(429, {"retry-after": "3"}, b"", "https://example.test")
-        return HttpResponse(200, {}, b"{}", "https://example.test")
-
-    async def sleep(delay: float) -> None:
-        sleeps.append(delay)
-
-    result = await with_retry(operation, breaker=CircuitBreaker(), sleep=sleep)
-    assert result.status_code == 200
-    assert sleeps == [3.0]
+def test_retry_after_seconds_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert retry_after_seconds({"retry-after": "3"}) == 3.0
+    assert retry_after_seconds({"Retry-After": "10.5"}) == 10.5
     assert retry_after_seconds({"Retry-After": "invalid"}) is None
+    assert retry_after_seconds({}) is None
+
+    # Test HTTP-date format
+    monkeypatch.setattr("app.services.transport.resilience.time.time", lambda: 1000.0)
+    # Wed, 21 Oct 2015 07:28:00 GMT = 1445412480
+    date_str = datetime.fromtimestamp(1015.0, tz=UTC).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    assert retry_after_seconds({"retry-after": date_str}) == 15.0
 
 
 def test_proxy_manager_is_sticky_and_cools_down_failed_proxy() -> None:

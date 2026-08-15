@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.privacy import seller_identity
-from app.domain.listings import FetchTier, ListingData, ListingStatus
+from app.domain.listings import FetchTier, ListingData, ListingStatus, to_utc_datetime
 from app.services.normalization.fx import FxRateProvider, StaticFxRateProvider
 from app.services.normalization.mapping import SourceMappingConfig
 from app.services.sources.base.models import RawHit
@@ -157,7 +157,7 @@ class ListingNormalizer:
         )
         if cover and cover not in photo_urls:
             photo_urls.insert(0, cover)
-        first_seen = _utc(context.observed_at)
+        first_seen = to_utc_datetime(context.observed_at) or context.observed_at
         normalized_created = created_at or first_seen
         days_on_market = None
         if sold_at is not None and not sold_at_is_estimated:
@@ -270,7 +270,7 @@ def _timestamp(value: Any) -> datetime | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, datetime):
-        return _utc(value)
+        return to_utc_datetime(value)
     if isinstance(value, (int, float, Decimal)):
         numeric = Decimal(str(value))
         if numeric <= 0:
@@ -283,17 +283,13 @@ def _timestamp(value: Any) -> datetime | None:
             return None
     if isinstance(value, str):
         try:
-            return _utc(isoparse(value))
+            return to_utc_datetime(isoparse(value))
         except (TypeError, ValueError, OverflowError):
             try:
                 return _timestamp(Decimal(value))
             except InvalidOperation:
                 return None
     return None
-
-
-def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _text(value: Any) -> str | None:

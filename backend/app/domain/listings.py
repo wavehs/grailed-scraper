@@ -1,9 +1,7 @@
-"""Validated, source-agnostic listing payloads and lifecycle helpers."""
-
-from __future__ import annotations
-
-from datetime import datetime, timedelta
-from decimal import Decimal
+import re
+import unicodedata
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -104,3 +102,23 @@ def resolve_removed_pending(
     if status == "removed_pending" and checked_at is not None and now - checked_at >= grace_period:
         return "removed"
     return status
+
+
+def to_utc_datetime(value: datetime | None) -> datetime | None:
+    """Ensure a datetime is timezone-aware and set to UTC."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def decimal_to_cents(value: Decimal) -> int:
+    """Convert an exact Decimal dollar amount to integer cents."""
+    return int((value * Decimal(100)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def slugify(value: str) -> str:
+    """Produce a deterministic URL/database-safe ASCII slug."""
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    cleaned = re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")
+    return cleaned or "unknown"
+

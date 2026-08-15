@@ -28,6 +28,7 @@ SENSITIVE_KEY_PARTS = (
     "seller_identity_salt",
 )
 _BEARER = re.compile(r"(?i)\b(Bearer|Basic)\s+[^\s,;]+")
+_KEY_PATH = re.compile(r"(?i)(/1/keys/)[^?\s>]+")
 _ALGOLIA_QUERY = re.compile(r"(?i)(x-algolia-api-key=)([^&#\s]+)")
 _URL = re.compile(r"https?://[^\s\"']+")
 _DEFAULT_FIELDS: dict[str, object] = {
@@ -73,6 +74,7 @@ def _redact_url(value: str) -> str:
 
 def redact_text(value: str) -> str:
     value = _BEARER.sub(lambda match: f"{match.group(1)} ****", value)
+    value = _KEY_PATH.sub(r"\1****", value)
     value = _ALGOLIA_QUERY.sub(lambda match: f"{match.group(1)}****", value)
     return _URL.sub(lambda match: _redact_url(match.group(0)), value)
 
