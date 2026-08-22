@@ -2,9 +2,21 @@
 
 Live-only parser for Grailed listings. The runtime has no mock, replay, synthetic-source, or offline acceptance mode.
 
-## Setup
+## Quick Start (Automated 1-Click Setup)
 
-Requirements: Python 3.11.9, Node.js 20.19.5, pnpm 9.15.9.
+Requirements: Python 3.11+, Node.js 20+, pnpm 9+.
+
+### Windows
+1. Run `setup.bat` (or in PowerShell: `.\scripts\install.ps1`).
+2. Run `start.bat` (or `.\scripts\start.ps1`) to launch the interactive control center.
+
+### Linux / macOS
+1. Run `bash scripts/install.sh`.
+2. Run `./scripts/start.sh` (or double-click `start.command` on macOS).
+
+---
+
+## Manual Setup (Alternative)
 
 ```powershell
 Copy-Item .env.example .env
