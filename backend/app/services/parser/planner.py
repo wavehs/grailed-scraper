@@ -21,7 +21,8 @@ from app.services.sources.grailed.algolia.models import AlgoliaPage, AlgoliaQuer
 
 
 def listing_numeric_filters(now: datetime | None = None) -> tuple[str, ...]:
-    created_after = int(((now or datetime.now(UTC)) - timedelta(days=120)).timestamp())
+    reference = (now or datetime.now(UTC)).replace(minute=0, second=0, microsecond=0)
+    created_after = int((reference - timedelta(days=120)).timestamp())
     return (f"created_at_i>={created_after}", "price_i>=400", "price_i<=5000")
 
 

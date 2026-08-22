@@ -1,11 +1,32 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  Check,
+  CheckCircle2,
+  Compass,
+  GitBranch,
+  Play,
+  PlayCircle,
+  RefreshCw,
+  Rocket,
+  TestTube,
+  XCircle,
+} from 'lucide-react';
+import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
+import { Modal } from '@/components/ui/modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -27,6 +48,52 @@ const blockingReasons = new Set([
   'schema_missing',
 ]);
 
+/* ── Stepper step ── */
+function WorkflowStep({
+  step,
+  title,
+  subtitle,
+  status,
+  isLast,
+  children,
+}: {
+  step: number;
+  title: string;
+  subtitle: string;
+  status: 'done' | 'active' | 'pending';
+  isLast?: boolean;
+  children?: React.ReactNode;
+}) {
+  const colors = {
+    done: 'border-[#34d399] bg-[rgba(16,185,129,0.12)] text-[#34d399]',
+    active: 'border-[#818cf8] bg-[rgba(99,102,241,0.12)] text-[#818cf8]',
+    pending: 'border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-muted)]',
+  };
+  const lineColor = {
+    done: 'bg-[#34d399]',
+    active: 'bg-[#818cf8]',
+    pending: 'bg-[var(--border-subtle)]',
+  };
+
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${colors[status]}`}
+        >
+          {status === 'done' ? <Check size={14} /> : step}
+        </div>
+        {!isLast && <div className={`mt-1 h-full w-0.5 ${lineColor[status]}`} />}
+      </div>
+      <div className="pb-6">
+        <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+        <p className="text-xs text-[var(--text-muted)]">{subtitle}</p>
+        {children && <div className="mt-2">{children}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function ParserRunsPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
@@ -38,32 +105,15 @@ export default function ParserRunsPage() {
   const [plan, setPlan] = useState<FetchPlan | null>(null);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
   const [notice, setNotice] = useState('');
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const openRun = (runId: number) => {
-    returnFocus.current = document.activeElement as HTMLElement | null;
-    setSelectedRun(runId);
-  };
-  const closeRun = () => {
-    setSelectedRun(null);
-    window.setTimeout(() => returnFocus.current?.focus(), 0);
-  };
+
+  const openRun = (runId: number) => setSelectedRun(runId);
+  const closeRun = () => setSelectedRun(null);
+
   useEffect(() => {
     const value = Number(searchParams.get('run'));
     if (value) setSelectedRun(value);
   }, [searchParams]);
-  useEffect(() => {
-    if (selectedRun === null) return;
-    closeButton.current?.focus();
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSelectedRun(null);
-        window.setTimeout(() => returnFocus.current?.focus(), 0);
-      }
-    };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [selectedRun]);
+
   const brands = useBrandsQuery();
   const runs = useRunsQuery(50, 0, (query: any) =>
     query.state.data?.data.some((run: any) => !terminal.has(run.status)) ? 2_000 : false,
@@ -149,14 +199,17 @@ export default function ParserRunsPage() {
     progress.error ??
     report.error;
   if (brands.isLoading && runs.isLoading) return <LoadingState />;
+
+  const discoveryStatus = parserHealth.data?.discovery?.status ?? 'unavailable';
+  const discoveryDone = ['ready', 'completed', 'stale'].includes(discoveryStatus);
+  const step1Status = discoveryDone ? 'done' : 'active';
+  const step2Status = discoveryDone ? (mappingsReady ? 'done' : 'active') : 'pending';
+  const step3Status = plan ? 'done' : step2Status === 'done' ? 'active' : 'pending';
+  const step4Status = plan ? 'active' : 'pending';
+
   return (
     <section className="space-y-6" aria-labelledby="runs-heading">
-      <div>
-        <h1 id="runs-heading" className="text-2xl font-semibold">
-          {t('runParser')}
-        </h1>
-        <p className="text-slate-600">{t('runIntro')}</p>
-      </div>
+      <PageHeader title={t('runParser')} description={t('runIntro')} />
       <Notice>{notice}</Notice>
       {error && (
         <ErrorState
@@ -167,16 +220,23 @@ export default function ParserRunsPage() {
           }}
         />
       )}
-      <Card className="p-4">
-        <h2 className="font-semibold">{t('liveWorkflow')}</h2>
-        <ol className="mt-3 grid gap-3 md:grid-cols-4">
-          <li className="rounded border p-3">
-            <p className="font-medium">1. {t('discovery')}</p>
-            <p className="text-sm text-slate-600">
-              {t(parserHealth.data?.discovery?.status ?? 'unavailable')}
-            </p>
+
+      {/* Workflow Stepper */}
+      <Card className="p-5">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {t('liveWorkflow')}
+        </h2>
+        <div className="grid gap-0 md:grid-cols-4">
+          <WorkflowStep
+            step={1}
+            title={t('discovery')}
+            subtitle={t(discoveryStatus)}
+            status={step1Status}
+          >
             <Button
-              className="mt-2"
+              variant="secondary"
+              size="sm"
+              icon={<Compass size={14} />}
               disabled={
                 !apiHealth.writable ||
                 discovery.isPending ||
@@ -186,35 +246,49 @@ export default function ParserRunsPage() {
             >
               {discovery.isPending ? t('refreshing') : t('refreshDiscovery')}
             </Button>
-          </li>
-          <li className="rounded border p-3">
-            <p className="font-medium">2. {t('brandMapping')}</p>
-            <p className="text-sm text-slate-600">
-              {mappingsReady ? t('ready') : t('incomplete')}
-            </p>
-            <Link className="mt-3 inline-block underline" href="/brands">
-              {t('reviewMappings')}
+          </WorkflowStep>
+          <WorkflowStep
+            step={2}
+            title={t('brandMapping')}
+            subtitle={mappingsReady ? t('ready') : t('incomplete')}
+            status={step2Status}
+          >
+            <Link
+              className="inline-flex items-center gap-1 text-xs text-[#818cf8] hover:text-[#a5b4fc] transition-colors"
+              href="/brands"
+            >
+              {t('reviewMappings')} <ArrowRight size={12} />
             </Link>
-          </li>
-          <li className="rounded border p-3">
-            <p className="font-medium">3. {t('dryRun')}</p>
-            <p className="text-sm text-slate-600">{plan ? t('completed') : t('pending')}</p>
-          </li>
-          <li className="rounded border p-3">
-            <p className="font-medium">4. {t('confirmation')}</p>
-            <p className="text-sm text-slate-600">{plan ? t('ready') : t('blocked')}</p>
-          </li>
-        </ol>
+          </WorkflowStep>
+          <WorkflowStep
+            step={3}
+            title={t('dryRun')}
+            subtitle={plan ? t('completed') : t('pending')}
+            status={step3Status}
+          />
+          <WorkflowStep
+            step={4}
+            title={t('confirmation')}
+            subtitle={plan ? t('ready') : t('blocked')}
+            status={step4Status}
+            isLast
+          />
+        </div>
+
         {blockers.length > 0 && (
-          <ul className="mt-3 list-disc pl-5 text-red-800" role="alert">
+          <div className="mt-3 rounded-lg border border-[rgba(244,63,94,0.2)] bg-[rgba(244,63,94,0.06)] p-3" role="alert">
             {blockers.map((reason) => (
-              <li key={reason}>{t(reason)}</li>
+              <p key={reason} className="flex items-center gap-2 text-xs text-[#fb7185]">
+                <XCircle size={14} /> {t(reason)}
+              </p>
             ))}
-          </ul>
+          </div>
         )}
         {!mappingsReady && <Notice error>{t('brand_mapping_required')}</Notice>}
       </Card>
-      <Card className="p-4">
+
+      {/* Config form */}
+      <Card className="p-5">
         <form
           className="grid gap-4 lg:grid-cols-[220px_1fr_auto]"
           onSubmit={(event) => {
@@ -222,10 +296,12 @@ export default function ParserRunsPage() {
             start.mutate({ dry_run: true });
           }}
         >
-          <label className="text-sm font-medium">
-            {t('mode')}
+          <label className="text-sm">
+            <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('mode')}
+            </span>
             <select
-              className="mt-1 w-full rounded border px-3"
+              className="mt-1.5 w-full rounded-lg"
               value={mode}
               onChange={(event) => {
                 setMode(event.target.value as typeof mode);
@@ -238,12 +314,21 @@ export default function ParserRunsPage() {
             </select>
           </label>
           <fieldset>
-            <legend className="text-sm font-medium">{t('selectedBrands')}</legend>
-            <div className="mt-1 flex max-h-32 flex-wrap gap-2 overflow-auto">
+            <legend className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('selectedBrands')}
+            </legend>
+            <div className="mt-1.5 flex max-h-32 flex-wrap gap-2 overflow-auto">
               {brands.data?.data.map((brand) => (
-                <label className="rounded border px-2 py-1 text-sm" key={brand.id}>
+                <label
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all ${
+                    brandIds.includes(brand.id)
+                      ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.1)] text-[#818cf8]'
+                      : 'border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)]'
+                  }`}
+                  key={brand.id}
+                >
                   <input
-                    className="mr-1"
+                    className="sr-only"
                     type="checkbox"
                     checked={brandIds.includes(brand.id)}
                     onChange={(event) =>
@@ -261,7 +346,7 @@ export default function ParserRunsPage() {
             </div>
             <button
               type="button"
-              className="mt-2 text-sm underline"
+              className="mt-2 text-xs text-[#818cf8] hover:text-[#a5b4fc] transition-colors cursor-pointer"
               onClick={() => {
                 setBrandIds([]);
                 setPlan(null);
@@ -270,38 +355,41 @@ export default function ParserRunsPage() {
               {t('allBrands')}
             </button>
           </fieldset>
-          <Button className="self-end" type="submit" disabled={!canPlan || start.isPending}>
+          <Button
+            className="self-end"
+            type="submit"
+            icon={<TestTube size={16} />}
+            disabled={!canPlan || start.isPending}
+          >
             {start.isPending ? t('planning') : t('dryRun')}
           </Button>
         </form>
       </Card>
+
+      {/* Budget preview */}
       {plan && (
-        <Card className="p-4">
-          <h2 className="font-semibold">{t('budget')}</h2>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div>
-              <dt className="text-sm text-slate-600">{t('estimatedRequests')}</dt>
-              <dd className="text-xl font-bold">{String(plan.budget.estimated_requests)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-600">{t('estimatedHits')}</dt>
-              <dd className="text-xl font-bold">{String(plan.budget.estimated_hits)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-600">{t('limit')}</dt>
-              <dd className="text-xl font-bold">{String(plan.budget.limit)}</dd>
-            </div>
-          </dl>
+        <Card className="p-5 animate-slide-up">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            {t('budget')}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard label={t('estimatedRequests')} value={String(plan.budget.estimated_requests)} />
+            <StatCard label={t('estimatedHits')} value={String(plan.budget.estimated_hits)} />
+            <StatCard label={t('limit')} value={String(plan.budget.limit)} />
+          </div>
           {overLimit && <Notice error>{t('overBudget')}</Notice>}
           {plan.warnings.length > 0 && (
-            <ul className="mt-3 list-disc pl-5 text-amber-800">
+            <ul className="mt-3 space-y-1">
               {plan.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
+                <li key={warning} className="flex items-center gap-2 text-xs text-[#fbbf24]">
+                  <AlertTriangle size={14} /> {warning}
+                </li>
               ))}
             </ul>
           )}
           <Button
             className="mt-4"
+            icon={<Rocket size={16} />}
             disabled={!canPlan || start.isPending}
             onClick={() =>
               start.mutate({
@@ -315,205 +403,190 @@ export default function ParserRunsPage() {
           </Button>
         </Card>
       )}
-      <Card className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="p-3">ID</th>
-              <th className="p-3">{t('mode')}</th>
-              <th className="p-3">{t('status')}</th>
-              <th className="p-3">{t('phase')}</th>
-              <th className="p-3">{t('coverage')}</th>
-              <th className="p-3">{t('requests')}</th>
-              <th className="p-3">{t('actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.data?.data.map((run) => (
-              <tr className="border-t" key={run.id}>
-                <td className="p-3">#{run.id}</td>
-                <td className="p-3">{t(run.mode)}</td>
-                <td className="p-3">{t(run.status)}</td>
-                <td className="p-3">{t(run.phase)}</td>
-                <td className="p-3">{formatPercent(run.coverage)}</td>
-                <td className="p-3">{run.requests_made}</td>
-                <td className="p-3">
-                  <span className="flex flex-wrap gap-2">
-                    <button className="underline" onClick={() => openRun(run.id)}>
-                      {t('progress')}
-                    </button>
-                    {['pending', 'running'].includes(run.status) && (
-                      <button
-                        className="text-red-700 underline"
-                        disabled={!apiHealth.writable || control.isPending}
-                        onClick={() => control.mutate({ id: run.id, action: 'cancel' })}
-                      >
-                        {t('cancel')}
-                      </button>
-                    )}
-                    {['interrupted', 'cancelled', 'failed', 'partial'].includes(run.status) && (
-                      <button
-                        className="underline"
-                        disabled={!canPlan || control.isPending}
-                        onClick={() => control.mutate({ id: run.id, action: 'resume' })}
-                      >
-                        {t('resume')}
-                      </button>
-                    )}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!runs.data?.data.length && <EmptyState message={t('noRuns')} />}
-      </Card>
-      {selectedRun !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="run-detail-title"
-          className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-4"
-          onKeyDown={(event) => {
-            if (event.key === 'Tab') {
-              event.preventDefault();
-              closeButton.current?.focus();
-            }
-          }}
-        >
-          <Card className="mx-auto mt-8 max-w-5xl p-5">
-            <div className="flex justify-between gap-3">
-              <h2 id="run-detail-title" className="text-xl font-semibold">
-                {t('run')} #{selectedRun}
-              </h2>
-              <Button ref={closeButton} onClick={closeRun}>
-                {t('close')}
-              </Button>
-            </div>
-            {progress.isLoading ? (
-              <LoadingState />
-            ) : (
-              progress.data && (
-                <div className="mt-5 space-y-4">
-                  <div
-                    className="h-3 overflow-hidden rounded bg-slate-200"
-                    role="progressbar"
-                    aria-valuenow={progressValue}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
+
+      {/* Runs table */}
+      <DataTable>
+        <TableHead>
+          <tr>
+            <TableHeaderCell>ID</TableHeaderCell>
+            <TableHeaderCell>{t('mode')}</TableHeaderCell>
+            <TableHeaderCell>{t('status')}</TableHeaderCell>
+            <TableHeaderCell>{t('phase')}</TableHeaderCell>
+            <TableHeaderCell>{t('coverage')}</TableHeaderCell>
+            <TableHeaderCell>{t('requests')}</TableHeaderCell>
+            <TableHeaderCell>{t('actions')}</TableHeaderCell>
+          </tr>
+        </TableHead>
+        <tbody>
+          {runs.data?.data.map((run) => (
+            <TableRow key={run.id}>
+              <TableCell>
+                <span className="font-medium text-[var(--text-primary)]">#{run.id}</span>
+              </TableCell>
+              <TableCell>{t(run.mode)}</TableCell>
+              <TableCell>
+                <Badge variant={statusVariant(run.status)} dot>
+                  {t(run.status)}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Badge variant={statusVariant(run.phase)}>{t(run.phase)}</Badge>
+              </TableCell>
+              <TableCell>{formatPercent(run.coverage)}</TableCell>
+              <TableCell>{run.requests_made}</TableCell>
+              <TableCell>
+                <span className="flex flex-wrap gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openRun(run.id)}
                   >
-                    <div className="h-full bg-emerald-600" style={{ width: `${progressValue}%` }} />
-                  </div>
-                  <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                    <div>
-                      <dt>{t('status')}</dt>
-                      <dd className="font-semibold">{t(progress.data.status)}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('phase')}</dt>
-                      <dd className="font-semibold">{t(progress.data.phase)}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('tasks')}</dt>
-                      <dd className="font-semibold">
-                        {progress.data.tasks_done}/{progress.data.tasks_total}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{t('requests')}</dt>
-                      <dd className="font-semibold">{progress.data.requests_made}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('tier')}</dt>
-                      <dd className="font-semibold">{progress.data.tier ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('coverage')}</dt>
-                      <dd className="font-semibold">{formatPercent(progress.data.coverage)}</dd>
-                    </div>
-                  </dl>
-                  {progress.data.current_brand && (
-                    <p>
-                      {t('currentBrand')}: <strong>{progress.data.current_brand}</strong>
-                    </p>
+                    {t('progress')}
+                  </Button>
+                  {['pending', 'running'].includes(run.status) && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      icon={<Ban size={12} />}
+                      disabled={!apiHealth.writable || control.isPending}
+                      onClick={() => control.mutate({ id: run.id, action: 'cancel' })}
+                    >
+                      {t('cancel')}
+                    </Button>
                   )}
-                  {(progress.data.partial || progress.data.truncated) && (
-                    <Notice error>
-                      {progress.data.truncated ? t('truncatedResult') : t('partialResult')}
-                    </Notice>
+                  {['interrupted', 'cancelled', 'failed', 'partial'].includes(run.status) && (
+                    <Button
+                      variant="success"
+                      size="sm"
+                      icon={<PlayCircle size={12} />}
+                      disabled={!canPlan || control.isPending}
+                      onClick={() => control.mutate({ id: run.id, action: 'resume' })}
+                    >
+                      {t('resume')}
+                    </Button>
                   )}
-                  {progress.data.warnings.length > 0 && (
-                    <ul className="list-disc pl-5 text-amber-800">
-                      {progress.data.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {(progress.data.errors ?? []).length > 0 && (
-                    <ul className="list-disc pl-5 text-red-800" role="alert">
-                      {(progress.data.errors ?? []).map((item) => (
-                        <li key={`${item.task_id}-${item.code}`}>
-                          {t('task')} #{item.task_id} · {item.index_type}: {item.code}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )
-            )}
-            {report.data && (
-              <div className="mt-6">
-                <h3 className="font-semibold">{t('report')}</h3>
-                <dl className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  {[
-                    [t('requests'), report.data.metrics.requests_total],
-                    [t('retries'), report.data.metrics.retries],
-                    [t('p95Latency'), `${report.data.metrics.p95_latency_ms.toFixed(1)} ms`],
-                    [t('cacheHitRate'), `${(report.data.metrics.cache_hit_rate * 100).toFixed(1)}%`],
-                    [t('invalidListings'), report.data.metrics.listings_invalid],
-                    [t('duration'), `${report.data.metrics.duration_s.toFixed(1)} s`],
-                  ].map(([label, value]) => (
-                    <div className="rounded border p-2" key={String(label)}>
-                      <dt className="text-xs text-slate-600">{label}</dt>
-                      <dd className="font-semibold">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr>
-                        <th className="p-2">{t('brand')}</th>
-                        <th className="p-2">{t('index')}</th>
-                        <th className="p-2">{t('status')}</th>
-                        <th className="p-2">{t('hits')}</th>
-                        <th className="p-2">{t('coverage')}</th>
-                        <th className="p-2">{t('tier')}</th>
-                        <th className="p-2">{t('sourceError')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.data.tasks.map((task) => (
-                        <tr className="border-t" key={task.id}>
-                          <td className="p-2">{task.brand_id ?? '—'}</td>
-                          <td className="p-2">{task.index_type}</td>
-                          <td className="p-2">{task.status}</td>
-                          <td className="p-2">
-                            {task.hits_collected}/{task.expected_hits ?? '—'}
-                          </td>
-                          <td className="p-2">{formatPercent(task.coverage)}</td>
-                          <td className="p-2">{task.tier ?? '—'}</td>
-                          <td className="p-2 text-red-800">{task.error ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                </span>
+              </TableCell>
+            </TableRow>
+          ))}
+        </tbody>
+      </DataTable>
+      {!runs.data?.data.length && <EmptyState message={t('noRuns')} />}
+
+      {/* Run detail modal */}
+      <Modal
+        open={selectedRun !== null}
+        onClose={closeRun}
+        title={`${t('run')} #${selectedRun}`}
+        maxWidth="max-w-5xl"
+      >
+        {progress.isLoading ? (
+          <LoadingState />
+        ) : (
+          progress.data && (
+            <div className="space-y-5">
+              <ProgressBar value={progressValue} label={t('progress')} />
+
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <StatCard label={t('status')} value={<Badge variant={statusVariant(progress.data.status)} dot>{t(progress.data.status)}</Badge>} />
+                <StatCard label={t('phase')} value={<Badge variant={statusVariant(progress.data.phase)}>{t(progress.data.phase)}</Badge>} />
+                <StatCard label={t('tasks')} value={`${progress.data.tasks_done}/${progress.data.tasks_total}`} />
+                <StatCard label={t('requests')} value={progress.data.requests_made} />
+                <StatCard label={t('tier')} value={progress.data.tier ?? '—'} />
+                <StatCard label={t('coverage')} value={formatPercent(progress.data.coverage)} />
               </div>
-            )}
-          </Card>
-        </div>
-      )}
+
+              {progress.data.current_brand && (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {t('currentBrand')}: <strong className="text-[var(--text-primary)]">{progress.data.current_brand}</strong>
+                </p>
+              )}
+              {(progress.data.partial || progress.data.truncated) && (
+                <Notice error>
+                  {progress.data.truncated ? t('truncatedResult') : t('partialResult')}
+                </Notice>
+              )}
+              {progress.data.warnings.length > 0 && (
+                <ul className="space-y-1">
+                  {progress.data.warnings.map((warning) => (
+                    <li key={warning} className="flex items-center gap-2 text-xs text-[#fbbf24]">
+                      <AlertTriangle size={14} /> {warning}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(progress.data.errors ?? []).length > 0 && (
+                <ul className="space-y-1" role="alert">
+                  {(progress.data.errors ?? []).map((item) => (
+                    <li key={`${item.task_id}-${item.code}`} className="flex items-center gap-2 text-xs text-[#fb7185]">
+                      <XCircle size={14} />
+                      {t('task')} #{item.task_id} · {item.index_type}: {item.code}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        )}
+
+        {report.data && (
+          <div className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              {t('report')}
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                [t('requests'), report.data.metrics.requests_total],
+                [t('retries'), report.data.metrics.retries],
+                [t('p95Latency'), `${report.data.metrics.p95_latency_ms.toFixed(1)} ms`],
+                [t('cacheHitRate'), `${(report.data.metrics.cache_hit_rate * 100).toFixed(1)}%`],
+                [t('invalidListings'), report.data.metrics.listings_invalid],
+                [t('duration'), `${report.data.metrics.duration_s.toFixed(1)} s`],
+              ].map(([label, value]) => (
+                <StatCard key={String(label)} label={String(label)} value={value} />
+              ))}
+            </div>
+            <div className="mt-4">
+              <DataTable>
+                <TableHead>
+                  <tr>
+                    <TableHeaderCell>{t('brand')}</TableHeaderCell>
+                    <TableHeaderCell>{t('index')}</TableHeaderCell>
+                    <TableHeaderCell>{t('status')}</TableHeaderCell>
+                    <TableHeaderCell>{t('hits')}</TableHeaderCell>
+                    <TableHeaderCell>{t('coverage')}</TableHeaderCell>
+                    <TableHeaderCell>{t('tier')}</TableHeaderCell>
+                    <TableHeaderCell>{t('sourceError')}</TableHeaderCell>
+                  </tr>
+                </TableHead>
+                <tbody>
+                  {report.data.tasks.map((task) => (
+                    <TableRow key={task.id}>
+                      <TableCell>{task.brand_id ?? '—'}</TableCell>
+                      <TableCell>{task.index_type}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(task.status)} dot>
+                          {task.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {task.hits_collected}/{task.expected_hits ?? '—'}
+                      </TableCell>
+                      <TableCell>{formatPercent(task.coverage)}</TableCell>
+                      <TableCell>{task.tier ?? '—'}</TableCell>
+                      <TableCell>
+                        {task.error ? (
+                          <span className="text-[#fb7185]">{task.error}</span>
+                        ) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </tbody>
+              </DataTable>
+            </div>
+          </div>
+        )}
+      </Modal>
     </section>
   );
 }

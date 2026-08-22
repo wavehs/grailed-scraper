@@ -1,12 +1,10 @@
-'use client';
-
-import { useI18n } from '@/lib/i18n';
+import { Loader2 } from 'lucide-react';
 
 export default function Loading() {
-  const { t } = useI18n();
   return (
-    <div role="status" className="rounded-lg border bg-white p-5 text-slate-600">
-      {t('loading')}
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 animate-fade-in">
+      <Loader2 size={32} className="text-[#818cf8] animate-spin" />
+      <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
     </div>
   );
 }

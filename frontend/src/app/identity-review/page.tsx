@@ -2,8 +2,11 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, History, Search, X } from 'lucide-react';
+import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -41,93 +44,113 @@ export default function IdentityReviewPage() {
   });
   const error = candidates.error ?? history.error ?? decide.error;
   return (
-    <section className="space-y-5" aria-labelledby="identity-heading">
-      <div>
-        <h1 id="identity-heading" className="text-2xl font-semibold">
-          {t('identityReview')}
-        </h1>
-        <p className="text-slate-600">{t('identityReviewIntro')}</p>
-      </div>
+    <section className="space-y-6" aria-labelledby="identity-heading">
+      <PageHeader title={t('identityReview')} description={t('identityReviewIntro')} />
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => candidates.refetch()} />}
-      <Card className="flex flex-wrap gap-3 p-4">
-        <label className="text-sm">
-          {t('identityType')}
-          <select
-            className="ml-2 rounded border px-2 py-1"
-            value={level}
-            onChange={(event) => setLevel(event.target.value as 'model' | 'physical')}
-          >
-            <option value="physical">{t('relist')}</option>
-            <option value="model">{t('modelRules')}</option>
-          </select>
-        </label>
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const parsed = Number(listingId);
-            if (Number.isInteger(parsed) && parsed > 0) setHistoryId(parsed);
-          }}
-        >
-          <label className="text-sm">
-            {t('listingId')}
-            <input
-              className="ml-2 w-28 rounded border px-2 py-1"
-              inputMode="numeric"
-              value={listingId}
-              onChange={(event) => setListingId(event.target.value)}
-            />
+
+      {/* Controls */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            {t('identityType')}
+            <select
+              className="rounded-lg"
+              value={level}
+              onChange={(event) => setLevel(event.target.value as 'model' | 'physical')}
+            >
+              <option value="physical">{t('relist')}</option>
+              <option value="model">{t('modelRules')}</option>
+            </select>
           </label>
-          <Button>{t('identityHistory')}</Button>
-        </form>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const parsed = Number(listingId);
+              if (Number.isInteger(parsed) && parsed > 0) setHistoryId(parsed);
+            }}
+          >
+            <label className="relative">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+              />
+              <input
+                className="w-32 rounded-lg pl-8"
+                inputMode="numeric"
+                placeholder={t('listingId')}
+                value={listingId}
+                onChange={(event) => setListingId(event.target.value)}
+              />
+            </label>
+            <Button variant="secondary" size="sm" icon={<History size={14} />}>
+              {t('identityHistory')}
+            </Button>
+          </form>
+        </div>
       </Card>
+
+      {/* History result */}
       {history.isFetching && <LoadingState />}
       {history.data && (
-        <Card className="p-4">
-          <h2 className="font-semibold">{t('identityHistory')}</h2>
-          <p className="mt-1">{history.data.listing.title}</p>
-          <p className="text-sm text-slate-600">
+        <Card className="p-5 animate-slide-up">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <History size={16} /> {t('identityHistory')}
+          </h2>
+          <p className="mt-2 text-[var(--text-primary)]">{history.data.listing.title}</p>
+          <p className="text-xs text-[var(--text-muted)]">
             {history.data.model_group?.name ?? '—'} · #{history.data.physical_item_id ?? '—'}
           </p>
           <ul className="mt-3 space-y-1 text-sm">
             {history.data.members.map((item) => (
-              <li key={item.id}>
-                #{item.grailed_id} · {item.title} · {item.status}
+              <li key={item.id} className="flex items-center gap-2 text-[var(--text-secondary)]">
+                <span className="h-1 w-1 rounded-full bg-[#818cf8]" />
+                #{item.grailed_id} · {item.title} ·{' '}
+                <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
               </li>
             ))}
           </ul>
         </Card>
       )}
+
+      {/* Candidates */}
       {candidates.isLoading ? (
         <LoadingState />
       ) : !candidates.data?.data.length ? (
         <EmptyState message={t('noCandidates')} />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {candidates.data.data.map((candidate) => (
-            <Card className="p-4" key={candidate.id}>
+            <Card className="p-5 animate-slide-up" key={candidate.id}>
               <div className="grid gap-4 md:grid-cols-2">
                 <ListingCard listing={candidate.left} />
                 <ListingCard listing={candidate.right} />
               </div>
-              <div className="mt-4 border-t pt-3 text-sm">
-                <p>
-                  {t('confidence')}: {candidate.confidence} · {t('evidence')}:{' '}
-                  {Object.entries(candidate.evidence)
-                    .map(([key, value]) => `${key}=${String(value)}`)
-                    .join(' · ')}
-                </p>
+              <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-[var(--text-muted)]">{t('confidence')}:</span>
+                  <Badge variant="default">{candidate.confidence}</Badge>
+                  <span className="text-[var(--text-muted)]">{t('evidence')}:</span>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    {Object.entries(candidate.evidence)
+                      .map(([key, value]) => `${key}=${String(value)}`)
+                      .join(' · ')}
+                  </span>
+                </div>
                 <div className="mt-3 flex gap-2">
                   <Button
+                    variant="success"
+                    icon={<Check size={16} />}
                     disabled={decide.isPending}
                     onClick={() => decide.mutate({ id: candidate.id, decision: 'confirmed' })}
                   >
                     {t('sameItem')}
                   </Button>
                   <Button
+                    variant="secondary"
+                    icon={<X size={16} />}
                     disabled={decide.isPending}
-                    className="bg-slate-600 hover:bg-slate-500"
                     onClick={() => decide.mutate({ id: candidate.id, decision: 'rejected' })}
                   >
                     {t('differentItems')}
@@ -144,23 +167,26 @@ export default function IdentityReviewPage() {
 
 function ListingCard({ listing }: { listing: IdentityListing }) {
   return (
-    <article className="rounded border p-3">
+    <article className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-all hover:border-[var(--border-default)]">
       {listing.cover_photo_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           alt=""
-          className="mb-3 aspect-square w-full rounded object-cover"
+          className="mb-3 aspect-square w-full rounded-lg object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
           src={listing.cover_photo_url}
         />
       )}
-      <h3 className="font-medium">{listing.title}</h3>
-      <p className="text-sm text-slate-600">
+      <h3 className="font-medium text-[var(--text-primary)]">{listing.title}</h3>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
         {listing.brand} · {listing.category ?? '—'} · {listing.size ?? '—'} · {listing.color ?? '—'}
       </p>
-      <p className="text-sm">
-        #{listing.grailed_id} · ${(listing.price / 100).toFixed(2)} · {listing.status}
+      <p className="mt-1 text-xs text-[var(--text-secondary)]">
+        #{listing.grailed_id} · ${(listing.price / 100).toFixed(2)} ·{' '}
+        <Badge variant={statusVariant(listing.status)}>
+          {listing.status}
+        </Badge>
       </p>
     </article>
   );

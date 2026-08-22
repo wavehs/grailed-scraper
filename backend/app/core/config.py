@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     proxy_enabled: bool = False
     proxy_allow_direct_fallback: bool = True
     proxy_rotation_mode: Literal["round_robin", "random", "weighted"] = "weighted"
-    cors_origins: list[str] = ["http://127.0.0.1:3000"]
+    cors_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
     parser_mode: Literal["delta", "full"] = "delta"
     parser_full_refresh_days: int = 7
     parser_refresh_active_enabled: bool = True

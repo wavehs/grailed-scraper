@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Compass, Network, Save, Shield } from 'lucide-react';
+import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
+import { PageHeader } from '@/components/ui/page-header';
+import { StatCard } from '@/components/ui/stat-card';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -68,26 +73,27 @@ export default function SettingsPage() {
   const update = (key: string, value: string | number | boolean) =>
     setValues((old) => ({ ...old, [key]: value }));
   return (
-    <section className="space-y-5" aria-labelledby="settings-heading">
-      <div>
-        <h1 id="settings-heading" className="text-2xl font-semibold">
-          {t('settings')}
-        </h1>
-        <p className="text-slate-600">{t('settingsIntro')}</p>
-      </div>
+    <section className="space-y-6" aria-labelledby="settings-heading">
+      <PageHeader title={t('settings')} description={t('settingsIntro')} />
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => settings.refetch()} />}
       <form
-        className="space-y-4"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault();
           save.mutate();
         }}
       >
         {Object.entries(settings.data.groups).map(([groupName, group]) => (
-          <Card className="p-4" key={groupName}>
-            <h2 className="text-lg font-semibold">{t(groupName)}</h2>
-            <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Card className="p-5" key={groupName}>
+            <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              {groupName === 'source' && <Compass size={16} />}
+              {groupName === 'parser' && <Shield size={16} />}
+              {groupName === 'proxy' && <Network size={16} />}
+              {groupName === 'privacy' && <Shield size={16} />}
+              {t(groupName)}
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Object.entries(group).map(([key, entry]) => (
                 <SettingField
                   entry={entry}
@@ -113,65 +119,86 @@ export default function SettingsPage() {
             </label>
           </Notice>
         )}
-        <Button disabled={!health.writable || save.isPending}>
+        <Button
+          icon={<Save size={16} />}
+          disabled={!health.writable || save.isPending}
+        >
           {save.isPending ? t('saving') : t('save')}
         </Button>
       </form>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4">
-          <h2 className="font-semibold">{t('proxy')}</h2>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Proxy test */}
+        <Card className="p-5">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <Network size={16} /> {t('proxy')}
+          </h2>
           <Button
-            className="mt-3"
+            variant="secondary"
+            icon={<Network size={14} />}
             disabled={!health.writable || proxyTest.isPending}
             onClick={() => proxyTest.mutate()}
           >
             {proxyTest.isPending ? t('testing') : t('testProxies')}
           </Button>
           {proxyTest.data && (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
+            <div className="mt-4">
+              <DataTable>
+                <TableHead>
                   <tr>
-                    <th className="p-2">Proxy</th>
-                    <th className="p-2">{t('successRate')}</th>
-                    <th className="p-2">{t('status')}</th>
+                    <TableHeaderCell>Proxy</TableHeaderCell>
+                    <TableHeaderCell>{t('successRate')}</TableHeaderCell>
+                    <TableHeaderCell>{t('status')}</TableHeaderCell>
                   </tr>
-                </thead>
+                </TableHead>
                 <tbody>
                   {proxyTest.data.proxies.map((proxy) => (
-                    <tr className="border-t" key={proxy.proxy}>
-                      <td className="p-2">{proxy.proxy}</td>
-                      <td className="p-2">{(proxy.success_rate * 100).toFixed(0)}%</td>
-                      <td className="p-2">{proxy.cooling_down ? t('cooldown') : t('ready')}</td>
-                    </tr>
+                    <TableRow key={proxy.proxy}>
+                      <TableCell className="font-mono text-xs">{proxy.proxy}</TableCell>
+                      <TableCell>{(proxy.success_rate * 100).toFixed(0)}%</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(proxy.cooling_down ? 'cooldown' : 'ready')} dot>
+                          {proxy.cooling_down ? t('cooldown') : t('ready')}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
         </Card>
-        <Card className="p-4">
-          <h2 className="font-semibold">{t('discovery')}</h2>
+
+        {/* Discovery */}
+        <Card className="p-5">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <Compass size={16} /> {t('discovery')}
+          </h2>
           <Button
-            className="mt-3"
+            variant="secondary"
+            icon={<Compass size={14} />}
             disabled={!health.writable || discovery.isPending}
             onClick={() => discovery.mutate()}
           >
             {discovery.isPending ? t('refreshing') : t('refreshDiscovery')}
           </Button>
           {discovery.data && (
-            <dl className="mt-3 space-y-2 text-sm">
+            <dl className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt>{t('status')}</dt>
-                <dd>{t(discovery.data.status)}</dd>
+                <dt className="text-[var(--text-muted)]">{t('status')}</dt>
+                <dd>
+                  <Badge variant={statusVariant(discovery.data.status)} dot>
+                    {t(discovery.data.status)}
+                  </Badge>
+                </dd>
               </div>
               <div className="flex justify-between">
-                <dt>{t('method')}</dt>
-                <dd>{discovery.data.method ?? '—'}</dd>
+                <dt className="text-[var(--text-muted)]">{t('method')}</dt>
+                <dd className="text-[var(--text-primary)]">{discovery.data.method ?? '—'}</dd>
               </div>
               <div className="flex justify-between">
-                <dt>{t('schemaFields')}</dt>
-                <dd>{discovery.data.schema_field_count}</dd>
+                <dt className="text-[var(--text-muted)]">{t('schemaFields')}</dt>
+                <dd className="text-[var(--text-primary)]">{discovery.data.schema_field_count}</dd>
               </div>
             </dl>
           )}
@@ -197,13 +224,13 @@ function SettingField({
   const { t } = useI18n();
   const label = t(name);
   return (
-    <label className="text-sm">
-      <span className="font-medium">{label}</span>
-      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-        {t('origin')}: {entry.origin}
-      </span>
+    <label className="block text-sm">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="font-medium text-[var(--text-primary)]">{label}</span>
+        <Badge variant="muted">{entry.origin}</Badge>
+      </div>
       {typeof entry.value === 'boolean' ? (
-        <span className="mt-2 flex items-center gap-2">
+        <span className="flex items-center gap-2 text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={Boolean(value)}
@@ -214,7 +241,7 @@ function SettingField({
         </span>
       ) : selects[name] ? (
         <select
-          className="mt-1 w-full rounded border px-2"
+          className="w-full rounded-lg"
           value={String(value)}
           disabled={locked}
           onChange={(event) => update(name, event.target.value)}
@@ -227,7 +254,7 @@ function SettingField({
         </select>
       ) : (
         <input
-          className="mt-1 w-full rounded border px-2"
+          className="w-full rounded-lg"
           type="number"
           value={String(value)}
           disabled={locked}

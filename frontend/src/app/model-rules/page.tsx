@@ -2,8 +2,21 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  BookOpen,
+  Edit3,
+  Eye,
+  Plus,
+  Power,
+  PowerOff,
+  Save,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -55,13 +68,8 @@ export default function ModelRulesPage() {
   const error = rules.error ?? brands.error ?? save.error ?? remove.error ?? loadMatches.error;
   if (rules.isLoading && brands.isLoading) return <LoadingState />;
   return (
-    <section className="space-y-5" aria-labelledby="rules-heading">
-      <div>
-        <h1 id="rules-heading" className="text-2xl font-semibold">
-          {t('modelRules')}
-        </h1>
-        <p className="text-slate-600">{t('modelRulesIntro')}</p>
-      </div>
+    <section className="space-y-6" aria-labelledby="rules-heading">
+      <PageHeader title={t('modelRules')} description={t('modelRulesIntro')} />
       <Notice>{notice}</Notice>
       {error && (
         <ErrorState
@@ -72,11 +80,16 @@ export default function ModelRulesPage() {
           }}
         />
       )}
-      <Card className="p-4">
-        <h2 className="font-semibold">{editing ? t('editRule') : t('createRule')}</h2>
+
+      {/* Create/Edit form */}
+      <Card className="p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {editing ? <Edit3 size={16} /> : <Plus size={16} />}
+          {editing ? t('editRule') : t('createRule')}
+        </h2>
         <form
           key={editing?.id ?? 'new'}
-          className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5"
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
@@ -93,13 +106,15 @@ export default function ModelRulesPage() {
             if (!editing) event.currentTarget.reset();
           }}
         >
-          <label className="text-sm">
-            {t('brand')}
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('brand')}
+            </span>
             <select
               name="brand"
               disabled={!!editing}
               defaultValue={editing?.brand_id}
-              className="mt-1 w-full rounded border px-2"
+              className="w-full rounded-lg"
             >
               {brands.data?.data.map((brand) => (
                 <option value={brand.id} key={brand.id}>
@@ -108,101 +123,135 @@ export default function ModelRulesPage() {
               ))}
             </select>
           </label>
-          <label className="text-sm">
-            {t('name')}
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('name')}
+            </span>
             <input
               name="name"
               required
               defaultValue={editing?.name}
-              className="mt-1 w-full rounded border px-2"
+              className="w-full rounded-lg"
             />
           </label>
-          <label className="text-sm">
-            {t('includeKeywords')}
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('includeKeywords')}
+            </span>
             <input
               name="include"
               defaultValue={editing?.include_keywords.join(', ')}
-              className="mt-1 w-full rounded border px-2"
+              className="w-full rounded-lg"
             />
           </label>
-          <label className="text-sm">
-            {t('excludeKeywords')}
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              {t('excludeKeywords')}
+            </span>
             <input
               name="exclude"
               defaultValue={editing?.exclude_keywords.join(', ')}
-              className="mt-1 w-full rounded border px-2"
+              className="w-full rounded-lg"
             />
           </label>
           <div className="flex items-end gap-2">
             <label className="flex-1 text-sm">
-              {t('category')}
+              <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                {t('category')}
+              </span>
               <input
                 name="category"
                 defaultValue={editing?.category}
-                className="mt-1 w-full rounded border px-2"
+                className="w-full rounded-lg"
               />
             </label>
-            <Button disabled={!health.writable || save.isPending}>
+            <Button
+              icon={<Save size={14} />}
+              disabled={!health.writable || save.isPending}
+            >
               {save.isPending ? t('saving') : t('save')}
             </Button>
             {editing && (
-              <button type="button" className="underline" onClick={() => setEditing(null)}>
+              <Button variant="ghost" icon={<X size={14} />} onClick={() => setEditing(null)}>
                 {t('cancel')}
-              </button>
+              </Button>
             )}
           </div>
         </form>
       </Card>
+
+      {/* Rules list */}
       {!rules.data?.length ? (
         <EmptyState message={t('noRules')} />
       ) : (
         <div className="space-y-3">
           {rules.data.map((rule) => (
-            <Card className="p-4" key={rule.id}>
+            <Card className="p-5 animate-slide-up" key={rule.id}>
               <div className="flex flex-wrap justify-between gap-3">
                 <div>
-                  <h2 className="font-semibold">{rule.name}</h2>
-                  <p className="text-sm text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={16} className="text-[#818cf8]" />
+                    <h2 className="font-semibold text-[var(--text-primary)]">{rule.name}</h2>
+                    <Badge variant={rule.is_active ? 'success' : 'muted'} dot>
+                      {rule.is_active ? t('enable') : t('disable')}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
                     {t('includeKeywords')}: {rule.include_keywords.join(', ') || '—'} ·{' '}
                     {t('excludeKeywords')}: {rule.exclude_keywords.join(', ') || '—'} ·{' '}
                     {rule.matches_count} {t('matches')}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-3 text-sm">
-                  <button className="underline" onClick={() => setEditing(rule)}>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Edit3 size={14} />}
+                    onClick={() => setEditing(rule)}
+                  >
                     {t('editRule')}
-                  </button>
-                  <button className="underline" onClick={() => loadMatches.mutate(rule.id)}>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Eye size={14} />}
+                    onClick={() => loadMatches.mutate(rule.id)}
+                  >
                     {t('matches')}
-                  </button>
-                  <button
-                    className="underline"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={rule.is_active ? <PowerOff size={14} /> : <Power size={14} />}
                     disabled={!health.writable}
                     onClick={() =>
                       save.mutate({ id: rule.id, body: { is_active: !rule.is_active } })
                     }
                   >
                     {rule.is_active ? t('disable') : t('enable')}
-                  </button>
-                  <button
-                    className="text-red-700 underline"
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<Trash2 size={14} />}
                     disabled={!health.writable || remove.isPending}
                     onClick={() => remove.mutate(rule.id)}
                   >
                     {t('delete')}
-                  </button>
+                  </Button>
                 </div>
               </div>
               {matches[rule.id] && (
-                <ul className="mt-3 border-t pt-3 text-sm">
+                <ul className="mt-4 border-t border-[var(--border-subtle)] pt-3 space-y-1 text-sm">
                   {matches[rule.id].length ? (
                     matches[rule.id].map((item) => (
-                      <li key={item.id}>
-                        {item.title} · {t(item.status)}
+                      <li key={item.id} className="flex items-center gap-2 text-[var(--text-secondary)]">
+                        <span className="h-1 w-1 rounded-full bg-[#818cf8]" />
+                        {item.title} · <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
                       </li>
                     ))
                   ) : (
-                    <li className="text-slate-500">{t('noMatches')}</li>
+                    <li className="text-[var(--text-muted)]">{t('noMatches')}</li>
                   )}
                 </ul>
               )}

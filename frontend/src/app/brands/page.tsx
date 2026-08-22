@@ -2,8 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Check, Save, Search, Wand2, X } from 'lucide-react';
 import { api } from '@/lib/api';
+import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
+import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useApiHealth, useBrandsQuery } from '@/lib/queries';
@@ -61,34 +66,40 @@ export default function BrandsPage() {
   );
   if (query.isLoading) return <LoadingState />;
   return (
-    <section aria-labelledby="brands-heading" className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 id="brands-heading" className="text-2xl font-semibold">
-            {t('brands')}
-          </h1>
-          <p className="text-slate-600">{t('brandsIntro')}</p>
-        </div>
-        <Button onClick={() => autoMap.mutate()} disabled={!health.writable || autoMap.isPending}>
-          {autoMap.isPending ? t('mapping') : t('autoMap')}
-        </Button>
-      </div>
+    <section aria-labelledby="brands-heading" className="space-y-6">
+      <PageHeader
+        title={t('brands')}
+        description={t('brandsIntro')}
+        actions={
+          <Button
+            icon={<Wand2 size={16} />}
+            onClick={() => autoMap.mutate()}
+            disabled={!health.writable || autoMap.isPending}
+          >
+            {autoMap.isPending ? t('mapping') : t('autoMap')}
+          </Button>
+        }
+      />
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => query.refetch()} />}
-      <div className="grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2">
-        <label>
-          <span className="sr-only">{t('search')}</span>
-          <input
-            className="w-full rounded border px-3"
-            placeholder={t('search')}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <label>
-          <span className="sr-only">{t('status')}</span>
+
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="relative">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+            />
+            <input
+              className="w-full rounded-lg pl-9"
+              placeholder={t('search')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
           <select
-            className="w-full rounded border px-3"
+            className="w-full rounded-lg"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
           >
@@ -97,8 +108,10 @@ export default function BrandsPage() {
             <option value="review">{t('review')}</option>
             <option value="unresolved">{t('unresolved')}</option>
           </select>
-        </label>
-      </div>
+        </div>
+      </Card>
+
+      {/* Brand list */}
       {!brands.length ? (
         <EmptyState message={t('noBrands')} />
       ) : (
@@ -106,15 +119,20 @@ export default function BrandsPage() {
           {brands.map((brand) => {
             const aliasValue = aliases[brand.id] ?? brand.aliases.join(', ');
             return (
-              <article className="rounded-lg border bg-white p-4" key={brand.id}>
+              <Card className="p-5 animate-slide-up" key={brand.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-semibold">{brand.name}</h2>
-                    <p className="text-sm text-slate-600">
-                      {t(brand.status)} · {brand.listings_count} {t('listings')}
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-semibold text-[var(--text-primary)]">{brand.name}</h2>
+                      <Badge variant={statusVariant(brand.status)} dot>
+                        {t(brand.status)}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                      {brand.listings_count} {t('listings')}
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
                       checked={brand.include_subbrands}
@@ -129,8 +147,10 @@ export default function BrandsPage() {
                     {t('includeSubbrands')}
                   </label>
                 </div>
+
+                {/* Aliases form */}
                 <form
-                  className="mt-3 flex flex-wrap gap-2"
+                  className="mt-4 flex flex-wrap gap-2"
                   onSubmit={(event) => {
                     event.preventDefault();
                     updateBrand.mutate({
@@ -149,7 +169,7 @@ export default function BrandsPage() {
                       {t('aliases')} — {brand.name}
                     </span>
                     <input
-                      className="w-full rounded border px-3"
+                      className="w-full rounded-lg"
                       value={aliasValue}
                       disabled={!health.writable}
                       onChange={(event) =>
@@ -158,36 +178,57 @@ export default function BrandsPage() {
                       placeholder={t('aliases')}
                     />
                   </label>
-                  <Button type="submit" disabled={!health.writable || updateBrand.isPending}>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    icon={<Save size={14} />}
+                    disabled={!health.writable || updateBrand.isPending}
+                  >
                     {updateBrand.isPending ? t('saving') : t('save')}
                   </Button>
                 </form>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-100">
+
+                {/* Mappings table */}
+                <div className="mt-4">
+                  <DataTable>
+                    <TableHead>
                       <tr>
-                        <th className="p-2">{t('grailedFacet')}</th>
-                        <th className="p-2">{t('score')}</th>
-                        <th className="p-2">{t('listings')}</th>
-                        <th className="p-2">{t('status')}</th>
-                        <th className="p-2">{t('actions')}</th>
+                        <TableHeaderCell>{t('grailedFacet')}</TableHeaderCell>
+                        <TableHeaderCell>{t('score')}</TableHeaderCell>
+                        <TableHeaderCell>{t('listings')}</TableHeaderCell>
+                        <TableHeaderCell>{t('status')}</TableHeaderCell>
+                        <TableHeaderCell>{t('actions')}</TableHeaderCell>
                       </tr>
-                    </thead>
+                    </TableHead>
                     <tbody>
                       {brand.mappings.map((mapping) => (
-                        <tr className="border-t" key={mapping.id}>
-                          <td className="p-2">
-                            {mapping.source_designer_name}
-                            {mapping.is_subbrand ? ` · ${t('subbrand')}` : ''}
-                          </td>
-                          <td className="p-2">{(Number(mapping.match_score) * 100).toFixed(1)}%</td>
-                          <td className="p-2">{mapping.listings_count}</td>
-                          <td className="p-2">{t(mapping.state)}</td>
-                          <td className="p-2">
+                        <TableRow key={mapping.id}>
+                          <TableCell>
+                            <span className="text-[var(--text-primary)]">
+                              {mapping.source_designer_name}
+                            </span>
+                            {mapping.is_subbrand && (
+                              <Badge variant="muted" className="ml-2">
+                                {t('subbrand')}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {(Number(mapping.match_score) * 100).toFixed(1)}%
+                          </TableCell>
+                          <TableCell>{mapping.listings_count}</TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant(mapping.state)} dot>
+                              {t(mapping.state)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
                             {mapping.state === 'review' && (
-                              <span className="flex gap-3">
-                                <button
-                                  className="underline"
+                              <span className="flex gap-2">
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  icon={<Check size={14} />}
                                   disabled={!health.writable || decide.isPending}
                                   onClick={() =>
                                     decide.mutate({
@@ -198,9 +239,11 @@ export default function BrandsPage() {
                                   }
                                 >
                                   {t('confirm')}
-                                </button>
-                                <button
-                                  className="text-red-700 underline"
+                                </Button>
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  icon={<X size={14} />}
                                   disabled={!health.writable || decide.isPending}
                                   onClick={() =>
                                     decide.mutate({
@@ -211,23 +254,23 @@ export default function BrandsPage() {
                                   }
                                 >
                                   {t('reject')}
-                                </button>
+                                </Button>
                               </span>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
                       {!brand.mappings.length && (
-                        <tr>
-                          <td className="p-3 text-slate-500" colSpan={5}>
+                        <TableRow>
+                          <TableCell className="text-[var(--text-muted)]" colSpan={5}>
                             {t('noCandidates')}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       )}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
-              </article>
+              </Card>
             );
           })}
         </div>
