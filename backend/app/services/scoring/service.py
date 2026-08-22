@@ -1,4 +1,4 @@
-"""Database-backed opportunity-v2 scoring with resolved model identity."""
+"""Database-backed market-v4 scoring with resolved model identity."""
 
 from __future__ import annotations
 
@@ -27,20 +27,21 @@ from app.db.models import (
     ScoringSnapshot,
 )
 from app.services.scoring.calculator import (
-    FOUR_PLACES,
     HUNDRED,
     SIX_PLACES,
     TWO_PLACES,
     MetricDraft,
     confidence_score,
     decimal_median,
+    engagement_score,
     finalize_brand,
+    frequency_score,
     ratio_score,
     sample_sufficiency,
     velocity_score,
 )
 
-MODEL_VERSION = "opportunity-v2"
+MODEL_VERSION = "market-v4"
 WINDOWS = (30, 90)
 _FULL_EXCLUSIONS = {"possible_replica"}
 _PRICE_EXCLUSIONS = {"price_outlier", "lot_or_bundle"}
@@ -103,7 +104,8 @@ class OpportunityScoringService:
                                     Listing.status == "active",
                                     func.coalesce(
                                         Listing.created_at, Listing.first_seen_at
-                                    ).between(cutoff, as_of),
+                                    )
+                                    <= as_of,
                                 ),
                             ),
                         )
@@ -177,14 +179,10 @@ class OpportunityScoringService:
             for assignment, group in persisted_rows
             if assignment.listing_id in listing_ids
         ]
-        persisted_groups = {
-            group.id: group
-            for _, group in persisted
-        }
+        persisted_groups = {group.id: group for _, group in persisted}
         groups.update(persisted_groups)
         assignments = {
-            assignment.listing_id: assignment.model_group_id
-            for assignment, _ in persisted
+            assignment.listing_id: assignment.model_group_id for assignment, _ in persisted
         }
         fallback_needed: dict[str, tuple[int, str]] = {}
         fallback_for_listing: dict[int, str] = {}
@@ -357,10 +355,7 @@ def _build_drafts(
                 if not (_flags(item) & _PRICE_EXCLUSIONS)
             ]
             days = [Decimal(item.days_on_market or 0) for item in exact_sold]
-            likes = [
-                Decimal(item.likes_count) / Decimal(max(item.days_on_market or 0, 1))
-                for item in exact_sold
-            ]
+            likes = [Decimal(item.likes_count) for item in exact_sold]
             sell_through = (
                 Decimal(len(sold)) / Decimal(len(sold) + len(active))
                 if sold or active
@@ -386,11 +381,19 @@ def _build_drafts(
                 degraded=degraded,
                 truncated=truncated,
             )
+            scoring_status = (
+                "insufficient_sales"
+                if len(sold) < 3
+                else "insufficient_temporal_data"
+                if len(exact_sold) < 3
+                else "scored"
+            )
             warnings = sorted(
                 {warning for item in candidates for warning in _flags(item) & {"wrong_brand"}}
                 | ({"truncated"} if truncated else set())
                 | ({"degraded_mode"} if degraded else set())
                 | ({"low_sample"} if sample < HUNDRED else set())
+                | ({scoring_status} if scoring_status != "scored" else set())
             )
             digest = _digest(group_id, window, candidates, coverage, degraded, truncated)
             median_price = decimal_median(prices)
@@ -399,20 +402,25 @@ def _build_drafts(
             drafts[window][group_id] = MetricDraft(
                 group_id=group_id,
                 brand_id=group.brand_id,
+                window_days=window,
                 active_count=len(active),
                 sold_count=len(sold),
+                exact_sold_count=len(exact_sold),
                 median_sold_price=(
                     median_price.quantize(TWO_PLACES) if median_price is not None else None
                 ),
                 median_days_to_sell=(
                     median_days.quantize(TWO_PLACES) if median_days is not None else None
                 ),
-                median_sold_likes_per_day=(
-                    median_likes.quantize(FOUR_PLACES) if median_likes is not None else None
+                median_sold_likes=(
+                    median_likes.quantize(TWO_PLACES) if median_likes is not None else None
                 ),
                 sell_through=sell_through.quantize(SIX_PLACES),
+                frequency_score=frequency_score(len(sold), window),
                 sell_through_score=(sell_through * HUNDRED).quantize(TWO_PLACES),
-                velocity_score=velocity_score(median_days, window),
+                velocity_score=velocity_score(median_days),
+                likes_score=engagement_score(median_likes),
+                scoring_status=scoring_status,
                 confidence_score=confidence,
                 confidence_factors={
                     "sample": str(sample),
@@ -424,12 +432,21 @@ def _build_drafts(
                     "candidates": len(candidates),
                     "usable": len(usable),
                     "excluded": excluded,
+                    "exact_sold": len(exact_sold),
                     "no_photos": no_photo,
                     "price_excluded": sum(bool(_flags(item) & _PRICE_EXCLUSIONS) for item in sold),
                 },
                 warnings=warnings,
                 input_digest=digest,
             )
+    if set(drafts[30]) != set(drafts[90]):
+        raise RuntimeError("scoring_window_group_mismatch")
+    for group_id, recent in drafts[30].items():
+        extended = drafts[90][group_id]
+        if recent.sold_count > extended.sold_count:
+            raise RuntimeError("scoring_window_sold_not_nested")
+        if recent.active_count != extended.active_count:
+            raise RuntimeError("scoring_window_active_mismatch")
     return drafts
 
 
@@ -462,14 +479,18 @@ def _finalize_rows(
                     as_of=as_of,
                     active_count=draft.active_count,
                     sold_count=draft.sold_count,
+                    exact_sold_count=draft.exact_sold_count,
                     median_sold_price=draft.median_sold_price,
                     median_days_to_sell=draft.median_days_to_sell,
-                    median_sold_likes_per_day=draft.median_sold_likes_per_day,
+                    median_sold_likes=draft.median_sold_likes,
+                    median_sold_likes_per_day=None,
                     sell_through=draft.sell_through,
                     liquidity_score=metrics.liquidity_score,
+                    demand_score=metrics.demand_score,
                     price_score=metrics.price_score,
                     confidence_score=draft.confidence_score,
                     market_opportunity_score=metrics.market_opportunity_score,
+                    scoring_status=draft.scoring_status,
                     component_breakdown=metrics.component_breakdown,
                     confidence_factors=draft.confidence_factors,
                     quality_summary=draft.quality_summary,
@@ -484,9 +505,10 @@ def _finalize_rows(
 def _in_window(listing: Listing, cutoff: datetime, as_of: datetime) -> bool:
     if listing.status == "sold":
         timestamp = _aware(listing.sold_at) if listing.sold_at is not None else None
-    else:
-        timestamp = _aware(listing.created_at or listing.first_seen_at)
-    return timestamp is not None and cutoff <= timestamp <= as_of
+        return timestamp is not None and cutoff <= timestamp <= as_of
+    if listing.status == "active":
+        return _aware(listing.created_at or listing.first_seen_at) <= as_of
+    return False
 
 
 def _flags(listing: Listing) -> set[str]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -33,13 +33,17 @@ class GroupRow(BaseModel):
     available_sizes: list[str]
     available_conditions: list[str]
     sold_count: int
+    exact_sold_count: int
     active_count: int
     median_sold_price: int | None
-    median_sold_likes_per_day: Decimal | None
-    liquidity_score: Decimal
+    median_days_to_sell: Decimal | None
+    median_sold_likes: Decimal | None
+    liquidity_score: Decimal | None
+    demand_score: Decimal | None
     price_score: Decimal
     confidence_score: Decimal
-    market_opportunity_score: Decimal
+    market_opportunity_score: Decimal | None
+    scoring_status: str
     model_version: str
     window_days: int
     run_id: int
@@ -47,19 +51,25 @@ class GroupRow(BaseModel):
 
 class GroupListResponse(BaseModel):
     data: list[GroupRow]
+    total: int
+    limit: int
+    offset: int
 
 
 class ScoreMetrics(BaseModel):
     sold_count: int
+    exact_sold_count: int
     active_count: int
     sell_through: Decimal
     median_sold_price: int | None
     median_days_to_sell: Decimal | None
-    median_sold_likes_per_day: Decimal | None
-    liquidity_score: Decimal
+    median_sold_likes: Decimal | None
+    liquidity_score: Decimal | None
+    demand_score: Decimal | None
     price_score: Decimal
     confidence_score: Decimal
-    market_opportunity_score: Decimal
+    market_opportunity_score: Decimal | None
+    scoring_status: str
     components: dict[str, dict[str, str]]
     confidence_factors: dict[str, Any]
     quality_summary: dict[str, Any]
@@ -96,9 +106,10 @@ class BrandAnalytics(BaseModel):
     groups_count: int
     sold_count: int
     active_count: int
-    average_liquidity_score: Decimal
+    average_liquidity_score: Decimal | None
+    average_demand_score: Decimal | None
     average_confidence_score: Decimal
-    average_market_opportunity_score: Decimal
+    average_market_opportunity_score: Decimal | None
 
 
 class BrandListResponse(BaseModel):
@@ -242,14 +253,58 @@ async def list_model_groups(
     session: Annotated[AsyncSession, Depends(get_db)],
     window_days: Annotated[int, Query()] = 90,
     run_id: int | None = None,
+    brand_id: Annotated[int | None, Query(ge=1)] = None,
+    product_type: Literal["footwear", "clothing", "accessories"] | None = None,
+    search: Annotated[str, Query(max_length=200)] = "",
+    scored_only: bool = False,
+    sort_by: Literal[
+        "name",
+        "sold_count",
+        "active_count",
+        "median_sold_price",
+        "demand_score",
+        "liquidity_score",
+    ] = "demand_score",
+    sort_desc: bool = True,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> GroupListResponse:
     _validate_window(window_days)
     service = AnalyticsService(session)
-    selected_run = await service.selected_run(window_days, run_id)
+    selected_run = await service.selected_run(
+        window_days,
+        run_id,
+        brand_id=brand_id,
+        product_type=product_type,
+    )
     if selected_run is None:
-        return GroupListResponse(data=[])
-    rows = await service.list_group_rows(selected_run, window_days)
-    return GroupListResponse(data=[_group_row(row) for row in rows])
+        return GroupListResponse(data=[], total=0, limit=limit, offset=offset)
+    total = await service.count_group_rows(
+        selected_run,
+        window_days,
+        brand_id=brand_id,
+        product_type=product_type,
+        search=search,
+        scored_only=scored_only,
+    )
+    rows = await service.list_group_rows(
+        selected_run,
+        window_days,
+        brand_id=brand_id,
+        product_type=product_type,
+        search=search,
+        scored_only=scored_only,
+        sort_by=sort_by,
+        sort_desc=sort_desc,
+        limit=limit,
+        offset=offset,
+    )
+    return GroupListResponse(
+        data=[_group_row(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/model-groups/{group_id}", response_model=GroupDetail)
@@ -366,13 +421,17 @@ def _group_row(row: GroupRowData) -> GroupRow:
         available_sizes=row.available_sizes,
         available_conditions=row.available_conditions,
         sold_count=row.sold_count,
+        exact_sold_count=row.exact_sold_count,
         active_count=row.active_count,
         median_sold_price=row.median_sold_price,
-        median_sold_likes_per_day=row.median_sold_likes_per_day,
+        median_days_to_sell=row.median_days_to_sell,
+        median_sold_likes=row.median_sold_likes,
         liquidity_score=row.liquidity_score,
+        demand_score=row.demand_score,
         price_score=row.price_score,
         confidence_score=row.confidence_score,
         market_opportunity_score=row.market_opportunity_score,
+        scoring_status=row.scoring_status,
         model_version=row.model_version,
         window_days=row.window_days,
         run_id=row.run_id,
@@ -392,15 +451,18 @@ def _group_detail(detail: GroupDetailData) -> GroupDetail:
         input_digest=detail.input_digest,
         metrics=ScoreMetrics(
             sold_count=detail.metrics.sold_count,
+            exact_sold_count=detail.metrics.exact_sold_count,
             active_count=detail.metrics.active_count,
             sell_through=detail.metrics.sell_through,
             median_sold_price=detail.metrics.median_sold_price,
             median_days_to_sell=detail.metrics.median_days_to_sell,
-            median_sold_likes_per_day=detail.metrics.median_sold_likes_per_day,
+            median_sold_likes=detail.metrics.median_sold_likes,
             liquidity_score=detail.metrics.liquidity_score,
+            demand_score=detail.metrics.demand_score,
             price_score=detail.metrics.price_score,
             confidence_score=detail.metrics.confidence_score,
             market_opportunity_score=detail.metrics.market_opportunity_score,
+            scoring_status=detail.metrics.scoring_status,
             components=detail.metrics.components,
             confidence_factors=detail.metrics.confidence_factors,
             quality_summary=detail.metrics.quality_summary,
@@ -439,6 +501,7 @@ def _brand_analytics(data: BrandAnalyticsData) -> BrandAnalytics:
         sold_count=data.sold_count,
         active_count=data.active_count,
         average_liquidity_score=data.average_liquidity_score,
+        average_demand_score=data.average_demand_score,
         average_confidence_score=data.average_confidence_score,
         average_market_opportunity_score=data.average_market_opportunity_score,
     )

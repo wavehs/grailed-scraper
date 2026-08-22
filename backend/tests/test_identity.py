@@ -23,7 +23,7 @@ from app.db.models import (
     PhysicalItemMember,
 )
 from app.services.identity.images import fingerprint_bytes, hamming_distance
-from app.services.identity.service import IdentityResolver, model_text
+from app.services.identity.service import IdentityResolver, model_signature, model_text
 
 
 def test_model_text_and_image_hash_are_stable() -> None:
@@ -51,6 +51,26 @@ def test_model_text_and_image_hash_are_stable() -> None:
     assert model_text("Osaka Pocket Tee SLT", "Chrome Hearts") == model_text(
         "Osaka Pocket T BK", "Chrome Hearts"
     )
+    dagger = model_signature(
+        "Chrome Hearts Dagger Pendant Cuban Link Chain Necklace 925",
+        "Chrome Hearts",
+        "One Size",
+        "Silver",
+        "accessories",
+    )
+    assert dagger == model_signature(
+        "Dagger Necklace", "Chrome Hearts", "One Size", "Silver", "accessories"
+    ) == ("necklace", "dagger")
+    assert model_signature(
+        "Chrome Hearts Double Dagger Pendant",
+        "Chrome Hearts",
+        category="accessories",
+    ) != dagger
+    assert model_signature(
+        "Chrome Hearts Dagger Dog Tag Necklace",
+        "Chrome Hearts",
+        category="accessories",
+    ) != dagger
 
 
 async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -92,7 +112,7 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
                 index_type="active",
                 status="done",
                 attempts=1,
-                hits_collected=3,
+                hits_collected=5,
             )
         )
         old = _listing(
@@ -108,7 +128,31 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
         current = _listing(101, run.id, brand.id, now - timedelta(days=1), "sold", "L", "Red")
         current.sold_at = now - timedelta(hours=12)
         future = _listing(102, run.id, brand.id, now, "active", "XL", "White")
-        session.add_all([old, current, future])
+        generic_a = _listing(
+            103,
+            run.id,
+            brand.id,
+            now,
+            "active",
+            "M",
+            "Black",
+            title="Rick Owens Short Sleeve T-Shirt",
+            seller="seller-a",
+            asset="b" * 64,
+        )
+        generic_b = _listing(
+            104,
+            run.id,
+            brand.id,
+            now,
+            "active",
+            "L",
+            "White",
+            title="Rick Owens Short Sleeve Tee",
+            seller="seller-b",
+            asset="c" * 64,
+        )
+        session.add_all([old, current, future, generic_a, generic_b])
         await session.commit()
         resolver = IdentityResolver(session, Settings(identity_image_requests_per_run=0))
         result = await resolver.resolve_run(run.id)
@@ -118,8 +162,20 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
                 select(ListingModelAssignment).order_by(ListingModelAssignment.listing_id)
             )
         )
-        assert len(assignments) == 3
-        assert len({item.model_group_id for item in assignments}) == 1
+        assert len(assignments) == 5
+        assert len({item.model_group_id for item in assignments[:3]}) == 1
+        assert len({item.model_group_id for item in assignments[3:]}) == 2
+        members_before = {
+            item.listing_id: item.physical_item_id
+            for item in await session.scalars(select(PhysicalItemMember))
+        }
+        await resolver.resolve_run(run.id)
+        await session.commit()
+        members_after = {
+            item.listing_id: item.physical_item_id
+            for item in await session.scalars(select(PhysicalItemMember))
+        }
+        assert members_after == members_before
         fallback_groups = [
             ModelGroup(
                 stable_key=f"manual:{suffix}",
@@ -134,7 +190,7 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
         ]
         session.add_all(fallback_groups)
         await session.flush()
-        for assignment, group in zip(assignments, fallback_groups, strict=True):
+        for assignment, group in zip(assignments[:3], fallback_groups, strict=True):
             assignment.model_group_id = group.id
             assignment.method = "source_product_id"
         await resolver._model_candidates([old, current, future])
@@ -155,13 +211,17 @@ def _listing(
     status: str,
     size: str,
     color: str,
+    *,
+    title: str = "Rick Owens Geobasket",
+    seller: str = "seller-hash",
+    asset: str = "a" * 64,
 ) -> Listing:
     return Listing(
         source="grailed",
         grailed_id=identifier,
         status=status,
         url=f"https://www.grailed.com/listings/{identifier}",
-        title="Rick Owens Geobasket",
+        title=title,
         description=None,
         brand_name_raw="Rick Owens",
         brand_slug="rick-owens",
@@ -173,7 +233,6 @@ def _listing(
         condition_raw="used",
         condition="used",
         color=color,
-        source_product_id=777,
         price=Decimal("500"),
         currency_original="USD",
         likes_count=1,
@@ -182,14 +241,14 @@ def _listing(
         first_seen_at=created_at,
         last_seen_at=created_at,
         cover_photo_url="https://media-assets.grailed.com/test.jpg",
-        cover_asset_key="a" * 64,
+        cover_asset_key=asset,
         photo_urls=["https://media-assets.grailed.com/test.jpg"],
         photo_count=1,
-        seller_identity="seller-hash",
+        seller_identity=seller,
         seller_identity_mode="hashed",
         quality_flags=[],
         fetch_tier="T1",
         parser_run_id=run_id,
-        raw_json={"product_id": 777},
+        raw_json={},
         schema_version=2,
     )

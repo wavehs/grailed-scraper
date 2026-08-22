@@ -1,8 +1,19 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Award, BarChart3, Shield, TrendingUp } from 'lucide-react';
+import {
+  ArrowLeft,
+  Award,
+  BarChart3,
+  Clock3,
+  Heart,
+  PackageCheck,
+  Shield,
+  ShoppingBag,
+  TrendingUp,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -18,8 +29,17 @@ const pretty = (value: unknown) =>
 
 export default function ModelDetail() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const { locale, t } = useI18n();
-  const query = useModelGroupDetailQuery(params.id);
+  const windowDays = searchParams.get('window_days') === '30' ? 30 : 90;
+  const runValue = Number(searchParams.get('run_id'));
+  const backValue = searchParams.get('back');
+  const backHref = backValue?.startsWith('/dashboard') ? backValue : '/dashboard';
+  const query = useModelGroupDetailQuery(
+    params.id,
+    windowDays,
+    Number.isInteger(runValue) && runValue > 0 ? runValue : undefined,
+  );
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorState error={query.error} retry={() => query.refetch()} />;
   if (!query.data) return <EmptyState />;
@@ -31,43 +51,88 @@ export default function ModelDetail() {
   }));
   return (
     <section className="space-y-6" aria-labelledby="model-heading">
-      <PageHeader
-        title={data.name}
-        description={`${data.brand} · ${data.category ?? '—'}`}
-      />
+      <Link
+        className="inline-flex min-h-10 items-center gap-2 rounded-lg text-sm font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        href={backHref}
+      >
+        <ArrowLeft size={16} />
+        {t('backToResults')}
+      </Link>
+      <PageHeader title={data.name} description={`${data.brand} · ${data.category ?? '—'}`} />
       <p className="text-xs text-[var(--text-muted)]">
-        {t('modelVersion')}: {data.model_version} · {t('run')} #{data.run_id} · {data.window_days}
-        d · {t('inputDigest')}: <code className="rounded bg-[var(--bg-surface-hover)] px-1.5 py-0.5">{data.input_digest.slice(0, 12)}</code>
+        {t('modelVersion')}: {data.model_version} · {t('run')} #{data.run_id} · {data.window_days}d
+        · {t('inputDigest')}:{' '}
+        <code className="rounded bg-[var(--bg-surface-hover)] px-1.5 py-0.5">
+          {data.input_digest.slice(0, 12)}
+        </code>
       </p>
 
       {m.warnings.map((warning) => (
         <Notice error key={warning}>
-          {warning}
+          {warning === 'truncated'
+            ? t('truncatedResult')
+            : warning === 'partial'
+              ? t('partialResult')
+              : warning}
         </Notice>
       ))}
 
-      {/* Score cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label={t('opportunity')}
-          value={m.market_opportunity_score}
-          icon={<TrendingUp size={18} />}
-        />
-        <StatCard
-          label={t('liquidity')}
-          value={m.liquidity_score}
-          icon={<BarChart3 size={18} />}
-        />
-        <StatCard
-          label={t('medianPrice')}
-          value={formatCurrency(m.median_sold_price, locale)}
-          icon={<Award size={18} />}
-        />
-        <StatCard
-          label={t('confidence')}
-          value={m.confidence_score}
-          icon={<Shield size={18} />}
-        />
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {t('saleEvidence')}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label={t('soldInWindow')}
+            value={m.sold_count}
+            icon={<ShoppingBag size={18} />}
+          />
+          <StatCard
+            label={t('activeNow')}
+            value={m.active_count}
+            icon={<PackageCheck size={18} />}
+          />
+          <StatCard
+            label={t('daysToSell')}
+            value={
+              m.median_days_to_sell === undefined ? '—' : Number(m.median_days_to_sell).toFixed(1)
+            }
+            icon={<Clock3 size={18} />}
+          />
+          <StatCard
+            label={t('medianLikes')}
+            value={m.median_sold_likes === undefined ? '—' : Number(m.median_sold_likes).toFixed(0)}
+            icon={<Heart size={18} />}
+          />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {t('scoringDetails')}
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label={t('demand')}
+            value={m.demand_score ?? t(m.scoring_status)}
+            icon={<TrendingUp size={18} />}
+          />
+          <StatCard
+            label={t('liquidity')}
+            value={m.liquidity_score ?? t(m.scoring_status)}
+            icon={<BarChart3 size={18} />}
+          />
+          <StatCard
+            label={t('medianPrice')}
+            value={formatCurrency(m.median_sold_price, locale)}
+            icon={<Award size={18} />}
+          />
+          <StatCard
+            label={t('confidence')}
+            value={m.confidence_score}
+            icon={<Shield size={18} />}
+          />
+        </div>
       </div>
 
       {/* Price chart */}
@@ -109,15 +174,18 @@ export default function ModelDetail() {
           {Object.entries(m.components).map(([name, value]) => {
             const scoreNum = Number(value.score) || 0;
             return (
-              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-3" key={name}>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {name.replaceAll('_', ' ')}
-                </p>
+              <div
+                className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-3"
+                key={name}
+              >
+                <p className="text-xs text-[var(--text-muted)]">{name.replaceAll('_', ' ')}</p>
                 <p className="mt-1 font-semibold text-[var(--text-primary)]">
-                  {value.score} × {value.weight}
-                  {value.contribution ? ` = ${value.contribution}` : ''}
+                  {value.score}
+                  {value.liquidity_weight ? ` · L×${value.liquidity_weight}` : ''}
+                  {value.demand_weight ? ` · D×${value.demand_weight}` : ''}
+                  {value.weight ? ` · ${value.weight}` : ''}
                 </p>
-                <ProgressBar value={scoreNum * 10} max={100} size="sm" className="mt-2" />
+                <ProgressBar value={scoreNum} max={100} size="sm" className="mt-2" />
               </div>
             );
           })}
@@ -132,7 +200,10 @@ export default function ModelDetail() {
           </h2>
           <dl className="space-y-2">
             {Object.entries(m.confidence_factors).map(([key, value]) => (
-              <div className="flex justify-between gap-3 border-t border-[var(--border-subtle)] pt-2" key={key}>
+              <div
+                className="flex justify-between gap-3 border-t border-[var(--border-subtle)] pt-2"
+                key={key}
+              >
                 <dt className="text-sm text-[var(--text-muted)]">{key.replaceAll('_', ' ')}</dt>
                 <dd className="text-sm font-medium text-[var(--text-primary)]">{pretty(value)}</dd>
               </div>
@@ -145,7 +216,10 @@ export default function ModelDetail() {
           </h2>
           <dl className="space-y-2">
             {Object.entries(m.quality_summary).map(([key, value]) => (
-              <div className="flex justify-between gap-3 border-t border-[var(--border-subtle)] pt-2" key={key}>
+              <div
+                className="flex justify-between gap-3 border-t border-[var(--border-subtle)] pt-2"
+                key={key}
+              >
                 <dt className="text-sm text-[var(--text-muted)]">{key.replaceAll('_', ' ')}</dt>
                 <dd className="text-sm font-medium text-[var(--text-primary)]">{pretty(value)}</dd>
               </div>
@@ -157,13 +231,14 @@ export default function ModelDetail() {
       {/* Examples */}
       <div className="grid gap-5 lg:grid-cols-2">
         {[
-          [t('soldExamples'), data.sold_examples],
-          [t('activeExamples'), data.active_examples],
-        ].map(([title, items]) => (
+          [t('soldExamples'), data.sold_examples, true],
+          [t('activeExamples'), data.active_examples, false],
+        ].map(([title, items, open]) => (
           <ExampleList
             key={String(title)}
             title={String(title)}
             items={items as ListingExample[]}
+            open={Boolean(open)}
             money={(cents) => formatCurrency(cents, locale)}
             empty={t('noExamples')}
           />
@@ -176,43 +251,53 @@ export default function ModelDetail() {
 function ExampleList({
   title,
   items,
+  open,
   money,
   empty,
 }: {
   title: string;
   items: ListingExample[];
+  open: boolean;
   money: (value?: number) => string;
   empty: string;
 }) {
   const { t } = useI18n();
   return (
     <Card className="p-5">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-        {title}
-      </h2>
-      <ul className="space-y-2 text-sm">
-        {items.length ? (
-          items.map((item) => (
-            <li key={item.id} className="flex items-center gap-2 border-t border-[var(--border-subtle)] pt-2">
-              <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
-              <a
-                className="text-[var(--accent)] hover:underline"
-                href={`https://www.grailed.com/listings/${item.grailed_id}`}
-                rel="noreferrer"
-                target="_blank"
+      <details open={open}>
+        <summary className="flex min-h-10 cursor-pointer items-center justify-between text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {title}
+          <span className="tabular-nums">{items.length}</span>
+        </summary>
+        <ul className="mt-3 space-y-2 text-sm">
+          {items.length ? (
+            items.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-[var(--border-subtle)] pt-2"
               >
-                {item.title}
-              </a>
-              <span className="text-[var(--text-muted)]">·</span>
-              <span className="text-[var(--text-secondary)]">{money(item.price)}</span>
-              <span className="text-[var(--text-muted)]">·</span>
-              <span className="text-[var(--text-muted)]">{item.likes} {t('likes')}</span>
-            </li>
-          ))
-        ) : (
-          <li className="text-[var(--text-muted)]">{empty}</li>
-        )}
-      </ul>
+                <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
+                <a
+                  className="min-w-0 flex-1 break-words text-[var(--accent)] hover:underline"
+                  href={`https://www.grailed.com/listings/${item.grailed_id}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {item.title}
+                </a>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="text-[var(--text-secondary)]">{money(item.price)}</span>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="text-[var(--text-muted)]">
+                  {item.likes} {t('likes')}
+                </span>
+              </li>
+            ))
+          ) : (
+            <li className="text-[var(--text-muted)]">{empty}</li>
+          )}
+        </ul>
+      </details>
     </Card>
   );
 }

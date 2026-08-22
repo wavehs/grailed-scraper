@@ -32,7 +32,12 @@ const navItems: NavItem[] = [
   { key: 'brands', href: '/brands', icon: <Tags size={18} />, group: 'management' },
   { key: 'parserRuns', href: '/parser-runs', icon: <Play size={18} />, group: 'management' },
   { key: 'modelRules', href: '/model-rules', icon: <BookOpen size={18} />, group: 'management' },
-  { key: 'identityReview', href: '/identity-review', icon: <Fingerprint size={18} />, group: 'management' },
+  {
+    key: 'identityReview',
+    href: '/identity-review',
+    icon: <Fingerprint size={18} />,
+    group: 'management',
+  },
   { key: 'settings', href: '/settings', icon: <Settings size={18} />, group: 'system' },
 ];
 
@@ -52,10 +57,19 @@ export function AppSidebar() {
     const saved = window.localStorage.getItem('gla-theme');
     const next = saved
       ? saved === 'dark'
-      : window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+      : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false);
     setDark(next);
     document.documentElement.dataset.theme = next ? 'dark' : 'light';
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
 
   const toggleTheme = () => {
     const next = !dark;
@@ -71,7 +85,7 @@ export function AppSidebar() {
       {/* Mobile toggle */}
       <button
         className={`${open ? 'left-[188px]' : 'left-3'} fixed top-3 z-30 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface-raised)] p-2 text-[var(--text-primary)] shadow-sm transition-[left] md:hidden`}
-        aria-label={t('menu')}
+        aria-label={t(open ? 'closeMenu' : 'menu')}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
@@ -95,9 +109,7 @@ export function AppSidebar() {
             <span className="text-[13px] font-semibold tracking-tight text-[var(--text-primary)]">
               Grailed Intelligence
             </span>
-            <span className="block text-[10px] text-[var(--text-muted)]">
-              Market analyzer
-            </span>
+            <span className="block text-[10px] text-[var(--text-muted)]">Market analyzer</span>
           </div>
         </Link>
 
@@ -108,7 +120,7 @@ export function AppSidebar() {
             if (!items.length) return null;
             return (
               <div key={group}>
-                <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
                   {t(groupLabels[group].toLowerCase())}
                 </p>
                 <div className="space-y-0.5">
@@ -126,7 +138,11 @@ export function AppSidebar() {
                         key={href}
                         onClick={() => setOpen(false)}
                       >
-                        <span className={active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}>{icon}</span>
+                        <span
+                          className={active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}
+                        >
+                          {icon}
+                        </span>
                         {t(key)}
                       </Link>
                     );
@@ -142,6 +158,8 @@ export function AppSidebar() {
           <label>
             <span className="sr-only">{t('language')}</span>
             <select
+              id="app-language"
+              name="language"
               className="h-8 min-h-8 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-[var(--text-secondary)] shadow-none hover:border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]"
               value={locale}
               onChange={(event) => setLocale(event.target.value as 'en' | 'ru')}

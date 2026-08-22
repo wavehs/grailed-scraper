@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -50,8 +51,8 @@ def test_collection_limit_uses_available_capacity() -> None:
 
 @pytest.mark.asyncio
 async def test_run_deletion_preserves_listings_and_clear_removes_collected_data(
-    tmp_path,
-) -> None:  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+) -> None:
     engine = create_database_engine(
         Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'cleanup.db'}")
     )

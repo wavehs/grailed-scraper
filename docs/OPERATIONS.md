@@ -112,6 +112,7 @@ python -m app.cli retention --apply
 
 ```text
 python -m app.cli db-backup
+python -m app.cli market-rebuild
 python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3
 python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3 --apply
 ```
@@ -121,5 +122,7 @@ Backup использует SQLite online backup API и завершается �
 без `--apply` только проверяет источник. Для применения backend должен быть
 остановлен; перед заменой текущей БД автоматически создаётся и проверяется
 страховочная копия. Восстановленная БД повторно проходит integrity check.
+`market-rebuild` также сначала создаёт проверенный backup, затем пересобирает
+identity текущего run и сохраняет snapshots текущей версии скоринга.
 
 ---

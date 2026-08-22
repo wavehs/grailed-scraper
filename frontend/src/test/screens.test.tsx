@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
 import ParserRunsPage from '@/app/parser-runs/page';
 import SettingsPage from '@/app/settings/page';
+import { Dashboard } from '@/components/dashboard';
 import { HealthBanner } from '@/components/health-banner';
 import { HelpTip } from '@/components/ui/help-tip';
 import { renderApp } from '@/test/render';
@@ -34,6 +35,65 @@ const brand = {
 beforeEach(() => window.localStorage.clear());
 
 describe('stage 10 screens', () => {
+  it('renders Decimal scores from the live analytics API', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health'))
+        return json({
+          status: 'ready',
+          reasons: [],
+          transports: { T1: true },
+          discovery: { status: 'valid' },
+          schema: { active_alerts: 0, alerts: [] },
+        });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
+      if (url.includes('/analytics/dashboard?'))
+        return json({
+          data: [
+            {
+              id: 1,
+              name: 'Dagger Necklace',
+              brand_name: 'Chrome Hearts',
+              available_sizes: [],
+              available_conditions: [],
+              sold_count: 24,
+              exact_sold_count: 24,
+              active_count: 111,
+              median_sold_price: 45000,
+              liquidity_score: '72.72',
+              demand_score: '66.84',
+              price_score: '0.00',
+              confidence_score: '58.10',
+              market_opportunity_score: '66.84',
+              scoring_status: 'scored',
+              model_version: 'market-v4',
+              window_days: 30,
+              run_id: 3,
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<Dashboard />);
+    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
+    expect(screen.getAllByText('66.8').length).toBeGreaterThan(0);
+    await userEvent.selectOptions(screen.getByLabelText('Brand'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'accessories');
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = String(input);
+          return url.includes('brand_id=1') && url.includes('product_type=accessories');
+        }),
+      ).toBe(true),
+    );
+  });
+
   it('opens setting help on click', async () => {
     renderApp(<HelpTip label="Limit" text="Maximum requests for this run." />);
     const help = screen.getByRole('button', { name: 'Help' });
@@ -181,12 +241,12 @@ describe('stage 10 screens', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Start run' }));
     expect(await screen.findByText('Run #11')).toBeInTheDocument();
     expect(runCalls).toBe(2);
-    const confirmed = vi.mocked(fetch).mock.calls.filter(([input]) =>
-      String(input).endsWith('/parser/run'),
-    )[1];
-    const planned = vi.mocked(fetch).mock.calls.filter(([input]) =>
-      String(input).endsWith('/parser/run'),
-    )[0];
+    const confirmed = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[1];
+    const planned = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[0];
     expect(JSON.parse(String(planned[1]?.body))).toMatchObject({ collect_all: true });
     expect(JSON.parse(String(planned[1]?.body))).not.toHaveProperty('max_items_per_brand');
     const confirmedPayload = JSON.parse(String(confirmed[1]?.body));
@@ -209,18 +269,20 @@ describe('stage 10 screens', () => {
       if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
       if (url.includes('/parser/runs?'))
         return json({
-          data: [{
-            id: 7,
-            mode: 'full',
-            status: 'completed',
-            phase: 'done',
-            dry_run: false,
-            degraded: false,
-            coverage: 1,
-            requests_made: 10,
-            warnings: [],
-            created_at: new Date().toISOString(),
-          }],
+          data: [
+            {
+              id: 7,
+              mode: 'full',
+              status: 'completed',
+              phase: 'done',
+              dry_run: false,
+              degraded: false,
+              coverage: 1,
+              requests_made: 10,
+              warnings: [],
+              created_at: new Date().toISOString(),
+            },
+          ],
           total: 1,
           limit: 50,
           offset: 0,
@@ -229,8 +291,7 @@ describe('stage 10 screens', () => {
         return Promise.resolve(new Response(null, { status: 204 }));
       if (url.endsWith('/parser/history/clear') && init?.method === 'POST')
         return json({ runs_deleted: 1 });
-      if (url.endsWith('/parser/data/clear') && init?.method === 'POST')
-        return clearResponse;
+      if (url.endsWith('/parser/data/clear') && init?.method === 'POST') return clearResponse;
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -265,9 +326,7 @@ describe('stage 10 screens', () => {
     await userEvent.click(
       within(clearDialog).getByRole('button', { name: 'Clear collected data' }),
     );
-    expect(within(clearDialog).getByRole('progressbar')).toHaveAccessibleName(
-      'Clearing database…',
-    );
+    expect(within(clearDialog).getByRole('progressbar')).toHaveAccessibleName('Clearing database…');
     finishClear?.();
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

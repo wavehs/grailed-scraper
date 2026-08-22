@@ -1,0 +1,46 @@
+   ▲ Next.js 15.5.21
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.52:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.7s
+ ○ Compiling /listings ...
+ ✓ Compiled /listings in 2.9s (796 modules)
+ GET /listings 200 in 4381ms
+ GET /listings 200 in 206ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1841ms (820 modules)
+ GET /dashboard 200 in 2089ms
+ GET /dashboard 200 in 53ms
+ GET /dashboard 200 in 55ms
+ ○ Compiling /model-groups/[id] ...
+ ✓ Compiled /model-groups/[id] in 3.6s (1875 modules)
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 5141ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 79ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 50ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 59ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 80ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 65ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 69ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 72ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 91ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 97ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 111ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 127ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 100ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 120ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 118ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 76ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 67ms
+ GET /model-groups/46583?window_days=90&run_id=4&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dtrue%26offset%3D0%26brand_id%3D2 200 in 49ms
+ GET /dashboard 200 in 62ms
+ GET /model-groups/118800?window_days=90&run_id=5&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dfalse%26offset%3D0%26brand_id%3D18 200 in 66ms
+ GET /dashboard 200 in 34ms
+ GET /listings 200 in 45ms
+ GET /dashboard 200 in 38ms
+ GET /listings 200 in 30ms
+ GET /dashboard 200 in 37ms
+ GET /model-groups/119287?window_days=90&run_id=5&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dfalse%26offset%3D0 200 in 911ms
+ GET /dashboard?window_days=90&search=&low_data=false&offset=0 200 in 40ms
+ GET /model-groups/118800?window_days=90&run_id=5&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dfalse%26offset%3D0 200 in 268ms

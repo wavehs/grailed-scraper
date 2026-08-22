@@ -9,6 +9,7 @@ import type {
   ParserHealth,
   RunList,
   SettingsResponse,
+  DashboardProductType,
 } from '@/lib/types';
 
 export function useApiHealth() {
@@ -41,7 +42,11 @@ export function useBrandsQuery() {
   });
 }
 
-export function useRunsQuery(limit: number = 50, offset: number = 0, refetchInterval?: number | false | ((query: any) => number | false)) {
+export function useRunsQuery(
+  limit: number = 50,
+  offset: number = 0,
+  refetchInterval?: number | false | ((query: any) => number | false),
+) {
   return useQuery({
     queryKey: ['runs', limit, offset],
     queryFn: ({ signal }) =>
@@ -50,19 +55,59 @@ export function useRunsQuery(limit: number = 50, offset: number = 0, refetchInte
   });
 }
 
-export function useDashboardQuery(windowDays: number = 90) {
+export function useDashboardQuery(
+  windowDays: number = 90,
+  search: string = '',
+  scoredOnly: boolean = true,
+  offset: number = 0,
+  sortBy: string = 'demand_score',
+  sortDesc: boolean = true,
+  brandId?: number,
+  productType?: DashboardProductType,
+) {
   return useQuery({
-    queryKey: ['dashboard', windowDays],
+    queryKey: [
+      'dashboard',
+      windowDays,
+      search,
+      scoredOnly,
+      offset,
+      sortBy,
+      sortDesc,
+      brandId,
+      productType,
+    ],
     queryFn: ({ signal }) =>
-      getApi<{ data: DashboardRow[] }>(`/analytics/dashboard?window_days=${windowDays}`, signal),
+      getApi<{ data: DashboardRow[]; total: number; limit: number; offset: number }>(
+        `/analytics/dashboard?${new URLSearchParams({
+          window_days: String(windowDays),
+          limit: '50',
+          offset: String(offset),
+          scored_only: String(scoredOnly),
+          sort_by: sortBy,
+          sort_desc: String(sortDesc),
+          search,
+          ...(brandId ? { brand_id: String(brandId) } : {}),
+          ...(productType ? { product_type: productType } : {}),
+        })}`,
+        signal,
+      ),
+    placeholderData: (previousData) => previousData,
   });
 }
 
-export function useModelGroupDetailQuery(id: string | number) {
+export function useModelGroupDetailQuery(
+  id: string | number,
+  windowDays: number = 90,
+  runId?: number,
+) {
   return useQuery({
-    queryKey: ['model', String(id)],
+    queryKey: ['model', String(id), windowDays, runId],
     queryFn: ({ signal }) =>
-      getApi<ModelGroupDetail>(`/analytics/model-groups/${id}`, signal),
+      getApi<ModelGroupDetail>(
+        `/analytics/model-groups/${id}?window_days=${windowDays}${runId ? `&run_id=${runId}` : ''}`,
+        signal,
+      ),
   });
 }
 

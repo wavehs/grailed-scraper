@@ -363,6 +363,12 @@ class ScoringSnapshot(Base):
             "window_days",
             "market_opportunity_score",
         ),
+        Index(
+            "ix_scoring_snapshots_brand_window_demand",
+            "brand_id",
+            "window_days",
+            "demand_score",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -380,14 +386,18 @@ class ScoringSnapshot(Base):
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     active_count: Mapped[int] = mapped_column(Integer, nullable=False)
     sold_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    exact_sold_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     median_sold_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     median_days_to_sell: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    median_sold_likes: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     median_sold_likes_per_day: Mapped[Decimal | None] = mapped_column(Numeric(14, 4))
     sell_through: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
-    liquidity_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    demand_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     price_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     confidence_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    market_opportunity_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    market_opportunity_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    scoring_status: Mapped[str] = mapped_column(String(32), nullable=False, default="scored")
     component_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     confidence_factors: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     quality_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

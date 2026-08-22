@@ -48,6 +48,12 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
         {column["name"] for column in inspector.get_columns("listings")}
     )
+    assert {"exact_sold_count", "median_sold_likes", "demand_score", "scoring_status"}.issubset(
+        {column["name"] for column in inspector.get_columns("scoring_snapshots")}
+    )
+    assert "ix_scoring_snapshots_brand_window_demand" in {
+        index["name"] for index in inspector.get_indexes("scoring_snapshots")
+    }
     parser_run_column = next(
         column for column in inspector.get_columns("listings") if column["name"] == "parser_run_id"
     )

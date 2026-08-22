@@ -34,7 +34,8 @@ from app.db.session import get_db
 from app.main import app
 from app.services.scoring.calculator import (
     confidence_score,
-    percentile_scores,
+    engagement_score,
+    frequency_score,
     ratio_score,
     velocity_score,
 )
@@ -43,19 +44,15 @@ from app.services.scoring.service import OpportunityScoringService, rule_matches
 AS_OF = datetime(2026, 8, 8, 12, tzinfo=UTC)
 
 
-def test_decimal_formula_boundaries_and_percentile_ties() -> None:
+def test_decimal_formula_boundaries_are_absolute_and_frequency_capped() -> None:
     assert ratio_score(1, 4) == Decimal("25.00")
     assert ratio_score(0, 0) == Decimal("0")
-    assert velocity_score(Decimal(0), 30) == Decimal("100.00")
-    assert velocity_score(Decimal(45), 30) == Decimal("0.00")
-    assert percentile_scores({1: Decimal(10)}) == {1: Decimal(50)}
-    assert percentile_scores({1: Decimal(10), 2: Decimal(10)}) == {
-        1: Decimal("50.00"),
-        2: Decimal("50.00"),
-    }
-    assert percentile_scores(
-        {1: Decimal(10), 2: Decimal(20)}, reverse=True
-    ) == {1: Decimal("100.00"), 2: Decimal("0.00")}
+    assert velocity_score(Decimal(0)) == Decimal("100.00")
+    assert velocity_score(Decimal(30)) == Decimal("50.00")
+    assert frequency_score(1, 30) == Decimal("25.00")
+    assert frequency_score(3, 30) == Decimal("50.00")
+    assert frequency_score(3, 90) == Decimal("25.00")
+    assert engagement_score(Decimal(20)) == Decimal("50.00")
     assert confidence_score(
         sample=Decimal(100),
         coverage=Decimal(100),
@@ -312,6 +309,38 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     created_days_ago=1,
                     flags=["repost"],
                 ),
+                _listing(
+                    listing_id=1007,
+                    run_id=run.id,
+                    brand_id=brand.id,
+                    title="Archive leather jacket",
+                    category="outerwear",
+                    status="sold",
+                    price="130.00",
+                    created_days_ago=18,
+                    sold_days_ago=3,
+                ),
+                _listing(
+                    listing_id=1008,
+                    run_id=run.id,
+                    brand_id=brand.id,
+                    title="Archive leather jacket",
+                    category="outerwear",
+                    status="sold",
+                    price="140.00",
+                    created_days_ago=12,
+                    sold_days_ago=1,
+                ),
+                _listing(
+                    listing_id=1009,
+                    run_id=run.id,
+                    brand_id=brand.id,
+                    title="Geobasket boots",
+                    category="footwear",
+                    status="active",
+                    price="310.00",
+                    created_days_ago=60,
+                ),
             ]
         )
         await session.commit()
@@ -327,7 +356,7 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
     assert first == second
     assert first == {
         "status": "completed",
-        "model_version": "opportunity-v2",
+        "model_version": "market-v4",
         "windows": [30, 90],
         "groups": 3,
         "snapshots": 6,
@@ -346,24 +375,40 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
             if item.window_days == 30 and item.model_group_id == specific_group_id
         )
     assert len(snapshots) == 6
-    assert specific.sold_count == 1
+    extended = next(
+        item
+        for item in snapshots
+        if item.window_days == 90 and item.model_group_id == specific_group_id
+    )
+    insufficient = next(
+        item for item in snapshots if item.window_days == 30 and item.sold_count == 1
+    )
+    assert specific.sold_count == 3
+    assert specific.exact_sold_count == 3
     assert specific.active_count == 2
     assert specific.quality_summary == {
-        "candidates": 4,
-        "usable": 3,
+        "candidates": 6,
+        "usable": 5,
         "excluded": 1,
+        "exact_sold": 3,
         "no_photos": 1,
         "price_excluded": 0,
     }
     assert specific.confidence_score < 100
-    assert Decimal(0) <= specific.market_opportunity_score <= Decimal(100)
+    assert specific.scoring_status == "scored"
+    assert specific.demand_score is not None
+    assert specific.liquidity_score is not None
+    assert extended.active_count == specific.active_count
+    assert extended.sold_count >= specific.sold_count
+    assert extended.demand_score is not None and extended.demand_score <= Decimal("33.33")
+    assert insufficient.scoring_status == "insufficient_sales"
+    assert insufficient.demand_score is None
+    assert insufficient.liquidity_score is None
     await engine.dispose()
 
 
 def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    async def scenario() -> tuple[
-        AsyncEngine, async_sessionmaker[AsyncSession], int, int, int
-    ]:
+    async def scenario() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], int, int, int]:
         engine, factory = await _database(tmp_path)
         run_id, brand_id, group_id = await _seed(factory)
         await OpportunityScoringService(factory).score_run(run_id)
@@ -394,6 +439,13 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
     try:
         client = TestClient(app)
         dashboard = client.get("/api/analytics/dashboard?window_days=30")
+        sorted_dashboard = client.get(
+            "/api/analytics/dashboard?window_days=30&sort_by=sold_count&sort_desc=false"
+        )
+        filtered_dashboard = client.get(
+            f"/api/analytics/dashboard?window_days=30&brand_id={brand_id}"
+            "&product_type=footwear&limit=1"
+        )
         detail = client.get(f"/api/analytics/model-groups/{group_id}?window_days=30")
         brands = client.get("/api/analytics/brands?window_days=30")
         brand = client.get(f"/api/analytics/brands/{brand_id}?window_days=30")
@@ -416,6 +468,10 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
     assert dashboard.status_code == 200, dashboard.text
     assert detail.status_code == 200, detail.text
     assert len(dashboard.json()["data"]) == 3
+    sold_counts = [item["sold_count"] for item in sorted_dashboard.json()["data"]]
+    assert sold_counts == sorted(sold_counts)
+    assert filtered_dashboard.json()["total"] == 1
+    assert filtered_dashboard.json()["data"][0]["category"] == "footwear"
     assert isinstance(detail.json()["metrics"]["median_sold_price"], int)
     assert brands.json()["data"][0]["groups_count"] == 3
     assert brand.status_code == listing.status_code == history.status_code == 200
@@ -425,7 +481,7 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
     assert isinstance(catalog.json()["data"][0]["price"], int)
     assert history.json()["data"][0]["price"] == 9999
     assert created.status_code == 201
-    assert len(matches.json()) == 1
+    assert len(matches.json()) == 2
     assert deleted.status_code == 204
     asyncio.run(engine.dispose())
 
@@ -437,16 +493,14 @@ async def test_stage9_model_exposes_tables_constraints_and_indexes(tmp_path) -> 
             lambda sync: {
                 "tables": set(inspect(sync).get_table_names()),
                 "snapshot_indexes": {
-                    item["name"]
-                    for item in inspect(sync).get_indexes("scoring_snapshots")
+                    item["name"] for item in inspect(sync).get_indexes("scoring_snapshots")
                 },
             }
         )
-    assert {"model_groups", "model_rules", "scoring_snapshots"} <= cast(
-        set[str], schema["tables"]
-    )
+    assert {"model_groups", "model_rules", "scoring_snapshots"} <= cast(set[str], schema["tables"])
     assert {
         "ix_scoring_snapshots_group_window_run",
         "ix_scoring_snapshots_brand_window_opportunity",
+        "ix_scoring_snapshots_brand_window_demand",
     } <= cast(set[str], schema["snapshot_indexes"])
     await engine.dispose()

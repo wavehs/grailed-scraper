@@ -16,7 +16,9 @@ _WHITESPACE = re.compile(r"\s+")
 def seller_identity(value: object, settings: Settings, *, root: Path = PROJECT_ROOT) -> str | None:
     """Return the configured privacy-preserving seller identifier."""
 
-    username = _WHITESPACE.sub(" ", str(value)).strip().casefold()
+    if not isinstance(value, str):
+        return None
+    username = _WHITESPACE.sub(" ", value).strip().casefold()
     if not username or settings.store_seller_identity == "none":
         return None
     if settings.store_seller_identity == "plain":

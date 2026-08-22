@@ -1,4 +1,4 @@
-"""Pure Decimal calculations for the opportunity-v1 scoring model."""
+"""Pure Decimal calculations for the market-v4 demand and liquidity model."""
 
 from __future__ import annotations
 
@@ -16,18 +16,21 @@ SIX_PLACES = Decimal("0.000001")
 
 @dataclass(slots=True)
 class MetricDraft:
-    """Metrics available before within-brand percentile components are assigned."""
-
     group_id: int
     brand_id: int
+    window_days: int
     active_count: int
     sold_count: int
+    exact_sold_count: int
     median_sold_price: Decimal | None
     median_days_to_sell: Decimal | None
-    median_sold_likes_per_day: Decimal | None
+    median_sold_likes: Decimal | None
     sell_through: Decimal
-    sell_through_score: Decimal
+    frequency_score: Decimal
     velocity_score: Decimal
+    sell_through_score: Decimal
+    likes_score: Decimal
+    scoring_status: str
     confidence_score: Decimal
     confidence_factors: dict[str, str]
     quality_summary: dict[str, Any]
@@ -37,17 +40,15 @@ class MetricDraft:
 
 @dataclass(frozen=True, slots=True)
 class FinalMetrics:
-    liquidity_score: Decimal
+    liquidity_score: Decimal | None
+    demand_score: Decimal | None
     price_score: Decimal
-    likes_score: Decimal
-    market_opportunity_score: Decimal
+    market_opportunity_score: Decimal | None
     component_breakdown: dict[str, dict[str, str]]
 
 
 def decimal_median(values: list[Decimal]) -> Decimal | None:
-    if not values:
-        return None
-    return Decimal(median(values))
+    return Decimal(median(values)) if values else None
 
 
 def ratio_score(numerator: int, denominator: int) -> Decimal:
@@ -56,11 +57,17 @@ def ratio_score(numerator: int, denominator: int) -> Decimal:
     return (Decimal(numerator) / Decimal(denominator) * HUNDRED).quantize(TWO_PLACES)
 
 
-def velocity_score(days: Decimal | None, window_days: int) -> Decimal:
-    if days is None:
-        return ZERO
-    bounded = min(max(days / Decimal(window_days), ZERO), Decimal(1))
-    return ((Decimal(1) - bounded) * HUNDRED).quantize(TWO_PLACES, ROUND_HALF_UP)
+def frequency_score(sold_count: int, window_days: int) -> Decimal:
+    monthly_sales = Decimal(sold_count) * Decimal(30) / Decimal(window_days)
+    return _saturating_score(monthly_sales, Decimal(3))
+
+
+def velocity_score(days: Decimal | None) -> Decimal:
+    return _saturating_score(Decimal(30), days) if days is not None else ZERO
+
+
+def engagement_score(likes: Decimal | None) -> Decimal:
+    return _saturating_score(likes, Decimal(20)) if likes is not None else ZERO
 
 
 def sample_sufficiency(sold_count: int, active_count: int, target: int = 20) -> Decimal:
@@ -91,66 +98,57 @@ def confidence_score(
     return min(max(score, ZERO), HUNDRED).quantize(TWO_PLACES, ROUND_HALF_UP)
 
 
-def percentile_scores(
-    values: dict[int, Decimal | None], *, reverse: bool = False
-) -> dict[int, Decimal]:
-    """Return midpoint-rank percentiles; missing values score zero, one value scores 50."""
-
-    present = [(key, value) for key, value in values.items() if value is not None]
-    if not present:
-        return {key: ZERO for key in values}
-    if len(present) == 1:
-        only = present[0][0]
-        return {key: Decimal(50) if key == only else ZERO for key in values}
-
-    result: dict[int, Decimal] = {}
-    ordered = sorted(value for _, value in present if value is not None)
-    denominator = Decimal(len(ordered) - 1)
-    for key, value in present:
-        assert value is not None
-        positions = [index for index, candidate in enumerate(ordered) if candidate == value]
-        rank = Decimal(positions[0] + positions[-1]) / Decimal(2)
-        score = rank / denominator * HUNDRED
-        if reverse:
-            score = HUNDRED - score
-        result[key] = score.quantize(TWO_PLACES, ROUND_HALF_UP)
-    for key in values:
-        result.setdefault(key, ZERO)
-    return result
-
-
 def finalize_brand(drafts: list[MetricDraft]) -> dict[int, FinalMetrics]:
-    prices = percentile_scores(
-        {draft.group_id: draft.median_sold_price for draft in drafts}, reverse=True
-    )
-    likes = percentile_scores({draft.group_id: draft.median_sold_likes_per_day for draft in drafts})
     result: dict[int, FinalMetrics] = {}
     for draft in drafts:
-        price = prices[draft.group_id]
-        demand = likes[draft.group_id]
-        liquidity = (
-            (draft.sell_through_score * Decimal(40) + draft.velocity_score * Decimal(25))
-            / Decimal(65)
-        ).quantize(TWO_PLACES, ROUND_HALF_UP)
-        opportunity = (
-            draft.sell_through_score * Decimal("0.40")
-            + draft.velocity_score * Decimal("0.25")
-            + demand * Decimal("0.20")
-            + price * Decimal("0.15")
-        ).quantize(TWO_PLACES, ROUND_HALF_UP)
+        components = {
+            "sales_frequency": _component(draft.frequency_score, "0.50", "0.40"),
+            "days_to_sell": _component(draft.velocity_score, "0.30", "0.10"),
+            "sell_through": _component(draft.sell_through_score, "0.15", "0.20"),
+            "sold_likes": _component(draft.likes_score, "0.05", "0.30"),
+        }
+        if draft.scoring_status != "scored":
+            liquidity = demand = None
+        else:
+            monthly_sales = Decimal(draft.sold_count) * Decimal(30) / Decimal(draft.window_days)
+            volume_cap = min(HUNDRED, monthly_sales / Decimal(3) * HUNDRED)
+            liquidity = min(
+                volume_cap,
+                draft.frequency_score * Decimal("0.50")
+                + draft.velocity_score * Decimal("0.30")
+                + draft.sell_through_score * Decimal("0.15")
+                + draft.likes_score * Decimal("0.05"),
+            ).quantize(TWO_PLACES, ROUND_HALF_UP)
+            demand = min(
+                volume_cap,
+                draft.frequency_score * Decimal("0.40")
+                + draft.likes_score * Decimal("0.30")
+                + draft.sell_through_score * Decimal("0.20")
+                + draft.velocity_score * Decimal("0.10"),
+            ).quantize(TWO_PLACES, ROUND_HALF_UP)
+            components["volume_cap"] = {
+                "score": str(volume_cap.quantize(TWO_PLACES, ROUND_HALF_UP)),
+                "weight": "cap",
+            }
         result[draft.group_id] = FinalMetrics(
             liquidity_score=liquidity,
-            price_score=price,
-            likes_score=demand,
-            market_opportunity_score=opportunity,
-            component_breakdown={
-                "sell_through": {
-                    "score": str(draft.sell_through_score),
-                    "weight": "0.40",
-                },
-                "velocity": {"score": str(draft.velocity_score), "weight": "0.25"},
-                "likes_per_day": {"score": str(demand), "weight": "0.20"},
-                "price_affordability": {"score": str(price), "weight": "0.15"},
-            },
+            demand_score=demand,
+            price_score=ZERO,
+            market_opportunity_score=demand,
+            component_breakdown=components,
         )
     return result
+
+
+def _saturating_score(value: Decimal, pivot: Decimal) -> Decimal:
+    if value <= ZERO:
+        return ZERO
+    return (value / (value + pivot) * HUNDRED).quantize(TWO_PLACES, ROUND_HALF_UP)
+
+
+def _component(score: Decimal, liquidity_weight: str, demand_weight: str) -> dict[str, str]:
+    return {
+        "score": str(score),
+        "liquidity_weight": liquidity_weight,
+        "demand_weight": demand_weight,
+    }

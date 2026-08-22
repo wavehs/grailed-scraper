@@ -1,0 +1,29 @@
+INFO:     Started server process [2760]
+INFO:     Waiting for application startup.
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\core\runtime.py", line 38, in acquire
+    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+PermissionError: [Errno 13] Permission denied
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\routing.py", line 638, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\main.py", line 37, in lifespan
+    instance_lock.acquire()
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\core\runtime.py", line 41, in acquire
+    raise RuntimeError("another_backend_instance_is_running") from exc
+RuntimeError: another_backend_instance_is_running
+
+ERROR:    Application startup failed. Exiting.

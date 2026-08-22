@@ -173,6 +173,8 @@ export type Brand = {
 };
 export type BrandList = { data: Brand[] };
 
+export type DashboardProductType = 'footwear' | 'clothing' | 'accessories';
+
 export type DashboardRow = {
   id: number;
   name: string;
@@ -181,19 +183,28 @@ export type DashboardRow = {
   available_sizes: string[];
   available_conditions: string[];
   sold_count: number;
+  exact_sold_count: number;
   active_count: number;
-  median_sold_price?: number;
-  median_sold_likes_per_day?: number;
-  liquidity_score: number;
-  price_score: number;
-  confidence_score: number;
-  market_opportunity_score: number;
+  median_sold_price: number | null;
+  median_days_to_sell: string | null;
+  median_sold_likes: string | null;
+  liquidity_score: string | null;
+  demand_score: string | null;
+  price_score: string;
+  confidence_score: string;
+  market_opportunity_score: string | null;
+  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
   model_version: string;
   window_days: number;
   run_id: number;
 };
 
-export type ScoreComponent = { score: string; weight: string; contribution?: string };
+export type ScoreComponent = {
+  score: string;
+  weight?: string;
+  liquidity_weight?: string;
+  demand_weight?: string;
+};
 export type ListingExample = {
   id: number;
   grailed_id: number;
@@ -214,15 +225,18 @@ export type ModelGroupDetail = {
   input_digest: string;
   metrics: {
     sold_count: number;
+    exact_sold_count: number;
     active_count: number;
     sell_through: string;
     median_sold_price?: number;
     median_days_to_sell?: string;
-    median_sold_likes_per_day?: string;
-    liquidity_score: string;
+    median_sold_likes?: string;
+    liquidity_score: string | null;
+    demand_score: string | null;
     price_score: string;
     confidence_score: string;
-    market_opportunity_score: string;
+    market_opportunity_score: string | null;
+    scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
     components: Record<string, ScoreComponent>;
     confidence_factors: Record<string, unknown>;
     quality_summary: Record<string, unknown>;
@@ -319,4 +333,9 @@ export type CatalogListing = {
   model_sold_count: number;
   model_active_count: number;
 };
-export type CatalogListingList = { data: CatalogListing[]; total: number; limit: number; offset: number };
+export type CatalogListingList = {
+  data: CatalogListing[];
+  total: number;
+  limit: number;
+  offset: number;
+};

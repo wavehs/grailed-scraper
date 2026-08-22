@@ -8,18 +8,25 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
-from app.db.models import SourceCredential
+from app.db.models import (
+    ListingModelAssignment,
+    ParserRun,
+    ScoringSnapshot,
+    SourceCredential,
+)
 from app.db.session import get_database_url
+from app.services.identity import IdentityResolver
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import listing_numeric_filters
+from app.services.scoring import MODEL_VERSION, OpportunityScoringService
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
@@ -192,6 +199,63 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
         await engine.dispose()
 
 
+async def rebuild_market(settings: Settings) -> dict[str, object]:
+    """Back up and rebuild current model identity and market snapshots."""
+
+    backup = backup_database(settings)
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    transport: HttpTransport = create_http_transport(settings)
+    try:
+        async with factory() as session:
+            run_id = await session.scalar(
+                select(func.max(ParserRun.id)).where(
+                    ParserRun.status.in_(("completed", "partial"))
+                )
+            )
+            if run_id is None:
+                raise RuntimeError("No completed or partial parser run exists")
+            before = int(
+                await session.scalar(
+                    select(func.count(func.distinct(ListingModelAssignment.model_group_id)))
+                )
+                or 0
+            )
+            identity = await IdentityResolver(session, settings, transport).resolve_run(run_id)
+            await session.commit()
+            after = int(
+                await session.scalar(
+                    select(func.count(func.distinct(ListingModelAssignment.model_group_id)))
+                )
+                or 0
+            )
+        scoring = await OpportunityScoringService(factory).score_run(run_id)
+        async with factory() as session:
+            insufficient = int(
+                await session.scalar(
+                    select(func.count(ScoringSnapshot.id)).where(
+                        ScoringSnapshot.parser_run_id == run_id,
+                        ScoringSnapshot.model_version == MODEL_VERSION,
+                        ScoringSnapshot.scoring_status != "scored",
+                    )
+                )
+                or 0
+            )
+        return {
+            "status": "ok",
+            "backup": str(backup),
+            "run_id": run_id,
+            "groups_before": before,
+            "groups_after": after,
+            "insufficient_snapshots": insufficient,
+            "identity": identity,
+            "scoring": scoring,
+        }
+    finally:
+        await transport.close()
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -214,6 +278,9 @@ def main() -> int:
     restore_parser = subparsers.add_parser("db-restore", help="verify or restore SQLite backup")
     restore_parser.add_argument("source", type=Path)
     restore_parser.add_argument("--apply", action="store_true")
+    subparsers.add_parser(
+        "market-rebuild", help="back up and rebuild identity-v4 and market-v4"
+    )
     args = parser.parse_args()
     if args.command == "doctor":
         print(json.dumps(probe_capabilities().as_dict(), indent=2, sort_keys=True))
@@ -243,6 +310,14 @@ def main() -> int:
         return 0
     if args.command == "db-restore":
         print(json.dumps(restore_database(Settings(), args.source, apply=args.apply), indent=2))
+        return 0
+    if args.command == "market-rebuild":
+        try:
+            rebuild_result = asyncio.run(rebuild_market(Settings()))
+        except RuntimeError as exc:
+            print(json.dumps({"status": "error", "message": str(exc)}))
+            return 1
+        print(json.dumps(rebuild_result, indent=2, sort_keys=True))
         return 0
     parser.error("Unknown command")
     return 2
