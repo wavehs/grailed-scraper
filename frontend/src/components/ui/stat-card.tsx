@@ -16,15 +16,15 @@ export function StatCard({
 }) {
   const trendColor =
     trend === 'up'
-      ? 'text-[#34d399]'
+      ? 'text-[var(--success)]'
       : trend === 'down'
-        ? 'text-[#fb7185]'
+        ? 'text-[var(--danger)]'
         : 'text-[var(--text-muted)]';
 
   return (
     <div
       className={cn(
-        'glass rounded-xl p-5 transition-all duration-200 hover:border-[rgba(255,255,255,0.1)] group animate-slide-up',
+        'rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 group animate-slide-up',
         className,
       )}
     >
@@ -33,12 +33,12 @@ export function StatCard({
           {label}
         </p>
         {icon && (
-          <span className="text-[var(--text-muted)] group-hover:text-[#818cf8] transition-colors duration-200">
+          <span className="text-[var(--text-muted)] transition-colors group-hover:text-[var(--accent)]">
             {icon}
           </span>
         )}
       </div>
-      <p className={cn('mt-2 text-2xl font-bold tracking-tight', trendColor)}>
+      <p className={cn('mt-2 text-xl font-semibold tabular-nums tracking-tight', trendColor)}>
         {value}
       </p>
     </div>

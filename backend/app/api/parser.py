@@ -53,6 +53,10 @@ class RunRequest(BaseModel):
     dry_run: bool = False
     confirm_over_budget: bool = False
     confirmation_token: str | None = None
+    max_requests: int | None = Field(default=None, ge=1)
+    max_items_per_brand: int | None = Field(default=None, ge=1)
+    requests_per_minute: int | None = Field(default=None, ge=1, le=90)
+    concurrent_requests: int | None = Field(default=None, ge=1, le=3)
 
 
 class RunSummary(BaseModel):
@@ -179,6 +183,18 @@ async def start_run(
         require_live_compliance(settings)
     except RuntimeError as exc:
         raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
+    settings = settings.model_copy(
+        update={
+            key: value
+            for key, value in {
+                "parser_max_requests_per_run": payload.max_requests,
+                "parser_max_items_per_brand": payload.max_items_per_brand,
+                "requests_per_minute": payload.requests_per_minute,
+                "max_concurrent_requests": payload.concurrent_requests,
+            }.items()
+            if value is not None
+        }
+    )
     mode = payload.mode or settings.parser_mode
     try:
         plan = await ParserPlanner(session, settings).build(mode=mode, brand_ids=payload.brand_ids)

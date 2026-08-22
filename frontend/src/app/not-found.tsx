@@ -4,14 +4,14 @@ import { Home, Search } from 'lucide-react';
 export default function NotFound() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 animate-fade-in">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[rgba(99,102,241,0.1)] border border-[rgba(99,102,241,0.2)]">
-        <Search size={28} className="text-[#818cf8]" />
+      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]">
+        <Search size={26} className="text-[var(--accent)]" />
       </div>
-      <h1 className="text-4xl font-bold gradient-text">404</h1>
+      <h1 className="text-4xl font-semibold text-[var(--text-primary)]">404</h1>
       <p className="text-sm text-[var(--text-secondary)]">Page not found</p>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[rgba(99,102,241,0.2)] hover:brightness-110 transition-all"
+        className="inline-flex items-center gap-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--accent-contrast)] transition-colors hover:bg-[var(--accent-hover)]"
       >
         <Home size={16} />
         Go to Dashboard

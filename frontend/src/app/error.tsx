@@ -12,8 +12,8 @@ export default function ErrorPage({
 }) {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 animate-fade-in">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[rgba(244,63,94,0.1)] border border-[rgba(244,63,94,0.2)]">
-        <AlertCircle size={28} className="text-[#fb7185]" />
+      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)]">
+        <AlertCircle size={26} className="text-[var(--danger)]" />
       </div>
       <h1 className="text-xl font-bold text-[var(--text-primary)]">Something went wrong</h1>
       <p className="max-w-md text-center text-sm text-[var(--text-secondary)]">

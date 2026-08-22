@@ -27,10 +27,11 @@ import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { StatCard } from '@/components/ui/stat-card';
+import { HelpTip } from '@/components/ui/help-tip';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useApiHealth, useBrandsQuery, useParserHealth, useRunsQuery } from '@/lib/queries';
+import { useApiHealth, useBrandsQuery, useParserHealth, useRunsQuery, useSettingsQuery } from '@/lib/queries';
 import { formatPercent } from '@/lib/utils';
 import type {
   DiscoveryResponse,
@@ -65,13 +66,13 @@ function WorkflowStep({
   children?: React.ReactNode;
 }) {
   const colors = {
-    done: 'border-[#34d399] bg-[rgba(16,185,129,0.12)] text-[#34d399]',
-    active: 'border-[#818cf8] bg-[rgba(99,102,241,0.12)] text-[#818cf8]',
+    done: 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]',
+    active: 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]',
     pending: 'border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-muted)]',
   };
   const lineColor = {
-    done: 'bg-[#34d399]',
-    active: 'bg-[#818cf8]',
+    done: 'bg-[var(--success)]',
+    active: 'bg-[var(--accent)]',
     pending: 'bg-[var(--border-subtle)]',
   };
 
@@ -105,6 +106,10 @@ export default function ParserRunsPage() {
   const [plan, setPlan] = useState<FetchPlan | null>(null);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
   const [notice, setNotice] = useState('');
+  const [maxRequests, setMaxRequests] = useState(5000);
+  const [maxItems, setMaxItems] = useState(500);
+  const [requestsPerMinute, setRequestsPerMinute] = useState(90);
+  const [concurrentRequests, setConcurrentRequests] = useState(3);
 
   const openRun = (runId: number) => setSelectedRun(runId);
   const closeRun = () => setSelectedRun(null);
@@ -115,6 +120,15 @@ export default function ParserRunsPage() {
   }, [searchParams]);
 
   const brands = useBrandsQuery();
+  const settings = useSettingsQuery();
+  useEffect(() => {
+    const parser = settings.data?.groups.parser;
+    if (!parser) return;
+    setMaxRequests(Number(parser.parser_max_requests_per_run?.value ?? 5000));
+    setMaxItems(Number(parser.parser_max_items_per_brand?.value ?? 500));
+    setRequestsPerMinute(Number(parser.requests_per_minute?.value ?? 90));
+    setConcurrentRequests(Number(parser.max_concurrent_requests?.value ?? 3));
+  }, [settings.data]);
   const runs = useRunsQuery(50, 0, (query: any) =>
     query.state.data?.data.some((run: any) => !terminal.has(run.status)) ? 2_000 : false,
   );
@@ -151,6 +165,10 @@ export default function ParserRunsPage() {
       api<RunStartResponse>('/parser/run', 'POST', {
         mode,
         brand_ids: brandIds.length ? brandIds : null,
+        max_requests: maxRequests,
+        max_items_per_brand: maxItems,
+        requests_per_minute: requestsPerMinute,
+        concurrent_requests: concurrentRequests,
         ...payload,
       }),
     onSuccess: (result) => {
@@ -193,6 +211,7 @@ export default function ParserRunsPage() {
   const error =
     brands.error ??
     runs.error ??
+    settings.error ??
     discovery.error ??
     start.error ??
     control.error ??
@@ -221,84 +240,40 @@ export default function ParserRunsPage() {
         />
       )}
 
-      {/* Workflow Stepper */}
       <Card className="p-5">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          {t('liveWorkflow')}
-        </h2>
-        <div className="grid gap-0 md:grid-cols-4">
-          <WorkflowStep
-            step={1}
-            title={t('discovery')}
-            subtitle={t(discoveryStatus)}
-            status={step1Status}
-          >
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Compass size={14} />}
-              disabled={
-                !apiHealth.writable ||
-                discovery.isPending ||
-                blockers.includes('live_compliance_not_acknowledged')
-              }
-              onClick={() => discovery.mutate()}
-            >
-              {discovery.isPending ? t('refreshing') : t('refreshDiscovery')}
-            </Button>
-          </WorkflowStep>
-          <WorkflowStep
-            step={2}
-            title={t('brandMapping')}
-            subtitle={mappingsReady ? t('ready') : t('incomplete')}
-            status={step2Status}
-          >
-            <Link
-              className="inline-flex items-center gap-1 text-xs text-[#818cf8] hover:text-[#a5b4fc] transition-colors"
-              href="/brands"
-            >
-              {t('reviewMappings')} <ArrowRight size={12} />
-            </Link>
-          </WorkflowStep>
-          <WorkflowStep
-            step={3}
-            title={t('dryRun')}
-            subtitle={plan ? t('completed') : t('pending')}
-            status={step3Status}
-          />
-          <WorkflowStep
-            step={4}
-            title={t('confirmation')}
-            subtitle={plan ? t('ready') : t('blocked')}
-            status={step4Status}
-            isLast
-          />
-        </div>
-
         {blockers.length > 0 && (
-          <div className="mt-3 rounded-lg border border-[rgba(244,63,94,0.2)] bg-[rgba(244,63,94,0.06)] p-3" role="alert">
+          <div className="mt-3 rounded-md border border-[var(--danger-border)] bg-[var(--danger-bg)] p-3" role="alert">
             {blockers.map((reason) => (
-              <p key={reason} className="flex items-center gap-2 text-xs text-[#fb7185]">
+              <p key={reason} className="flex items-center gap-2 text-xs text-[var(--danger)]">
                 <XCircle size={14} /> {t(reason)}
               </p>
             ))}
           </div>
         )}
-        {!mappingsReady && <Notice error>{t('brand_mapping_required')}</Notice>}
+        {!mappingsReady && (
+          <Notice error>
+            {t('brand_mapping_required')}{' '}
+            <Link className="underline" href="/brands">{t('reviewMappings')}</Link>
+          </Notice>
+        )}
       </Card>
 
       {/* Config form */}
       <Card className="p-5">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">{t('newParserRun')}</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">{t('newParserRunHelp')}</p>
+        </div>
         <form
-          className="grid gap-4 lg:grid-cols-[220px_1fr_auto]"
+          className="space-y-5"
           onSubmit={(event) => {
             event.preventDefault();
             start.mutate({ dry_run: true });
           }}
         >
-          <label className="text-sm">
-            <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              {t('mode')}
+          <label className="block max-w-md text-sm">
+            <span className="flex items-center gap-1 font-medium text-[var(--text-primary)]">
+              {t('mode')} <HelpTip label={t('mode')} text={t('modeHelp')} />
             </span>
             <select
               className="mt-1.5 w-full rounded-lg"
@@ -308,21 +283,21 @@ export default function ParserRunsPage() {
                 setPlan(null);
               }}
             >
-              <option value="delta">{t('delta')}</option>
-              <option value="full">{t('full')}</option>
-              <option value="refresh_active">{t('refreshActive')}</option>
+              <option value="delta">{t('deltaSimple')}</option>
+              <option value="full">{t('fullSimple')}</option>
+              <option value="refresh_active">{t('refreshActiveSimple')}</option>
             </select>
           </label>
           <fieldset>
-            <legend className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+            <legend className="font-medium text-[var(--text-primary)]">
               {t('selectedBrands')}
             </legend>
             <div className="mt-1.5 flex max-h-32 flex-wrap gap-2 overflow-auto">
               {brands.data?.data.map((brand) => (
                 <label
-                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all ${
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
                     brandIds.includes(brand.id)
-                      ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.1)] text-[#818cf8]'
+                      ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
                       : 'border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)]'
                   }`}
                   key={brand.id}
@@ -346,7 +321,7 @@ export default function ParserRunsPage() {
             </div>
             <button
               type="button"
-              className="mt-2 text-xs text-[#818cf8] hover:text-[#a5b4fc] transition-colors cursor-pointer"
+              className="mt-2 text-xs text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
               onClick={() => {
                 setBrandIds([]);
                 setPlan(null);
@@ -355,13 +330,38 @@ export default function ParserRunsPage() {
               {t('allBrands')}
             </button>
           </fieldset>
+          <fieldset>
+            <legend className="mb-3 font-medium text-[var(--text-primary)]">{t('runLimits')}</legend>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['maxItemsThisRun', maxItems, setMaxItems, 1, undefined, 'maxItemsThisRunHelp'],
+                ['maxRequestsThisRun', maxRequests, setMaxRequests, 1, undefined, 'maxRequestsThisRunHelp'],
+                ['requestsPerMinuteSimple', requestsPerMinute, setRequestsPerMinute, 1, 90, 'requestsPerMinuteHelp'],
+                ['simultaneousRequests', concurrentRequests, setConcurrentRequests, 1, 3, 'simultaneousRequestsHelp'],
+              ].map(([labelKey, value, setter, min, max, helpKey]) => (
+                <label className="text-sm" key={String(labelKey)}>
+                  <span className="flex min-h-7 items-center gap-1 text-[var(--text-secondary)]">
+                    {t(String(labelKey))}
+                    <HelpTip label={t(String(labelKey))} text={t(String(helpKey))} />
+                  </span>
+                  <input
+                    className="w-full tabular-nums"
+                    min={Number(min)}
+                    max={max === undefined ? undefined : Number(max)}
+                    type="number"
+                    value={Number(value)}
+                    onChange={(event) => (setter as (value: number) => void)(Number(event.target.value))}
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <Button
-            className="self-end"
             type="submit"
-            icon={<TestTube size={16} />}
+            icon={<Play size={16} />}
             disabled={!canPlan || start.isPending}
           >
-            {start.isPending ? t('planning') : t('dryRun')}
+            {start.isPending ? t('planning') : t('calculateRun')}
           </Button>
         </form>
       </Card>
@@ -381,7 +381,7 @@ export default function ParserRunsPage() {
           {plan.warnings.length > 0 && (
             <ul className="mt-3 space-y-1">
               {plan.warnings.map((warning) => (
-                <li key={warning} className="flex items-center gap-2 text-xs text-[#fbbf24]">
+                <li key={warning} className="flex items-center gap-2 text-xs text-[var(--warning)]">
                   <AlertTriangle size={14} /> {warning}
                 </li>
               ))}
@@ -509,7 +509,7 @@ export default function ParserRunsPage() {
               {progress.data.warnings.length > 0 && (
                 <ul className="space-y-1">
                   {progress.data.warnings.map((warning) => (
-                    <li key={warning} className="flex items-center gap-2 text-xs text-[#fbbf24]">
+                    <li key={warning} className="flex items-center gap-2 text-xs text-[var(--warning)]">
                       <AlertTriangle size={14} /> {warning}
                     </li>
                   ))}
@@ -518,7 +518,7 @@ export default function ParserRunsPage() {
               {(progress.data.errors ?? []).length > 0 && (
                 <ul className="space-y-1" role="alert">
                   {(progress.data.errors ?? []).map((item) => (
-                    <li key={`${item.task_id}-${item.code}`} className="flex items-center gap-2 text-xs text-[#fb7185]">
+                    <li key={`${item.task_id}-${item.code}`} className="flex items-center gap-2 text-xs text-[var(--danger)]">
                       <XCircle size={14} />
                       {t('task')} #{item.task_id} · {item.index_type}: {item.code}
                     </li>
@@ -576,7 +576,7 @@ export default function ParserRunsPage() {
                       <TableCell>{task.tier ?? '—'}</TableCell>
                       <TableCell>
                         {task.error ? (
-                          <span className="text-[#fb7185]">{task.error}</span>
+                          <span className="text-[var(--danger)]">{task.error}</span>
                         ) : '—'}
                       </TableCell>
                     </TableRow>

@@ -33,7 +33,7 @@ from app.services.scoring.service import rule_matches
 from app.services.transport.protocols import HttpTransport
 from app.services.transport.rate_limiter import RateLimiter
 
-IDENTITY_VERSION = "identity-v1"
+IDENTITY_VERSION = "identity-v2"
 _GENERIC = {
     "authentic",
     "brand",
@@ -51,6 +51,7 @@ _GENERIC = {
     "sale",
     "used",
     "vintage",
+    "qs",
 }
 _VARIANT_TOKENS = {
     "beige",
@@ -238,7 +239,9 @@ class IdentityResolver:
         groups = {
             group.stable_key: group
             for group in await self._session.scalars(
-                select(ModelGroup).where(ModelGroup.group_type == "source_product")
+                select(ModelGroup).where(
+                    ModelGroup.group_type.in_(("source_product", "resolved"))
+                )
             )
         }
         existing = {
@@ -257,7 +260,33 @@ class IdentityResolver:
             if matches:
                 winner = min(matches, key=lambda item: (-len(item.include_keywords), item.id))
                 group, method = winner.group, "rule"
-            elif listing.source_product_id:
+            else:
+                canonical = model_text(
+                    listing.title,
+                    listing.brand_name_raw,
+                    listing.size_raw,
+                    listing.color,
+                )
+                if _distinctive_model(canonical):
+                    stable_key = (
+                        f"resolved:{listing.brand_id}:{listing.category or ''}:{canonical}"
+                    )
+                    group = groups.get(stable_key)
+                    if group is None:
+                        group = ModelGroup(
+                            stable_key=stable_key,
+                            brand_id=listing.brand_id,
+                            name=canonical.title()[:255],
+                            category=listing.category,
+                            group_type="resolved",
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        self._session.add(group)
+                        await self._session.flush()
+                        groups[stable_key] = group
+                    method = "canonical_title"
+            if group is None and listing.source_product_id:
                 stable_key = f"source:{listing.source}:product:{listing.source_product_id}"
                 group = groups.get(stable_key)
                 if group is None:
@@ -644,6 +673,11 @@ def _distinctive_overlap(left: str, right: str) -> bool:
         len(token) >= 4 or any(char.isdigit() for char in token)
         for token in set(left.split()) & set(right.split())
     )
+
+
+def _distinctive_model(value: str) -> bool:
+    tokens = value.split()
+    return bool(tokens) and (len(tokens) >= 2 or len(tokens[0]) >= 5)
 
 
 def _positive_int(value: Any) -> int | None:

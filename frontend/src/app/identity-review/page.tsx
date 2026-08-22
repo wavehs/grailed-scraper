@@ -105,7 +105,7 @@ export default function IdentityReviewPage() {
           <ul className="mt-3 space-y-1 text-sm">
             {history.data.members.map((item) => (
               <li key={item.id} className="flex items-center gap-2 text-[var(--text-secondary)]">
-                <span className="h-1 w-1 rounded-full bg-[#818cf8]" />
+                <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
                 #{item.grailed_id} · {item.title} ·{' '}
                 <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
               </li>
@@ -167,7 +167,7 @@ export default function IdentityReviewPage() {
 
 function ListingCard({ listing }: { listing: IdentityListing }) {
   return (
-    <article className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-all hover:border-[var(--border-default)]">
+    <article className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-3 transition-colors hover:border-[var(--border-default)]">
       {listing.cover_photo_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

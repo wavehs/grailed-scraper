@@ -24,7 +24,7 @@ export function ProgressBar({
       )}
       <div
         className={cn(
-          'overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]',
+          'overflow-hidden rounded-full bg-[var(--bg-surface-hover)]',
           size === 'sm' ? 'h-1.5' : 'h-2.5',
         )}
         role="progressbar"
@@ -33,7 +33,7 @@ export function ProgressBar({
         aria-valuemax={100}
       >
         <div
-          className="h-full rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>

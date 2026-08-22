@@ -36,6 +36,17 @@ def test_model_text_and_image_hash_are_stable() -> None:
     second = fingerprint_bytes(buffer.getvalue())
     assert first == second
     assert hamming_distance(first.dhash, second.dhash) == 0
+    assert model_text(
+        "Chrome Hearts Osaka Pocket T White Size XXL",
+        "Chrome Hearts",
+        "XXL",
+        "White",
+    ) == model_text(
+        "Chrome Hearts Osaka Pocket T White XL QS",
+        "Chrome Hearts",
+        "XL",
+        "White",
+    )
 
 
 async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -> None:  # type: ignore[no-untyped-def]

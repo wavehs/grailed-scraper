@@ -12,11 +12,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body>
         <Providers>
-          <div className="flex min-h-screen">
+          <div className="flex min-h-dvh">
             <AppSidebar />
-            <main className="min-w-0 flex-1 p-4 pt-16 md:p-8 md:pt-8">
-              <HealthBanner />
-              <div className="mx-auto max-w-7xl">{children}</div>
+            <main id="main-content" className="min-w-0 flex-1 px-4 pb-8 pt-16 md:px-6 md:py-6 xl:px-8">
+              <div className="mx-auto max-w-[1480px]">
+                <HealthBanner />
+                {children}
+              </div>
             </main>
           </div>
         </Providers>

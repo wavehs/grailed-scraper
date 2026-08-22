@@ -93,7 +93,7 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
             )
         )
         await session.flush()
-        oldest_allowed = int((datetime.now(UTC) - timedelta(days=120)).timestamp())
+        oldest_allowed = int((datetime.now(UTC) - timedelta(days=90)).timestamp())
         plan = await planner.build(mode="full", brand_ids=[brand.id])
         for task in plan.tasks:
             assert task.query.numeric_filters[1:] == ("price_i>=400", "price_i<=5000")

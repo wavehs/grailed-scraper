@@ -37,7 +37,7 @@ export default function ModelDetail() {
       />
       <p className="text-xs text-[var(--text-muted)]">
         {t('modelVersion')}: {data.model_version} · {t('run')} #{data.run_id} · {data.window_days}
-        d · {t('inputDigest')}: <code className="rounded bg-[rgba(255,255,255,0.05)] px-1.5 py-0.5">{data.input_digest.slice(0, 12)}</code>
+        d · {t('inputDigest')}: <code className="rounded bg-[var(--bg-surface-hover)] px-1.5 py-0.5">{data.input_digest.slice(0, 12)}</code>
       </p>
 
       {m.warnings.map((warning) => (
@@ -79,25 +79,19 @@ export default function ModelDetail() {
           {priceData.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={priceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{
-                    background: 'rgba(15, 15, 25, 0.95)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--bg-surface-raised)',
+                    border: '1px solid var(--border-default)',
                     borderRadius: '8px',
-                    color: '#e2e8f0',
+                    color: 'var(--text-primary)',
                     fontSize: 12,
                   }}
                 />
-                <Bar dataKey="price" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
-                <defs>
-                  <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#8b5cf6" />
-                  </linearGradient>
-                </defs>
+                <Bar dataKey="price" fill="var(--accent)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -115,7 +109,7 @@ export default function ModelDetail() {
           {Object.entries(m.components).map(([name, value]) => {
             const scoreNum = Number(value.score) || 0;
             return (
-              <div className="rounded-xl bg-[var(--bg-surface)] p-4" key={name}>
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-3" key={name}>
                 <p className="text-xs text-[var(--text-muted)]">
                   {name.replaceAll('_', ' ')}
                 </p>
@@ -200,7 +194,7 @@ function ExampleList({
         {items.length ? (
           items.map((item) => (
             <li key={item.id} className="flex items-center gap-2 border-t border-[var(--border-subtle)] pt-2">
-              <span className="h-1 w-1 rounded-full bg-[#818cf8]" />
+              <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
               <span className="text-[var(--text-primary)]">{item.title}</span>
               <span className="text-[var(--text-muted)]">·</span>
               <span className="text-[var(--text-secondary)]">{money(item.price)}</span>

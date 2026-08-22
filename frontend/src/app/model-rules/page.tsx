@@ -190,7 +190,7 @@ export default function ModelRulesPage() {
               <div className="flex flex-wrap justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <BookOpen size={16} className="text-[#818cf8]" />
+                    <BookOpen size={16} className="text-[var(--accent)]" />
                     <h2 className="font-semibold text-[var(--text-primary)]">{rule.name}</h2>
                     <Badge variant={rule.is_active ? 'success' : 'muted'} dot>
                       {rule.is_active ? t('enable') : t('disable')}
@@ -246,7 +246,7 @@ export default function ModelRulesPage() {
                   {matches[rule.id].length ? (
                     matches[rule.id].map((item) => (
                       <li key={item.id} className="flex items-center gap-2 text-[var(--text-secondary)]">
-                        <span className="h-1 w-1 rounded-full bg-[#818cf8]" />
+                        <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
                         {item.title} · <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
                       </li>
                     ))

@@ -33,9 +33,9 @@ import type { DashboardRow } from '@/lib/types';
 const column = createColumnHelper<DashboardRow>();
 
 function opportunityColor(score: number): string {
-  if (score >= 7) return 'text-[#34d399]';
-  if (score >= 4) return 'text-[#fbbf24]';
-  return 'text-[#fb7185]';
+  if (score >= 7) return 'text-[var(--success)]';
+  if (score >= 4) return 'text-[var(--warning)]';
+  return 'text-[var(--danger)]';
 }
 
 export function Dashboard() {
@@ -78,7 +78,7 @@ export function Dashboard() {
         header: t('model'),
         cell: (info) => (
           <Link
-            className="font-medium text-[#818cf8] hover:text-[#a5b4fc] transition-colors"
+            className="font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
             href={`/model-groups/${info.row.original.id}`}
           >
             {info.getValue()}
@@ -132,12 +132,12 @@ export function Dashboard() {
       />
     );
   return (
-    <section className="space-y-6" aria-labelledby="dashboard-heading">
+    <section className="space-y-5" aria-labelledby="dashboard-heading">
       <PageHeader title={t('marketDashboard')} description={t('marketIntro')} />
 
       {/* System status cards */}
       {health.data && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label={t('sourceStatus')}
             value={
@@ -178,8 +178,8 @@ export function Dashboard() {
 
       {/* Schema alerts */}
       {health.data?.schema.alerts.length ? (
-        <Card className="border-[rgba(245,158,11,0.2)] p-5">
-          <h2 className="text-sm font-semibold text-[#fbbf24]">{t('schemaAlerts')}</h2>
+        <Card className="border-[var(--warning-border)] p-4">
+          <h2 className="text-sm font-semibold text-[var(--warning)]">{t('schemaAlerts')}</h2>
           <ul className="mt-2 space-y-1 text-sm">
             {health.data.schema.alerts.map((alert) => (
               <li key={alert.id} className="flex items-center gap-2">
@@ -198,7 +198,7 @@ export function Dashboard() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           {t('keyMetrics')}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label={t('opportunity')}
             value={metrics.opportunity.toFixed(1)}
@@ -243,7 +243,7 @@ export function Dashboard() {
                 <TableRow key={run.id}>
                   <TableCell>
                     <Link
-                      className="text-[#818cf8] hover:text-[#a5b4fc] transition-colors"
+                      className="text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
                       href={`/parser-runs?run=${run.id}`}
                     >
                       #{run.id}

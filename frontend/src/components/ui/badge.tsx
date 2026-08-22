@@ -5,26 +5,26 @@ type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'mut
 
 const variantClasses: Record<BadgeVariant, string> = {
   default:
-    'bg-[rgba(99,102,241,0.12)] text-[#818cf8] border-[rgba(99,102,241,0.2)]',
+    'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]',
   success:
-    'bg-[rgba(16,185,129,0.12)] text-[#34d399] border-[rgba(16,185,129,0.2)]',
+    'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]',
   warning:
-    'bg-[rgba(245,158,11,0.12)] text-[#fbbf24] border-[rgba(245,158,11,0.2)]',
+    'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-border)]',
   danger:
-    'bg-[rgba(244,63,94,0.12)] text-[#fb7185] border-[rgba(244,63,94,0.2)]',
+    'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-border)]',
   info:
-    'bg-[rgba(59,130,246,0.12)] text-[#60a5fa] border-[rgba(59,130,246,0.2)]',
+    'bg-[var(--info-bg)] text-[var(--info)] border-[var(--info-border)]',
   muted:
-    'bg-[rgba(255,255,255,0.05)] text-[#94a3b8] border-[rgba(255,255,255,0.08)]',
+    'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border-[var(--border-default)]',
 };
 
 const dotColors: Record<BadgeVariant, string> = {
-  default: 'bg-[#818cf8]',
-  success: 'bg-[#34d399]',
-  warning: 'bg-[#fbbf24]',
-  danger: 'bg-[#fb7185]',
-  info: 'bg-[#60a5fa]',
-  muted: 'bg-[#94a3b8]',
+  default: 'bg-[var(--accent)]',
+  success: 'bg-[var(--success)]',
+  warning: 'bg-[var(--warning)]',
+  danger: 'bg-[var(--danger)]',
+  info: 'bg-[var(--info)]',
+  muted: 'bg-[var(--text-muted)]',
 };
 
 /** Status‐aware string → variant. */
@@ -56,7 +56,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4',
         variantClasses[variant],
         className,
       )}

@@ -20,6 +20,7 @@ export function Modal({
   maxWidth?: string;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -44,10 +45,20 @@ export function Modal({
       aria-modal="true"
       aria-labelledby="modal-title"
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[8vh] animate-fade-in"
-      onKeyDown={(e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          closeRef.current?.focus();
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        const items = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (!items?.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
         }
       }}
     >
@@ -61,8 +72,9 @@ export function Modal({
 
       {/* Content */}
       <div
+        ref={dialogRef}
         className={cn(
-          'relative z-10 w-full glass rounded-2xl border border-[var(--border-default)] shadow-2xl animate-scale-in',
+          'relative z-10 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-raised)] shadow-[var(--shadow-float)] animate-scale-in',
           maxWidth,
           className,
         )}
@@ -75,7 +87,7 @@ export function Modal({
           <button
             ref={closeRef}
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.05)] transition-colors cursor-pointer"
+            className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
             aria-label="Close"
           >
             <X size={18} />
