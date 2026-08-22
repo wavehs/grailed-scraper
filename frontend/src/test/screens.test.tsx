@@ -1,10 +1,11 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
 import ParserRunsPage from '@/app/parser-runs/page';
 import SettingsPage from '@/app/settings/page';
 import { HealthBanner } from '@/components/health-banner';
+import { HelpTip } from '@/components/ui/help-tip';
 import { renderApp } from '@/test/render';
 
 const json = (body: unknown, status = 200) =>
@@ -33,6 +34,14 @@ const brand = {
 beforeEach(() => window.localStorage.clear());
 
 describe('stage 10 screens', () => {
+  it('opens setting help on click', async () => {
+    renderApp(<HelpTip label="Limit" text="Maximum requests for this run." />);
+    const help = screen.getByRole('button', { name: 'Help' });
+    await userEvent.click(help);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Maximum requests for this run.');
+    expect(help).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('announces parser degradation and its actionable reason', async () => {
     vi.stubGlobal(
       'fetch',
@@ -47,6 +56,27 @@ describe('stage 10 screens', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Parser unavailable');
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Live access is blocked until compliance is acknowledged',
+    );
+  });
+
+  it('refreshes an expired source connection from the warning banner', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health'))
+        return json({ status: 'degraded', reasons: ['credentials_stale'] });
+      if (url.endsWith('/parser/discovery/refresh') && init?.method === 'POST')
+        return json({ status: 'ready' });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<HealthBanner />);
+    expect(await screen.findByText('Source connection needs an update')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Update now' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/parser/discovery/refresh'),
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
   });
 
@@ -143,18 +173,108 @@ describe('stage 10 screens', () => {
       }),
     );
     renderApp(<ParserRunsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Dry run' }));
-    expect(await screen.findByText('Budget')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Max' }));
+    expect(screen.getByText('All available listings will be collected.')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Check volume and continue' }));
+    expect(await screen.findByText('Collection plan')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Request budget')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Start run' }));
     expect(await screen.findByText('Run #11')).toBeInTheDocument();
     expect(runCalls).toBe(2);
     const confirmed = vi.mocked(fetch).mock.calls.filter(([input]) =>
       String(input).endsWith('/parser/run'),
     )[1];
-    expect(JSON.parse(String(confirmed[1]?.body))).toMatchObject({
+    const planned = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      String(input).endsWith('/parser/run'),
+    )[0];
+    expect(JSON.parse(String(planned[1]?.body))).toMatchObject({ collect_all: true });
+    expect(JSON.parse(String(planned[1]?.body))).not.toHaveProperty('max_items_per_brand');
+    const confirmedPayload = JSON.parse(String(confirmed[1]?.body));
+    expect(confirmedPayload).toMatchObject({
       dry_run: false,
       confirmation_token: 'confirmed-plan',
     });
+    expect(confirmedPayload).not.toHaveProperty('max_requests');
+  });
+
+  it('confirms run deletion and collected-data cleanup', async () => {
+    let finishClear: (() => void) | undefined;
+    const clearResponse = new Promise<Response>((resolve) => {
+      finishClear = () =>
+        resolve(new Response(JSON.stringify({ listings_deleted: 12, runs_deleted: 1 })));
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+      if (url.includes('/parser/runs?'))
+        return json({
+          data: [{
+            id: 7,
+            mode: 'full',
+            status: 'completed',
+            phase: 'done',
+            dry_run: false,
+            degraded: false,
+            coverage: 1,
+            requests_made: 10,
+            warnings: [],
+            created_at: new Date().toISOString(),
+          }],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        });
+      if (url.endsWith('/parser/runs/7') && init?.method === 'DELETE')
+        return Promise.resolve(new Response(null, { status: 204 }));
+      if (url.endsWith('/parser/history/clear') && init?.method === 'POST')
+        return json({ runs_deleted: 1 });
+      if (url.endsWith('/parser/data/clear') && init?.method === 'POST')
+        return clearResponse;
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<ParserRunsPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    const deleteDialog = screen.getByRole('dialog', { name: 'Delete parser run?' });
+    await userEvent.click(within(deleteDialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/parser/runs/7'),
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete all run history' }));
+    const historyDialog = screen.getByRole('dialog', {
+      name: 'Delete all parser run history?',
+    });
+    await userEvent.click(
+      within(historyDialog).getByRole('button', { name: 'Delete all run history' }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/parser/history/clear'),
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear collected data' }));
+    const clearDialog = screen.getByRole('dialog', { name: 'Clear collected data?' });
+    await userEvent.click(
+      within(clearDialog).getByRole('button', { name: 'Clear collected data' }),
+    );
+    expect(within(clearDialog).getByRole('progressbar')).toHaveAccessibleName(
+      'Clearing database…',
+    );
+    finishClear?.();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/parser/data/clear'),
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
   });
 
   it('edits safe settings and sends a flat validated patch', async () => {

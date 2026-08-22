@@ -17,6 +17,7 @@ from app.db.models import (
     IdentityMatch,
     Listing,
     ListingModelAssignment,
+    ModelGroup,
     ParserRun,
     ParserRunTask,
     PhysicalItemMember,
@@ -46,6 +47,9 @@ def test_model_text_and_image_hash_are_stable() -> None:
         "Chrome Hearts",
         "XL",
         "White",
+    )
+    assert model_text("Osaka Pocket Tee SLT", "Chrome Hearts") == model_text(
+        "Osaka Pocket T BK", "Chrome Hearts"
     )
 
 
@@ -114,11 +118,29 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
                 select(ListingModelAssignment).order_by(ListingModelAssignment.listing_id)
             )
         )
+        assert len(assignments) == 3
+        assert len({item.model_group_id for item in assignments}) == 1
+        fallback_groups = [
+            ModelGroup(
+                stable_key=f"manual:{suffix}",
+                brand_id=brand.id,
+                name=suffix,
+                category="footwear",
+                group_type="resolved",
+                created_at=now,
+                updated_at=now,
+            )
+            for suffix in ("a", "b", "c")
+        ]
+        session.add_all(fallback_groups)
+        await session.flush()
+        for assignment, group in zip(assignments, fallback_groups, strict=True):
+            assignment.model_group_id = group.id
+            assignment.method = "source_product_id"
+        await resolver._model_candidates([old, current, future])
         match = await session.scalar(select(IdentityMatch).where(IdentityMatch.level == "physical"))
         members = list(await session.scalars(select(PhysicalItemMember)))
     assert result["linked"] == 1
-    assert len(assignments) == 3
-    assert len({item.model_group_id for item in assignments}) == 1
     assert match is not None and match.status == "auto_confirmed"
     assert len(members) == 2
     assert future.id not in {item.listing_id for item in members}

@@ -21,13 +21,16 @@ Before any Grailed request, review the applicable ToS, `robots.txt`, and law, th
 
 ```powershell
 python -m app.cli canary --brand "Rick Owens" --limit 50
-uvicorn app.main:app --reload --workers 1 --port 8000
+uvicorn app.main:app --port 8000
 
 cd ..\frontend
 corepack enable
 pnpm install --frozen-lockfile
 pnpm run dev
 ```
+
+On Windows, do not enable Uvicorn `--reload` or multiple workers: they select an
+event loop without subprocess support, while the Scrapling browser requires it.
 
 The UI workflow is discovery → brand mapping → dry run → confirmation → run. T1 direct Algolia is the default; T2 browser-mediated Algolia and T3 DOM are live fallbacks only.
 

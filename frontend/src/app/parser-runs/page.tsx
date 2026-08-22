@@ -11,12 +11,14 @@ import {
   Check,
   CheckCircle2,
   Compass,
+  Database,
   GitBranch,
   Play,
   PlayCircle,
   RefreshCw,
   Rocket,
   TestTube,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 import { Badge, statusVariant } from '@/components/ui/badge';
@@ -105,9 +107,12 @@ export default function ParserRunsPage() {
   const [brandIds, setBrandIds] = useState<number[]>([]);
   const [plan, setPlan] = useState<FetchPlan | null>(null);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
+  const [deleteRunId, setDeleteRunId] = useState<number | null>(null);
+  const [clearDataOpen, setClearDataOpen] = useState(false);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [notice, setNotice] = useState('');
-  const [maxRequests, setMaxRequests] = useState(5000);
   const [maxItems, setMaxItems] = useState(500);
+  const [collectAll, setCollectAll] = useState(false);
   const [requestsPerMinute, setRequestsPerMinute] = useState(90);
   const [concurrentRequests, setConcurrentRequests] = useState(3);
 
@@ -122,9 +127,8 @@ export default function ParserRunsPage() {
   const brands = useBrandsQuery();
   const settings = useSettingsQuery();
   useEffect(() => {
-    const parser = settings.data?.groups.parser;
+    const parser = settings.data?.groups?.parser;
     if (!parser) return;
-    setMaxRequests(Number(parser.parser_max_requests_per_run?.value ?? 5000));
     setMaxItems(Number(parser.parser_max_items_per_brand?.value ?? 500));
     setRequestsPerMinute(Number(parser.requests_per_minute?.value ?? 90));
     setConcurrentRequests(Number(parser.max_concurrent_requests?.value ?? 3));
@@ -159,14 +163,12 @@ export default function ParserRunsPage() {
   const start = useMutation({
     mutationFn: (payload: {
       dry_run: boolean;
-      confirm_over_budget?: boolean;
       confirmation_token?: string;
     }) =>
       api<RunStartResponse>('/parser/run', 'POST', {
         mode,
         brand_ids: brandIds.length ? brandIds : null,
-        max_requests: maxRequests,
-        max_items_per_brand: maxItems,
+        ...(collectAll ? { collect_all: true } : { max_items_per_brand: maxItems }),
         requests_per_minute: requestsPerMinute,
         concurrent_requests: concurrentRequests,
         ...payload,
@@ -193,7 +195,37 @@ export default function ParserRunsPage() {
       client.invalidateQueries({ queryKey: ['run-progress', run.id] });
     },
   });
-  const overLimit = Boolean(plan?.budget.over_limit);
+  const removeRun = useMutation({
+    mutationFn: (id: number) => api<void>(`/parser/runs/${id}`, 'DELETE'),
+    onSuccess: () => {
+      setDeleteRunId(null);
+      setSelectedRun(null);
+      setNotice(t('runDeleted'));
+      refresh();
+    },
+  });
+  const clearData = useMutation({
+    mutationFn: () =>
+      api<{ listings_deleted: number; runs_deleted: number }>('/parser/data/clear', 'POST', {
+        confirm: true,
+      }),
+    onSuccess: () => {
+      setClearDataOpen(false);
+      setSelectedRun(null);
+      setNotice(t('dataCleared'));
+      client.invalidateQueries();
+    },
+  });
+  const clearHistory = useMutation({
+    mutationFn: () =>
+      api<{ runs_deleted: number }>('/parser/history/clear', 'POST', { confirm: true }),
+    onSuccess: () => {
+      setClearHistoryOpen(false);
+      setSelectedRun(null);
+      setNotice(t('historyCleared'));
+      refresh();
+    },
+  });
   const blockers = (parserHealth.data?.reasons ?? []).filter((reason) =>
     blockingReasons.has(reason),
   );
@@ -215,6 +247,9 @@ export default function ParserRunsPage() {
     discovery.error ??
     start.error ??
     control.error ??
+    removeRun.error ??
+    clearData.error ??
+    clearHistory.error ??
     progress.error ??
     report.error;
   if (brands.isLoading && runs.isLoading) return <LoadingState />;
@@ -228,7 +263,30 @@ export default function ParserRunsPage() {
 
   return (
     <section className="space-y-6" aria-labelledby="runs-heading">
-      <PageHeader title={t('runParser')} description={t('runIntro')} />
+      <PageHeader
+        title={t('runParser')}
+        description={t('runIntro')}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              icon={<Trash2 size={16} />}
+              disabled={!apiHealth.writable || clearHistory.isPending}
+              onClick={() => setClearHistoryOpen(true)}
+            >
+              {t('clearRunHistory')}
+            </Button>
+            <Button
+              variant="danger"
+              icon={<Database size={16} />}
+              disabled={!apiHealth.writable || clearData.isPending}
+              onClick={() => setClearDataOpen(true)}
+            >
+              {t('clearCollectedData')}
+            </Button>
+          </>
+        }
+      />
       <Notice>{notice}</Notice>
       {error && (
         <ErrorState
@@ -332,10 +390,45 @@ export default function ParserRunsPage() {
           </fieldset>
           <fieldset>
             <legend className="mb-3 font-medium text-[var(--text-primary)]">{t('runLimits')}</legend>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="text-sm">
+                <label
+                  className="flex min-h-7 items-center gap-1 text-[var(--text-secondary)]"
+                  htmlFor="max-items-per-brand"
+                >
+                  {t('maxItemsThisRun')}
+                  <HelpTip label={t('maxItemsThisRun')} text={t('maxItemsThisRunHelp')} />
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="max-items-per-brand"
+                    className="min-w-0 flex-1 tabular-nums"
+                    disabled={collectAll}
+                    min={1}
+                    type="number"
+                    value={maxItems}
+                    onChange={(event) => {
+                      setMaxItems(Number(event.target.value));
+                      setPlan(null);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant={collectAll ? 'success' : 'secondary'}
+                    aria-pressed={collectAll}
+                    onClick={() => {
+                      setCollectAll((value) => !value);
+                      setPlan(null);
+                    }}
+                  >
+                    {t('maximum')}
+                  </Button>
+                </div>
+                {collectAll && (
+                  <p className="mt-1 text-xs text-[var(--success)]">{t('allAvailableSelected')}</p>
+                )}
+              </div>
               {[
-                ['maxItemsThisRun', maxItems, setMaxItems, 1, undefined, 'maxItemsThisRunHelp'],
-                ['maxRequestsThisRun', maxRequests, setMaxRequests, 1, undefined, 'maxRequestsThisRunHelp'],
                 ['requestsPerMinuteSimple', requestsPerMinute, setRequestsPerMinute, 1, 90, 'requestsPerMinuteHelp'],
                 ['simultaneousRequests', concurrentRequests, setConcurrentRequests, 1, 3, 'simultaneousRequestsHelp'],
               ].map(([labelKey, value, setter, min, max, helpKey]) => (
@@ -370,14 +463,12 @@ export default function ParserRunsPage() {
       {plan && (
         <Card className="p-5 animate-slide-up">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            {t('budget')}
+            {t('collectionPlan')}
           </h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label={t('estimatedRequests')} value={String(plan.budget.estimated_requests)} />
+          <div className="grid gap-4 sm:grid-cols-2">
             <StatCard label={t('estimatedHits')} value={String(plan.budget.estimated_hits)} />
-            <StatCard label={t('limit')} value={String(plan.budget.limit)} />
+            <StatCard label={t('plannedListings')} value={String(plan.budget.bounded_hits)} />
           </div>
-          {overLimit && <Notice error>{t('overBudget')}</Notice>}
           {plan.warnings.length > 0 && (
             <ul className="mt-3 space-y-1">
               {plan.warnings.map((warning) => (
@@ -394,12 +485,11 @@ export default function ParserRunsPage() {
             onClick={() =>
               start.mutate({
                 dry_run: false,
-                confirm_over_budget: overLimit,
                 confirmation_token: plan.confirmation_token,
               })
             }
           >
-            {start.isPending ? t('starting') : overLimit ? t('confirmBudget') : t('startRun')}
+            {start.isPending ? t('starting') : t('startRun')}
           </Button>
         </Card>
       )}
@@ -463,6 +553,17 @@ export default function ParserRunsPage() {
                       onClick={() => control.mutate({ id: run.id, action: 'resume' })}
                     >
                       {t('resume')}
+                    </Button>
+                  )}
+                  {!['pending', 'running'].includes(run.status) && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 size={12} />}
+                      disabled={!apiHealth.writable || removeRun.isPending}
+                      onClick={() => setDeleteRunId(run.id)}
+                    >
+                      {t('delete')}
                     </Button>
                   )}
                 </span>
@@ -586,6 +687,84 @@ export default function ParserRunsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={deleteRunId !== null}
+        onClose={() => setDeleteRunId(null)}
+        title={t('deleteRunTitle')}
+        maxWidth="max-w-md"
+      >
+        <p className="text-sm text-[var(--text-secondary)]">{t('deleteRunHelp')}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setDeleteRunId(null)}>
+            {t('cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Trash2 size={16} />}
+            disabled={removeRun.isPending}
+            onClick={() => deleteRunId !== null && removeRun.mutate(deleteRunId)}
+          >
+            {removeRun.isPending ? t('deleting') : t('delete')}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={clearDataOpen}
+        onClose={() => !clearData.isPending && setClearDataOpen(false)}
+        title={t('clearDataTitle')}
+        maxWidth="max-w-md"
+      >
+        <Notice error>{t('clearDataHelp')}</Notice>
+        {clearData.isPending && (
+          <ProgressBar
+            className="mt-5"
+            indeterminate
+            label={t('databaseCleanupProgress')}
+            value={0}
+          />
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            disabled={clearData.isPending}
+            onClick={() => setClearDataOpen(false)}
+          >
+            {t('cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Database size={16} />}
+            disabled={clearData.isPending}
+            onClick={() => clearData.mutate()}
+          >
+            {clearData.isPending ? t('clearing') : t('clearCollectedData')}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={clearHistoryOpen}
+        onClose={() => setClearHistoryOpen(false)}
+        title={t('clearHistoryTitle')}
+        maxWidth="max-w-md"
+      >
+        <Notice error>{t('clearHistoryHelp')}</Notice>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setClearHistoryOpen(false)}>
+            {t('cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Trash2 size={16} />}
+            disabled={clearHistory.isPending}
+            onClick={() => clearHistory.mutate()}
+          >
+            {clearHistory.isPending ? t('deleting') : t('clearRunHistory')}
+          </Button>
+        </div>
       </Modal>
     </section>
   );

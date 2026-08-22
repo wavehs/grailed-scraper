@@ -398,6 +398,7 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
         brands = client.get("/api/analytics/brands?window_days=30")
         brand = client.get(f"/api/analytics/brands/{brand_id}?window_days=30")
         listing = client.get(f"/api/analytics/listings/{listing_id}")
+        catalog = client.get("/api/analytics/listings?search=boots")
         history = client.get(f"/api/analytics/listings/{listing_id}/price-history")
         created = client.post(
             "/api/model-rules",
@@ -419,6 +420,9 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
     assert brands.json()["data"][0]["groups_count"] == 3
     assert brand.status_code == listing.status_code == history.status_code == 200
     assert isinstance(listing.json()["price"], int)
+    assert catalog.status_code == 200
+    assert catalog.json()["total"] >= 1
+    assert isinstance(catalog.json()["data"][0]["price"], int)
     assert history.json()["data"][0]["price"] == 9999
     assert created.status_code == 201
     assert len(matches.json()) == 1

@@ -6,12 +6,14 @@ export function ProgressBar({
   className,
   label,
   size = 'md',
+  indeterminate = false,
 }: {
   value: number;
   max?: number;
   className?: string;
   label?: string;
   size?: 'sm' | 'md';
+  indeterminate?: boolean;
 }) {
   const pct = max > 0 ? Math.min(Math.round((value / max) * 100), 100) : 0;
   return (
@@ -19,7 +21,9 @@ export function ProgressBar({
       {label && (
         <div className="mb-1.5 flex items-center justify-between text-xs">
           <span className="text-[var(--text-secondary)]">{label}</span>
-          <span className="font-medium text-[var(--text-primary)]">{pct}%</span>
+          <span className="font-medium text-[var(--text-primary)]">
+            {indeterminate ? '…' : `${pct}%`}
+          </span>
         </div>
       )}
       <div
@@ -28,13 +32,19 @@ export function ProgressBar({
           size === 'sm' ? 'h-1.5' : 'h-2.5',
         )}
         role="progressbar"
-        aria-valuenow={pct}
+        aria-label={label}
+        aria-valuenow={indeterminate ? undefined : pct}
         aria-valuemin={0}
         aria-valuemax={100}
       >
         <div
-          className="h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out"
-          style={{ width: `${pct}%` }}
+          className={cn(
+            'h-full rounded-full',
+            indeterminate
+              ? 'w-full animate-shimmer'
+              : 'bg-[var(--accent)] transition-[width] duration-500 ease-out',
+          )}
+          style={indeterminate ? undefined : { width: `${pct}%` }}
         />
       </div>
     </div>

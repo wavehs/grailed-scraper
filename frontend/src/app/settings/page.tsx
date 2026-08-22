@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
+import { HelpTip } from '@/components/ui/help-tip';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -227,7 +228,8 @@ function SettingField({
     <label className="block text-sm">
       <div className="mb-1.5 flex items-center gap-2">
         <span className="font-medium text-[var(--text-primary)]">{label}</span>
-        <Badge variant="muted">{entry.origin}</Badge>
+        <HelpTip label={label} text={t(`${name}_help`)} />
+        <Badge variant="muted">{t(entry.origin)}</Badge>
       </div>
       {typeof entry.value === 'boolean' ? (
         <span className="flex items-center gap-2 text-[var(--text-secondary)]">
@@ -248,7 +250,7 @@ function SettingField({
         >
           {selects[name].map((item) => (
             <option value={item} key={item}>
-              {item}
+              {t(`${name}_${item}`) === `${name}_${item}` ? item : t(`${name}_${item}`)}
             </option>
           ))}
         </select>

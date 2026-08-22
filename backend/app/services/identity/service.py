@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import unicodedata
@@ -55,6 +56,7 @@ _GENERIC = {
 }
 _VARIANT_TOKENS = {
     "beige",
+    "bk",
     "black",
     "blue",
     "brown",
@@ -71,6 +73,7 @@ _VARIANT_TOKENS = {
     "purple",
     "red",
     "small",
+    "slt",
     "white",
     "yellow",
     "xxs",
@@ -79,6 +82,7 @@ _VARIANT_TOKENS = {
     "xl",
 }
 _TOKEN = re.compile(r"[a-z0-9]+", re.I)
+_TOKEN_ALIASES = {"tee": "t"}
 _SIZE = re.compile(
     r"\b(?:size|sz|eu|us|uk)\s*[:\-]?\s*(?:xx?s|s|m|l|xxl|\d{1,3}(?:\.\d+)?)\b",
     re.I,
@@ -95,6 +99,7 @@ class IdentityResolver:
         self._session = session
         self._settings = settings
         self._transport = transport
+        self._match_cache: dict[tuple[str, int, int], IdentityMatch] | None = None
 
     async def resolve_run(self, run_id: int) -> dict[str, int | str]:
         brand_ids = set(
@@ -116,7 +121,7 @@ class IdentityResolver:
         await self._backfill(listings)
         await self._assign_models(listings)
         await self._model_candidates(listings)
-        physical = await self._physical_candidates(listings)
+        physical = await self._physical_candidates(listings, run_id)
         image_requests = await self._fingerprint_candidates(physical)
         await self._reevaluate_physical(physical)
         await self.rebuild_physical_items()
@@ -204,7 +209,9 @@ class IdentityResolver:
             )
 
     async def _backfill(self, listings: Sequence[Listing]) -> None:
-        for listing in listings:
+        for index, listing in enumerate(listings):
+            if index % 250 == 0:
+                await asyncio.sleep(0)
             raw = listing.raw_json if isinstance(listing.raw_json, dict) else {}
             listing.source_product_id = listing.source_product_id or _positive_int(
                 raw.get("product_id")
@@ -249,7 +256,13 @@ class IdentityResolver:
             for row in await self._session.scalars(select(ListingModelAssignment))
         }
         now = datetime.now(UTC)
-        for listing in listings:
+        decisions: list[tuple[Listing, ModelGroup, str]] = []
+        for index, listing in enumerate(listings):
+            if index % 250 == 0:
+                await asyncio.sleep(0)
+            assignment = existing.get(listing.id)
+            if assignment is not None and assignment.method == "manual":
+                continue
             matches = [
                 rule
                 for rule in by_brand.get(listing.brand_id or -1, [])
@@ -283,7 +296,6 @@ class IdentityResolver:
                             updated_at=now,
                         )
                         self._session.add(group)
-                        await self._session.flush()
                         groups[stable_key] = group
                     method = "canonical_title"
             if group is None and listing.source_product_id:
@@ -300,11 +312,13 @@ class IdentityResolver:
                         updated_at=now,
                     )
                     self._session.add(group)
-                    await self._session.flush()
                     groups[stable_key] = group
                 method = "source_product_id"
             if group is None:
                 continue
+            decisions.append((listing, group, method))
+        await self._session.flush()
+        for listing, group, method in decisions:
             assignment = existing.get(listing.id)
             if assignment is None:
                 assignment = ListingModelAssignment(
@@ -326,11 +340,18 @@ class IdentityResolver:
 
     async def _model_candidates(self, listings: Sequence[Listing]) -> None:
         assignments = {
-            row.listing_id: row.model_group_id
+            row.listing_id: row
             for row in await self._session.scalars(select(ListingModelAssignment))
         }
         buckets: dict[tuple[int | None, str | None], list[Listing]] = defaultdict(list)
         for listing in listings:
+            assignment = assignments.get(listing.id)
+            if assignment is not None and assignment.method in {
+                "canonical_title",
+                "manual",
+                "rule",
+            }:
+                continue
             buckets[(listing.brand_id, listing.category)].append(listing)
         for group in buckets.values():
             texts = {
@@ -347,7 +368,9 @@ class IdentityResolver:
                 for token in texts[item.id].split():
                     if token not in _GENERIC:
                         inverted[token].append(item)
-            for listing in group:
+            for listing_index, listing in enumerate(group):
+                if listing_index % 250 == 0:
+                    await asyncio.sleep(0)
                 candidates: dict[int, Listing] = {}
                 tokens = sorted(
                     set(texts[listing.id].split()) - _GENERIC,
@@ -359,11 +382,19 @@ class IdentityResolver:
                             candidates[candidate.id] = candidate
                 ranked = sorted(
                     (
-                        token_set_ratio(texts[listing.id], texts[candidate.id]),
-                        candidate,
-                    )
-                    for candidate in candidates.values()
-                    if assignments.get(listing.id) != assignments.get(candidate.id)
+                        (
+                            token_set_ratio(texts[listing.id], texts[candidate.id]),
+                            candidate,
+                        )
+                        for candidate in candidates.values()
+                        if (
+                            assignments.get(listing.id) is None
+                            or assignments.get(candidate.id) is None
+                            or assignments[listing.id].model_group_id
+                            != assignments[candidate.id].model_group_id
+                        )
+                    ),
+                    key=lambda item: (item[0], item[1].id),
                 )
                 for score, candidate in ranked[-5:]:
                     if score >= 90 and _distinctive_overlap(
@@ -378,7 +409,9 @@ class IdentityResolver:
                             evidence={"title_similarity": score, "method": "model_text"},
                         )
 
-    async def _physical_candidates(self, listings: Sequence[Listing]) -> list[IdentityMatch]:
+    async def _physical_candidates(
+        self, listings: Sequence[Listing], run_id: int
+    ) -> list[IdentityMatch]:
         by_seller: dict[str, list[Listing]] = defaultdict(list)
         for listing in listings:
             if listing.seller_identity:
@@ -392,6 +425,10 @@ class IdentityResolver:
                 if item.status == "sold"
             )
             for index, current in enumerate(ordered):
+                if index % 250 == 0:
+                    await asyncio.sleep(0)
+                if current.parser_run_id != run_id:
+                    continue
                 for previous in reversed(ordered[max(0, index - 50) : index]):
                     if previous.brand_id != current.brand_id:
                         continue
@@ -472,7 +509,12 @@ class IdentityResolver:
                         relation_type="relist",
                     )
                     candidates.append(match)
-        return list({item.id: item for item in candidates}.values())
+        return list(
+            {
+                (item.left_listing_id, item.right_listing_id): item
+                for item in candidates
+            }.values()
+        )
 
     async def _fingerprint_candidates(self, matches: Sequence[IdentityMatch]) -> int:
         if self._transport is None or self._settings.identity_image_requests_per_run == 0:
@@ -558,13 +600,13 @@ class IdentityResolver:
         relation_type: Literal["relist"] | None = None,
     ) -> IdentityMatch:
         left, right = sorted((first.id, second.id))
-        match = await self._session.scalar(
-            select(IdentityMatch).where(
-                IdentityMatch.level == level,
-                IdentityMatch.left_listing_id == left,
-                IdentityMatch.right_listing_id == right,
-            )
-        )
+        if self._match_cache is None:
+            self._match_cache = {
+                (item.level, item.left_listing_id, item.right_listing_id): item
+                for item in await self._session.scalars(select(IdentityMatch))
+            }
+        key = (level, left, right)
+        match = self._match_cache.get(key)
         now = datetime.now(UTC)
         if match is None:
             match = IdentityMatch(
@@ -580,7 +622,7 @@ class IdentityResolver:
                 updated_at=now,
             )
             self._session.add(match)
-            await self._session.flush()
+            self._match_cache[key] = match
         elif match.status not in {"confirmed", "rejected"}:
             match.status = status
             match.confidence = confidence
@@ -644,15 +686,17 @@ def model_text(
     normalized = "".join(char for char in value if not unicodedata.combining(char))
     brand_tokens = set(_TOKEN.findall((brand or "").casefold()))
     variant_tokens = set(_TOKEN.findall(f"{size or ''} {color or ''}".casefold()))
-    tokens = [
-        token
-        for token in _TOKEN.findall(normalized)
-        if token not in brand_tokens
-        and token not in _GENERIC
-        and token not in _VARIANT_TOKENS
-        and token not in variant_tokens
-        and token not in {"size", "sz"}
-    ]
+    tokens = []
+    for token in _TOKEN.findall(normalized):
+        token = _TOKEN_ALIASES.get(token, token)
+        if (
+            token not in brand_tokens
+            and token not in _GENERIC
+            and token not in _VARIANT_TOKENS
+            and token not in variant_tokens
+            and token not in {"size", "sz"}
+        ):
+            tokens.append(token)
     return " ".join(tokens)
 
 

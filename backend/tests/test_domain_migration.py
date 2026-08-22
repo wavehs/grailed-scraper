@@ -48,6 +48,16 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
         {column["name"] for column in inspector.get_columns("listings")}
     )
+    parser_run_column = next(
+        column for column in inspector.get_columns("listings") if column["name"] == "parser_run_id"
+    )
+    parser_run_fk = next(
+        foreign_key
+        for foreign_key in inspector.get_foreign_keys("listings")
+        if foreign_key["constrained_columns"] == ["parser_run_id"]
+    )
+    assert parser_run_column["nullable"] is True
+    assert parser_run_fk["options"].get("ondelete") == "SET NULL"
     assert "ix_listing_price_history_listing_observed" in {
         index["name"] for index in inspector.get_indexes("listing_price_history")
     }

@@ -300,7 +300,11 @@ class ParserRuntime:
                 hits_per_page=settings.algolia_hits_per_page,
                 fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
                 resume_cursor=prior_cursor,
-                max_hits=int(spec_data["max_hits"]),
+                max_hits=(
+                    int(spec_data["max_hits"])
+                    if spec_data.get("max_hits") is not None
+                    else None
+                ),
             )
         )
         last_key: int | None = None

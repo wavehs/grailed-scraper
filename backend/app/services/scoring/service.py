@@ -160,24 +160,32 @@ class OpportunityScoringService:
         for rule in rules:
             rules_by_brand[rule.brand_id].append(rule)
 
-        listing_ids = [listing.id for listing in listings]
-        persisted = list(
-            await session.scalars(
-                select(ListingModelAssignment).where(
-                    ListingModelAssignment.listing_id.in_(listing_ids)
+        listing_ids = {listing.id for listing in listings}
+        persisted_rows = (
+            await session.execute(
+                select(ListingModelAssignment, ModelGroup)
+                .join(
+                    ModelGroup,
+                    ModelGroup.id == ListingModelAssignment.model_group_id,
                 )
+                .join(Listing, Listing.id == ListingModelAssignment.listing_id)
+                .where(Listing.brand_id.in_(brands))
             )
-        )
+        ).tuples()
+        persisted = [
+            (assignment, group)
+            for assignment, group in persisted_rows
+            if assignment.listing_id in listing_ids
+        ]
         persisted_groups = {
             group.id: group
-            for group in await session.scalars(
-                select(ModelGroup).where(
-                    ModelGroup.id.in_({item.model_group_id for item in persisted})
-                )
-            )
+            for _, group in persisted
         }
         groups.update(persisted_groups)
-        assignments = {item.listing_id: item.model_group_id for item in persisted}
+        assignments = {
+            assignment.listing_id: assignment.model_group_id
+            for assignment, _ in persisted
+        }
         fallback_needed: dict[str, tuple[int, str]] = {}
         fallback_for_listing: dict[int, str] = {}
         for listing in listings:
@@ -527,12 +535,18 @@ async def _canonical_relistings(
 
     if not listings:
         return []
+    listing_ids = {listing.id for listing in listings}
+    brand_ids = {listing.brand_id for listing in listings if listing.brand_id is not None}
     membership_rows = await session.execute(
-        select(PhysicalItemMember.listing_id, PhysicalItemMember.physical_item_id).where(
-            PhysicalItemMember.listing_id.in_([listing.id for listing in listings])
-        )
+        select(PhysicalItemMember.listing_id, PhysicalItemMember.physical_item_id)
+        .join(Listing, Listing.id == PhysicalItemMember.listing_id)
+        .where(Listing.brand_id.in_(brand_ids))
     )
-    item_by_listing: dict[int, int] = dict(membership_rows.tuples().all())
+    item_by_listing = {
+        listing_id: physical_item_id
+        for listing_id, physical_item_id in membership_rows.tuples()
+        if listing_id in listing_ids
+    }
     by_item: dict[int, list[Listing]] = defaultdict(list)
     result = [listing for listing in listings if listing.id not in item_by_listing]
     for listing in listings:

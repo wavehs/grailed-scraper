@@ -35,7 +35,6 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
         "parser_request_timeout_s",
         "parser_max_retries",
         "parser_max_concurrency",
-        "parser_max_requests_per_run",
         "parser_max_items_per_brand",
         "identity_image_requests_per_run",
     ),
@@ -67,7 +66,6 @@ class SettingsPatch(BaseModel):
     parser_request_timeout_s: float | None = Field(default=None, ge=1)
     parser_max_retries: int | None = Field(default=None, ge=1)
     parser_max_concurrency: int | None = Field(default=None, ge=1, le=3)
-    parser_max_requests_per_run: int | None = Field(default=None, ge=1)
     parser_max_items_per_brand: int | None = Field(default=None, ge=1)
     identity_image_requests_per_run: int | None = Field(default=None, ge=0, le=100)
     proxy_enabled: bool | None = None

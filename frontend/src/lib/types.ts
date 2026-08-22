@@ -146,7 +146,7 @@ export type FetchPlan = {
     index: string;
     status: string;
     strategy: string;
-    max_hits: number;
+    max_hits: number | null;
   }>;
 };
 export type RunStartResponse =
@@ -196,6 +196,7 @@ export type DashboardRow = {
 export type ScoreComponent = { score: string; weight: string; contribution?: string };
 export type ListingExample = {
   id: number;
+  grailed_id: number;
   title: string;
   price: number;
   likes: number;
@@ -300,3 +301,22 @@ export type DiscoveryResponse = {
   drift_score: number;
   alerts: Array<{ severity: string; kind: string; path: string }>;
 };
+
+export type CatalogListing = {
+  id: number;
+  grailed_id: number;
+  title: string;
+  brand: string;
+  status: string;
+  size?: string;
+  color?: string;
+  price: number;
+  created_at?: string;
+  sold_at?: string;
+  last_seen_at: string;
+  model_group_id?: number;
+  model_name?: string;
+  model_sold_count: number;
+  model_active_count: number;
+};
+export type CatalogListingList = { data: CatalogListing[]; total: number; limit: number; offset: number };

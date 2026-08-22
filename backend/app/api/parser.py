@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,11 +24,16 @@ from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
 from app.db.models import (
     Brand,
+    Listing,
+    ModelGroup,
     ParserRun,
     ParserRunTask,
+    ParserWatermark,
+    PhysicalItem,
     SchemaAlert,
     SourceCredential,
     SourceSchema,
+    UnmatchedBrand,
 )
 from app.db.session import get_db
 from app.repositories.runs import RunRepository
@@ -51,12 +56,24 @@ class RunRequest(BaseModel):
     mode: Literal["delta", "full", "refresh_active"] | None = None
     brand_ids: list[int] | None = None
     dry_run: bool = False
-    confirm_over_budget: bool = False
     confirmation_token: str | None = None
-    max_requests: int | None = Field(default=None, ge=1)
     max_items_per_brand: int | None = Field(default=None, ge=1)
+    collect_all: bool = False
     requests_per_minute: int | None = Field(default=None, ge=1, le=90)
     concurrent_requests: int | None = Field(default=None, ge=1, le=3)
+
+
+class ClearDataRequest(BaseModel):
+    confirm: Literal[True]
+
+
+class ClearDataResponse(BaseModel):
+    listings_deleted: int
+    runs_deleted: int
+
+
+class ClearHistoryResponse(BaseModel):
+    runs_deleted: int
 
 
 class RunSummary(BaseModel):
@@ -187,17 +204,19 @@ async def start_run(
         update={
             key: value
             for key, value in {
-                "parser_max_requests_per_run": payload.max_requests,
                 "parser_max_items_per_brand": payload.max_items_per_brand,
                 "requests_per_minute": payload.requests_per_minute,
                 "max_concurrent_requests": payload.concurrent_requests,
+                "parser_max_concurrency": payload.concurrent_requests,
             }.items()
             if value is not None
         }
     )
     mode = payload.mode or settings.parser_mode
     try:
-        plan = await ParserPlanner(session, settings).build(mode=mode, brand_ids=payload.brand_ids)
+        plan = await ParserPlanner(session, settings, collect_all=payload.collect_all).build(
+            mode=mode, brand_ids=payload.brand_ids
+        )
     except LookupError as exc:
         raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
     except RuntimeError as exc:
@@ -222,13 +241,9 @@ async def start_run(
         plan = await _probe_plan(session, settings, plan)
     except AlgoliaError as exc:
         raise ApiError(503, "run_probe_failed", "Live pre-run probes failed") from exc
-    if plan.budget["over_limit"] and not payload.confirm_over_budget:
-        raise ApiError(
-            409,
-            "parser_budget_exceeded",
-            "Estimated request budget exceeds the configured limit",
-            details=[{"budget": plan.budget}],
-        )
+    settings = settings.model_copy(
+        update={"parser_max_requests_per_run": plan.budget["limit"]}
+    )
     run = await RunRepository(session).create(
         mode=mode,
         budget=plan.budget,
@@ -270,6 +285,68 @@ async def run_detail(
     )
 
 
+@router.delete("/runs/{run_id}", status_code=204)
+async def delete_run(
+    run_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> Response:
+    run = await RunRepository(session).get(run_id)
+    if run is None:
+        raise ApiError(404, "run_not_found", "Parser run does not exist")
+    if run.status in {"pending", "running"} or run_id in runtime.active_run_ids():
+        raise ApiError(409, "run_active", "An active parser run cannot be deleted")
+    await session.delete(run)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.post("/data/clear", response_model=ClearDataResponse)
+async def clear_collected_data(
+    payload: ClearDataRequest,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> ClearDataResponse:
+    del payload
+    await _ensure_no_active_runs(session, runtime)
+    listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
+    runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
+    await session.execute(delete(Listing))
+    await session.execute(delete(PhysicalItem))
+    await session.execute(delete(ParserRun))
+    await session.execute(delete(ParserWatermark))
+    await session.execute(delete(UnmatchedBrand))
+    await session.execute(delete(ModelGroup).where(ModelGroup.group_type != "rule"))
+    await session.commit()
+    return ClearDataResponse(
+        listings_deleted=listings_deleted,
+        runs_deleted=runs_deleted,
+    )
+
+
+@router.post("/history/clear", response_model=ClearHistoryResponse)
+async def clear_run_history(
+    payload: ClearDataRequest,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
+) -> ClearHistoryResponse:
+    del payload
+    await _ensure_no_active_runs(session, runtime)
+    runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
+    await session.execute(delete(ParserRun))
+    await session.commit()
+    return ClearHistoryResponse(runs_deleted=runs_deleted)
+
+
+async def _ensure_no_active_runs(
+    session: AsyncSession, runtime: ParserRuntime
+) -> None:
+    if runtime.active_run_ids() or await session.scalar(
+        select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
+    ):
+        raise ApiError(409, "run_active", "Stop active parser runs before deleting data")
+
+
 @router.get("/runs/{run_id}/progress", response_model=ProgressResponse)
 async def run_progress(
     run_id: int, session: Annotated[AsyncSession, Depends(get_db)]
@@ -289,7 +366,7 @@ async def run_progress(
             "code": item.error,
         }
         for item in tasks
-        if item.error
+        if item.status == "failed" and item.error
     ]
     return ProgressResponse(
         status=run.status,
@@ -376,6 +453,15 @@ async def resume_run(
     existing = await repository.get(run_id)
     if existing is None:
         raise ApiError(404, "run_not_found", "Parser run does not exist")
+    settings = settings.model_copy(
+        update={
+            "parser_max_requests_per_run": int(
+                (existing.budget_estimate or {}).get(
+                    "limit", settings.parser_max_requests_per_run
+                )
+            )
+        }
+    )
     task_brand_ids = sorted(
         {task.brand_id for task in await repository.tasks(run_id) if task.brand_id is not None}
     )
@@ -588,7 +674,7 @@ def _task(task: ParserRunTask) -> TaskResponse:
         expected_hits=task.expected_hits,
         coverage=task.coverage,
         tier=task.fetch_tier,
-        error=task.error,
+        error=task.error if task.status == "failed" else None,
     )
 
 
@@ -615,7 +701,9 @@ async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan
         proxy_url=proxy,
     )
     try:
-        return await ParserPlanner(session, settings).probe(plan, client)
+        return await ParserPlanner(
+            session, settings, collect_all=bool(plan.budget.get("collect_all"))
+        ).probe(plan, client)
     finally:
         await transport.close()
 

@@ -41,7 +41,7 @@ class PlannedTask:
     sorted_index: str | None
     pagination_limit: int
     key_attrs: tuple[str, ...]
-    max_hits: int
+    max_hits: int | None
     status: str = "pending"
     error: str | None = None
 
@@ -79,10 +79,14 @@ class FetchPlan:
     warnings: tuple[str, ...]
 
     def digest(self) -> str:
+        tasks = [item.persisted() for item in self.tasks]
+        for task in tasks:
+            task["bucket_spec"].pop("max_hits", None)
         payload = {
             "mode": self.mode,
-            "limit": self.budget["limit"],
-            "tasks": [item.persisted() for item in self.tasks],
+            "max_items_per_brand": self.budget["max_items_per_brand"],
+            "collect_all": self.budget["collect_all"],
+            "tasks": tasks,
         }
         return sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -112,9 +116,12 @@ class FetchPlan:
 
 
 class ParserPlanner:
-    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self, session: AsyncSession, settings: Settings, *, collect_all: bool = False
+    ) -> None:
         self._session = session
         self._settings = settings
+        self._collect_all = collect_all
 
     async def build(self, *, mode: str, brand_ids: list[int] | None = None) -> FetchPlan:
         statement = select(Brand).options(selectinload(Brand.source_mappings)).order_by(Brand.id)
@@ -193,15 +200,26 @@ class ParserPlanner:
                         sorted_index=_sorted_index(sorted_indices, index_type),
                         pagination_limit=pagination_limit,
                         key_attrs=key_attrs,
-                        max_hits=per_task_limit + (position < remainder),
+                        max_hits=(
+                            None
+                            if self._collect_all
+                            else per_task_limit + (position < remainder)
+                        ),
                         status="pending",
                         error=None,
                     )
                 )
         runnable = sum(item.status == "pending" for item in tasks)
-        bounded_hits = min(estimated_hits, len(tasks) * per_task_limit + len(brands) * remainder)
+        bounded_hits = (
+            estimated_hits
+            if self._collect_all
+            else min(estimated_hits, len(tasks) * per_task_limit + len(brands) * remainder)
+        )
         page_requests = ceil(bounded_hits / max(self._settings.algolia_hits_per_page, 1))
         estimated_requests = runnable * 16 + page_requests
+        request_limit = max(
+            self._settings.parser_max_requests_per_run, estimated_requests * 2
+        )
         budget = {
             "brands": len(brands),
             "tasks": len(tasks),
@@ -209,42 +227,83 @@ class ParserPlanner:
             "estimated_hits": estimated_hits,
             "bounded_hits": bounded_hits,
             "max_items_per_brand": self._settings.parser_max_items_per_brand,
+            "collect_all": self._collect_all,
             "estimated_requests": estimated_requests,
-            "limit": self._settings.parser_max_requests_per_run,
-            "over_limit": estimated_requests > self._settings.parser_max_requests_per_run,
+            "limit": request_limit,
+            "over_limit": False,
         }
-        if estimated_hits > bounded_hits:
+        if not self._collect_all and estimated_hits > bounded_hits:
             warnings.append("Collection is bounded per brand; coverage will be partial")
         return FetchPlan(mode, tuple(tasks), budget, tuple(warnings))
 
     async def probe(self, plan: FetchPlan, client: QueryProbe) -> FetchPlan:
         """Replace mapping-count estimates with bounded live zero-hit probes."""
 
+        pending_tasks = [item for item in plan.tasks if item.status == "pending"]
         requests = [
             AlgoliaRequest(item.index_name, replace(item.query, hits_per_page=0, page=0))
-            for item in plan.tasks
-            if item.status == "pending"
+            for item in pending_tasks
         ]
         pages = await client.multi_query(requests)
         estimated_hits = sum(page.nb_hits for page in pages)
         probe_requests = ceil(len(requests) / self._settings.algolia_multiquery_batch_size)
-        bounded_hits = sum(
-            min(page.nb_hits, task.max_hits) for page, task in zip(pages, plan.tasks, strict=True)
+        page_by_task = {
+            (task.brand_id, task.index_type): page
+            for task, page in zip(pending_tasks, pages, strict=True)
+        }
+        tasks = plan.tasks
+        if not self._collect_all:
+            limits: dict[tuple[int, str], int] = {}
+            for brand_id in {item.brand_id for item in pending_tasks}:
+                brand_tasks = [item for item in pending_tasks if item.brand_id == brand_id]
+                available = [
+                    page_by_task[(item.brand_id, item.index_type)].nb_hits
+                    for item in brand_tasks
+                ]
+                for task, limit in zip(
+                    brand_tasks,
+                    _balanced_limits(available, self._settings.parser_max_items_per_brand),
+                    strict=True,
+                ):
+                    limits[(task.brand_id, task.index_type)] = limit
+            tasks = tuple(
+                replace(item, max_hits=limits.get((item.brand_id, item.index_type), item.max_hits))
+                for item in plan.tasks
+            )
+        bounded_hits = estimated_hits if self._collect_all else sum(
+            item.max_hits or 0 for item in tasks if item.status == "pending"
         )
         page_requests = ceil(bounded_hits / max(self._settings.algolia_hits_per_page, 1))
         # Adaptive range pagination needs bounded zero-hit probes before data pages.
         estimated_requests = probe_requests + len(requests) * 16 + page_requests
+        request_limit = max(
+            self._settings.parser_max_requests_per_run, estimated_requests * 2
+        )
         budget = {
             **plan.budget,
             "estimated_hits": estimated_hits,
             "bounded_hits": bounded_hits,
             "estimated_requests": estimated_requests,
-            "over_limit": estimated_requests > self._settings.parser_max_requests_per_run,
+            "limit": request_limit,
+            "over_limit": False,
         }
         warnings = list(plan.warnings)
         if any(not page.exhaustive_nb_hits for page in pages):
             warnings.append("Algolia returned a non-exhaustive dry-run estimate")
-        return FetchPlan(plan.mode, plan.tasks, budget, tuple(warnings))
+        return FetchPlan(plan.mode, tasks, budget, tuple(warnings))
+
+
+def _balanced_limits(available: list[int], total: int) -> list[int]:
+    """Split a total evenly, then use spare capacity instead of losing it."""
+
+    base, remainder = divmod(total, len(available))
+    limits = [min(count, base + (index < remainder)) for index, count in enumerate(available)]
+    unassigned = total - sum(limits)
+    for index, count in enumerate(available):
+        extra = min(count - limits[index], unassigned)
+        limits[index] += extra
+        unassigned -= extra
+    return limits
 
 
 def _verified_mappings(

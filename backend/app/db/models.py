@@ -89,8 +89,12 @@ class ParserRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    listings: Mapped[list[Listing]] = relationship(back_populates="parser_run")
-    tasks: Mapped[list[ParserRunTask]] = relationship(back_populates="parser_run")
+    listings: Mapped[list[Listing]] = relationship(
+        back_populates="parser_run", passive_deletes=True
+    )
+    tasks: Mapped[list[ParserRunTask]] = relationship(
+        back_populates="parser_run", passive_deletes=True
+    )
     scoring_snapshots: Mapped[list[ScoringSnapshot]] = relationship(
         back_populates="parser_run", cascade="all, delete-orphan"
     )
@@ -160,8 +164,8 @@ class Listing(Base):
     seller_country: Mapped[str | None] = mapped_column(String(2))
     quality_flags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     fetch_tier: Mapped[str] = mapped_column(String(2), nullable=False)
-    parser_run_id: Mapped[int] = mapped_column(
-        ForeignKey("parser_runs.id", ondelete="RESTRICT"), nullable=False
+    parser_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("parser_runs.id", ondelete="SET NULL")
     )
     raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_json_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -169,7 +173,7 @@ class Listing(Base):
     identity_version: Mapped[str | None] = mapped_column(String(32))
 
     brand: Mapped[Brand | None] = relationship(back_populates="listings")
-    parser_run: Mapped[ParserRun] = relationship(back_populates="listings")
+    parser_run: Mapped[ParserRun | None] = relationship(back_populates="listings")
     price_history: Mapped[list[ListingPriceHistory]] = relationship(back_populates="listing")
 
 

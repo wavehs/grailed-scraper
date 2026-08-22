@@ -8,9 +8,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
+from app.db.models import Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
 from app.services.analytics.service import (
@@ -66,6 +68,7 @@ class ScoreMetrics(BaseModel):
 
 class ListingExample(BaseModel):
     id: int
+    grailed_id: int
     title: str
     price: int
     likes: int
@@ -136,9 +139,101 @@ class PriceHistoryResponse(BaseModel):
     data: list[PriceHistoryRow]
 
 
+class ListingCatalogRow(BaseModel):
+    id: int
+    grailed_id: int
+    title: str
+    brand: str
+    status: str
+    size: str | None
+    color: str | None
+    price: int
+    created_at: datetime | None
+    sold_at: datetime | None
+    last_seen_at: datetime
+    model_group_id: int | None
+    model_name: str | None
+    model_sold_count: int
+    model_active_count: int
+
+
+class ListingCatalogResponse(BaseModel):
+    data: list[ListingCatalogRow]
+    total: int
+    limit: int
+    offset: int
+
+
 def _validate_window(window_days: int) -> None:
     if window_days not in {30, 90}:
         raise ApiError(422, "invalid_window", "window_days must be 30 or 90")
+
+
+@router.get("/listings", response_model=ListingCatalogResponse)
+async def listing_catalog(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    search: str = "",
+    status: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ListingCatalogResponse:
+    filters = []
+    if search.strip():
+        term = f"%{search.strip()}%"
+        filters.append(or_(Listing.title.ilike(term), Listing.brand_name_raw.ilike(term)))
+    if status:
+        filters.append(Listing.status == status)
+    total = int(await session.scalar(select(func.count(Listing.id)).where(*filters)) or 0)
+    rows = list(
+        await session.execute(
+            select(Listing, ListingModelAssignment.model_group_id, ModelGroup.name)
+            .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
+            .outerjoin(ModelGroup, ModelGroup.id == ListingModelAssignment.model_group_id)
+            .where(*filters)
+            .order_by(Listing.last_seen_at.desc(), Listing.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+    group_ids = {group_id for _, group_id, _ in rows if group_id is not None}
+    counts: dict[int, dict[str, int]] = {}
+    if group_ids:
+        for group_id, listing_status, count in await session.execute(
+            select(
+                ListingModelAssignment.model_group_id,
+                Listing.status,
+                func.count(Listing.id),
+            )
+            .join(Listing, Listing.id == ListingModelAssignment.listing_id)
+            .where(ListingModelAssignment.model_group_id.in_(group_ids))
+            .group_by(ListingModelAssignment.model_group_id, Listing.status)
+        ):
+            counts.setdefault(group_id, {})[listing_status] = int(count)
+    return ListingCatalogResponse(
+        data=[
+            ListingCatalogRow(
+                id=item.id,
+                grailed_id=item.grailed_id,
+                title=item.title,
+                brand=item.brand_name_raw,
+                status=item.status,
+                size=item.size_normalized,
+                color=item.color,
+                price=decimal_to_cents(item.price),
+                created_at=item.created_at,
+                sold_at=item.sold_at,
+                last_seen_at=item.last_seen_at,
+                model_group_id=group_id,
+                model_name=model_name,
+                model_sold_count=counts.get(group_id, {}).get("sold", 0),
+                model_active_count=counts.get(group_id, {}).get("active", 0),
+            )
+            for item, group_id, model_name in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/dashboard", response_model=GroupListResponse)
@@ -314,6 +409,7 @@ def _group_detail(detail: GroupDetailData) -> GroupDetail:
         sold_examples=[
             ListingExample(
                 id=item.id,
+                grailed_id=item.grailed_id,
                 title=item.title,
                 price=item.price,
                 likes=item.likes,
@@ -324,6 +420,7 @@ def _group_detail(detail: GroupDetailData) -> GroupDetail:
         active_examples=[
             ListingExample(
                 id=item.id,
+                grailed_id=item.grailed_id,
                 title=item.title,
                 price=item.price,
                 likes=item.likes,

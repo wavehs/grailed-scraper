@@ -195,7 +195,14 @@ function ExampleList({
           items.map((item) => (
             <li key={item.id} className="flex items-center gap-2 border-t border-[var(--border-subtle)] pt-2">
               <span className="h-1 w-1 rounded-full bg-[var(--accent)]" />
-              <span className="text-[var(--text-primary)]">{item.title}</span>
+              <a
+                className="text-[var(--accent)] hover:underline"
+                href={`https://www.grailed.com/listings/${item.grailed_id}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {item.title}
+              </a>
               <span className="text-[var(--text-muted)]">·</span>
               <span className="text-[var(--text-secondary)]">{money(item.price)}</span>
               <span className="text-[var(--text-muted)]">·</span>

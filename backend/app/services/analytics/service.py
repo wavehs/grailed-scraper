@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     Listing,
+    ListingModelAssignment,
     ListingPriceHistory,
     ModelGroup,
     ModelRule,
@@ -65,6 +66,7 @@ class ScoreMetricsData:
 @dataclass(frozen=True, slots=True)
 class ListingExampleData:
     id: int
+    grailed_id: int
     title: str
     price: int
     likes: int
@@ -129,10 +131,13 @@ class AnalyticsService:
         snapshots = await self._snapshots(run_id, window_days)
         if brand_id is not None:
             snapshots = [item for item in snapshots if item.brand_id == brand_id]
+        listings_by_group = await self._listings_by_group(
+            [snapshot.model_group for snapshot in snapshots]
+        )
         rows: list[GroupRowData] = []
         for snapshot in snapshots:
             group = snapshot.model_group
-            listings = await self._group_listings(group)
+            listings = listings_by_group[group.id]
             rows.append(
                 GroupRowData(
                     id=group.id,
@@ -185,7 +190,7 @@ class AnalyticsService:
         )
         if snapshot is None:
             return None
-        examples = await self._group_listings(snapshot.model_group)
+        examples = (await self._listings_by_group([snapshot.model_group]))[group_id]
         sold = [item for item in examples if item.status == "sold"][:20]
         active = [item for item in examples if item.status == "active"][:20]
         group = snapshot.model_group
@@ -252,26 +257,55 @@ class AnalyticsService:
             )
         )
 
-    async def _group_listings(self, group: ModelGroup) -> list[Listing]:
+    async def _listings_by_group(
+        self, groups: list[ModelGroup]
+    ) -> dict[int, list[Listing]]:
+        selected = {group.id: [] for group in groups}
+        if not groups:
+            return selected
+        brand_ids = {group.brand_id for group in groups}
         listings = list(
             await self._session.scalars(
                 select(Listing)
-                .where(Listing.brand_id == group.brand_id)
+                .where(Listing.brand_id.in_(brand_ids))
                 .order_by(Listing.sold_at.desc(), Listing.id)
             )
         )
+        assignments = {
+            item.listing_id: item.model_group_id
+            for item in await self._session.scalars(
+                select(ListingModelAssignment)
+                .join(Listing, Listing.id == ListingModelAssignment.listing_id)
+                .where(
+                    Listing.brand_id.in_(brand_ids)
+                )
+            )
+        }
         rules = list(
             await self._session.scalars(
                 select(ModelRule)
-                .where(ModelRule.brand_id == group.brand_id, ModelRule.is_active.is_(True))
+                .where(ModelRule.brand_id.in_(brand_ids), ModelRule.is_active.is_(True))
                 .order_by(ModelRule.id)
             )
         )
-        selected: list[Listing] = []
+        groups_by_id = {group.id: group for group in groups}
+        rules_by_brand: dict[int, list[ModelRule]] = defaultdict(list)
+        for rule in rules:
+            rules_by_brand[rule.brand_id].append(rule)
+        fallback_by_key = {
+            (group.brand_id, group.category or "Uncategorized"): group.id
+            for group in groups
+            if group.group_type == "fallback"
+        }
         for listing in listings:
+            assigned_group_id = assignments.get(listing.id)
+            if assigned_group_id is not None:
+                if assigned_group_id in groups_by_id:
+                    selected[assigned_group_id].append(listing)
+                continue
             matching = [
                 rule
-                for rule in rules
+                for rule in rules_by_brand.get(listing.brand_id or -1, [])
                 if rule_matches(rule, listing.title, listing.category)
             ]
             winner = (
@@ -279,14 +313,15 @@ class AnalyticsService:
                 if matching
                 else None
             )
-            if group.group_type == "rule" and winner is not None and winner.group_id == group.id:
-                selected.append(listing)
-            elif (
-                group.group_type == "fallback"
-                and winner is None
-                and (listing.category or "Uncategorized") == (group.category or "Uncategorized")
-            ):
-                selected.append(listing)
+            group_id = (
+                winner.group_id
+                if winner is not None
+                else fallback_by_key.get(
+                    (listing.brand_id, listing.category or "Uncategorized")
+                )
+            )
+            if group_id in selected:
+                selected[group_id].append(listing)
         return selected
 
     def _metrics(self, snapshot: ScoringSnapshot) -> ScoreMetricsData:
@@ -342,6 +377,7 @@ class AnalyticsService:
     def _example(self, listing: Listing) -> ListingExampleData:
         return ListingExampleData(
             id=listing.id,
+            grailed_id=listing.grailed_id,
             title=listing.title,
             price=decimal_to_cents(listing.sold_price or listing.price),
             likes=listing.likes_count,
