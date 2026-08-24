@@ -7,7 +7,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
@@ -17,16 +17,27 @@ from app.db.models import (
     IdentityMatch,
     Listing,
     ListingModelAssignment,
-    ModelGroup,
     ParserRun,
     ParserRunTask,
     PhysicalItemMember,
 )
 from app.services.identity.images import fingerprint_bytes, hamming_distance
-from app.services.identity.service import IdentityResolver, model_signature, model_text
+from app.services.identity.service import (
+    IdentityResolver,
+    line_signature,
+    model_signature,
+    model_text,
+)
 
 
 def test_model_text_and_image_hash_are_stable() -> None:
+    assert model_text("Gats", "Maison Margiela") == "gat"
+    assert model_text("Geobaskets Milk FW25 Size 42", "Rick Owens", "42") == "geobasket"
+    fur = line_signature("Geobasket Fur Milk", "Rick Owens", category="footwear")
+    assert fur is not None and fur.key == "geobasket"
+    assert line_signature("Gat Paint Splatter", category="footwear") == line_signature(
+        "Gats Paint Splatter 2025 Size 42", size="42", category="footwear"
+    )
     assert (
         model_text("Rick Owens RARE Geobasket Size 42 Dust", "Rick Owens", "42", "Dust")
         == "geobasket"
@@ -58,19 +69,27 @@ def test_model_text_and_image_hash_are_stable() -> None:
         "Silver",
         "accessories",
     )
-    assert dagger == model_signature(
-        "Dagger Necklace", "Chrome Hearts", "One Size", "Silver", "accessories"
-    ) == ("necklace", "dagger")
-    assert model_signature(
-        "Chrome Hearts Double Dagger Pendant",
-        "Chrome Hearts",
-        category="accessories",
-    ) != dagger
-    assert model_signature(
-        "Chrome Hearts Dagger Dog Tag Necklace",
-        "Chrome Hearts",
-        category="accessories",
-    ) != dagger
+    assert (
+        dagger
+        == model_signature("Dagger Necklace", "Chrome Hearts", "One Size", "Silver", "accessories")
+        == ("accessory", "dagger")
+    )
+    assert (
+        model_signature(
+            "Chrome Hearts Double Dagger Pendant",
+            "Chrome Hearts",
+            category="accessories",
+        )
+        != dagger
+    )
+    assert (
+        model_signature(
+            "Chrome Hearts Dagger Dog Tag Necklace",
+            "Chrome Hearts",
+            category="accessories",
+        )
+        != dagger
+    )
 
 
 async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -112,7 +131,7 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
                 index_type="active",
                 status="done",
                 attempts=1,
-                hits_collected=5,
+                hits_collected=6,
             )
         )
         old = _listing(
@@ -123,13 +142,44 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
             "removed",
             "M",
             "Black",
+            title="Rick Owens Geobasket",
         )
         old.last_seen_at = now - timedelta(days=2)
-        current = _listing(101, run.id, brand.id, now - timedelta(days=1), "sold", "L", "Red")
+        current = _listing(
+            101,
+            run.id,
+            brand.id,
+            now - timedelta(days=1),
+            "sold",
+            "L",
+            "Red",
+            title="Rick Owens Geobaskets",
+        )
         current.sold_at = now - timedelta(hours=12)
-        future = _listing(102, run.id, brand.id, now, "active", "XL", "White")
-        generic_a = _listing(
+        future = _listing(
+            102,
+            run.id,
+            brand.id,
+            now,
+            "active",
+            "XL",
+            "White",
+            title="Rick Owens Geobasket Milk FW25 Size XL",
+        )
+        high = _listing(
             103,
+            run.id,
+            brand.id,
+            now,
+            "active",
+            "42",
+            "Milk",
+            title="Rick Owens Geobasket High Top Creep",
+            seller="seller-high",
+            asset="d" * 64,
+        )
+        generic_a = _listing(
+            104,
             run.id,
             brand.id,
             now,
@@ -141,7 +191,7 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
             asset="b" * 64,
         )
         generic_b = _listing(
-            104,
+            105,
             run.id,
             brand.id,
             now,
@@ -152,19 +202,47 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
             seller="seller-b",
             asset="c" * 64,
         )
-        session.add_all([old, current, future, generic_a, generic_b])
+        session.add_all([old, current, future, high, generic_a, generic_b])
         await session.commit()
         resolver = IdentityResolver(session, Settings(identity_image_requests_per_run=0))
+        statements: list[str] = []
+
+        def record_statement(
+            _connection: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: object,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(engine.sync_engine, "before_cursor_execute", record_statement)
         result = await resolver.resolve_run(run.id)
+        event.remove(engine.sync_engine, "before_cursor_execute", record_statement)
         await session.commit()
+        identity_selects = [
+            statement
+            for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "FROM identity_matches" in statement
+        ]
+        assert all("WHERE" in statement for statement in identity_selects)
+        assert len(statements) < 50
         assignments = list(
             await session.scalars(
                 select(ListingModelAssignment).order_by(ListingModelAssignment.listing_id)
             )
         )
-        assert len(assignments) == 5
-        assert len({item.model_group_id for item in assignments[:3]}) == 1
-        assert len({item.model_group_id for item in assignments[3:]}) == 2
+        assert len(assignments) == 6
+        assert len({item.model_group_id for item in assignments[:4]}) == 1
+        assert [item.method for item in assignments[:4]] == [
+            "exact_line",
+            "exact_line",
+            "exact_line",
+            "subset_line",
+        ]
+        assert len({item.model_group_id for item in assignments[4:]}) == 2
         members_before = {
             item.listing_id: item.physical_item_id
             for item in await session.scalars(select(PhysicalItemMember))
@@ -176,24 +254,6 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
             for item in await session.scalars(select(PhysicalItemMember))
         }
         assert members_after == members_before
-        fallback_groups = [
-            ModelGroup(
-                stable_key=f"manual:{suffix}",
-                brand_id=brand.id,
-                name=suffix,
-                category="footwear",
-                group_type="resolved",
-                created_at=now,
-                updated_at=now,
-            )
-            for suffix in ("a", "b", "c")
-        ]
-        session.add_all(fallback_groups)
-        await session.flush()
-        for assignment, group in zip(assignments[:3], fallback_groups, strict=True):
-            assignment.model_group_id = group.id
-            assignment.method = "source_product_id"
-        await resolver._model_candidates([old, current, future])
         match = await session.scalar(select(IdentityMatch).where(IdentityMatch.level == "physical"))
         members = list(await session.scalars(select(PhysicalItemMember)))
     assert result["linked"] == 1

@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.orm import Session
+
+from app.db.models import Listing
 
 
 def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -48,9 +53,16 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
         {column["name"] for column in inspector.get_columns("listings")}
     )
-    assert {"exact_sold_count", "median_sold_likes", "demand_score", "scoring_status"}.issubset(
+    assert {
+        "exact_sold_count",
+        "median_sold_likes",
+        "demand_score",
+        "scoring_status",
+        "variant_breakdown",
+    }.issubset(
         {column["name"] for column in inspector.get_columns("scoring_snapshots")}
     )
+    assert "model_rules" not in inspector.get_table_names()
     assert "ix_scoring_snapshots_brand_window_demand" in {
         index["name"] for index in inspector.get_indexes("scoring_snapshots")
     }
@@ -125,3 +137,76 @@ def test_stage11_migration_moves_hash_and_scrubs_existing_raw_pii(tmp_path) -> N
     assert "seller_id" not in columns and "seller_username_hash" not in columns
     assert row is not None and row[0] == "a" * 64 and row[1] == "hashed"
     assert json.loads(row[2]) == {"seller": {}, "user": {}, "title": "Item"}
+
+
+def test_cursor_fts_migration_indexes_existing_and_changed_listings(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    backend_root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    database_path = tmp_path / "fts-migration.db"
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.attributes["database_url"] = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+    command.upgrade(config, "20260822_0011")
+
+    engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+    observed = datetime(2026, 8, 24, tzinfo=UTC)
+    with Session(engine) as session:
+        session.add(
+            Listing(
+                source="grailed",
+                grailed_id=77,
+                status="active",
+                url="https://example.test/77",
+                title="Archive Boots",
+                description=None,
+                brand_name_raw="Rick Owens",
+                brand_slug="rick-owens",
+                brand_id=None,
+                category="footwear",
+                subcategory=None,
+                size_raw="M",
+                size_normalized="M",
+                condition_raw="Used",
+                condition="used",
+                price=Decimal("100.00"),
+                price_original=Decimal("100.00"),
+                currency_original="USD",
+                fx_rate=Decimal(1),
+                sold_price=None,
+                likes_count=0,
+                created_at=observed,
+                sold_at=None,
+                sold_at_is_estimated=False,
+                updated_at=observed,
+                first_seen_at=observed,
+                last_seen_at=observed,
+                removed_checked_at=None,
+                days_on_market=None,
+                cover_photo_url=None,
+                photo_urls=[],
+                photo_count=0,
+                seller_identity=None,
+                seller_identity_mode="none",
+                seller_country=None,
+                quality_flags=[],
+                fetch_tier="T1",
+                parser_run_id=None,
+                raw_json={},
+                schema_version=1,
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+    command.upgrade(config, "head")
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'archive*'"
+        ).fetchall() == [(1,)]
+        connection.execute("UPDATE listings SET title='Leather Jacket' WHERE id=1")
+        assert connection.execute(
+            "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'jacket*'"
+        ).fetchall() == [(1,)]
+        connection.execute("DELETE FROM listings WHERE id=1")
+        assert not connection.execute(
+            "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'jacket*'"
+        ).fetchall()

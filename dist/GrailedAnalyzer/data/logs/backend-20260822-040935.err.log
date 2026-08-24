@@ -1,0 +1,476 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Alex\\Documents\\IDE\\parser\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [6556] using WatchFiles
+INFO:     Started server process [7908]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+[2026-08-22 04:33:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:33:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:33:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:03] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:04] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:04] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:34:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\browser\session_pool.py", line 71, in acquire_page
+    return self._pages.get_nowait()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\queues.py", line 181, in get_nowait
+    raise QueueEmpty
+asyncio.queues.QueueEmpty
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\core\request_context.py", line 29, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\trustedhost.py", line 51, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1791, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\fastapi\routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\api\parser.py", line 541, in parser_discovery_refresh
+    return await refresh_discovery(payload, service, settings)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\api\discovery.py", line 140, in refresh_discovery
+    return DiscoveryResponse.from_result(await service.refresh(force=payload.force))
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\service.py", line 67, in refresh
+    return await self._singleflight(force=force, invalidate=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\service.py", line 82, in _singleflight
+    return await asyncio.shield(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\service.py", line 87, in _invalidate_then_run
+    return await self._run(force=force)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\service.py", line 147, in _run
+    seed = await self._discover_seed()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\service.py", line 198, in _discover_seed
+    seed = await capture_browser_seed(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\discovery\credential_discovery.py", line 80, in capture_browser_seed
+    page = await browser.acquire_page()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\browser\session_pool.py", line 75, in acquire_page
+    self._session = await self._create_session()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\browser\session_pool.py", line 53, in _create_session
+    return await self._factory()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\app\services\sources\grailed\browser\session_pool.py", line 48, in _create_scrapling_session
+    await session.start()
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\scrapling\engines\_browsers\_stealth.py", line 355, in start
+    self.playwright = await async_playwright().start()
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\patchright\async_api\_context_manager.py", line 32, in start
+    return await self.__aenter__()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\patchright\async_api\_context_manager.py", line 27, in __aenter__
+    playwright = AsyncPlaywright(next(iter(done)).result())
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\patchright\_impl\_transport.py", line 93, in connect
+    self._proc = await asyncio.create_subprocess_exec(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+    transport, protocol = await loop.subprocess_exec(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 1756, in subprocess_exec
+    transport = await self._make_subprocess_transport(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 528, in _make_subprocess_transport
+    raise NotImplementedError
+NotImplementedError
+WARNING:  WatchFiles detected changes in 'tests\test_identity.py', 'app\services\parser\planner.py', 'app\api\parser.py', 'app\services\identity\service.py', 'tests\test_phase4_runtime.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [7908]
+INFO:     Started server process [5156]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app\api\analytics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [5156]
+INFO:     Started server process [11252]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests\test_phase4_runtime.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for background tasks to complete. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11252]
+INFO:     Started server process [11652]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests\test_stage9_scoring.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11652]
+INFO:     Started server process [5840]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app\api\analytics.py', 'tests\test_phase4_runtime.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for background tasks to complete. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [5840]
+INFO:     Started server process [13640]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+[2026-08-22 04:49:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:33] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:35] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:35] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:37] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:37] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:37] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:38] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:38] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:38] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:39] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:41] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:43] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:48] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:50] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:53] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:55] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:55] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:56] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:56] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:57] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:58] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:58] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:49:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:06] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:09] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:10] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:10] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:10] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:12] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:15] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:15] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:17] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:19] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:20] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:23] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:23] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:23] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:24] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:24] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:25] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:25] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:26] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:27] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:27] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:28] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:28] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:29] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:30] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:31] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:32] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:33] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:39] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:39] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:41] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:41] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:41] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:43] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:46] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:47] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:49] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:51] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:51] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:51] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:53] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:55] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:55] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:56] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:57] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:58] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:50:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:03] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:07] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:07] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:07] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:09] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:09] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:09] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:10] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:12] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:13] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:13] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:14] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:15] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:19] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:24] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:30] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:32] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:32] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:33] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:34] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:35] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:35] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:36] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:37] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:43] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:44] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:45] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:46] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:47] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:47] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:48] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:55] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:51:59] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:00] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:01] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:02] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:03] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:03] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:04] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:05] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:06] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:08] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:09] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:12] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:14] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:17] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:17] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:17] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:18] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:18] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:18] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:18] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:19] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:19] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:20] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:21] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:23] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:26] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:29] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:30] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:30] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:52:32] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+WARNING:  WatchFiles detected changes in 'app\services\identity\service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+[2026-08-22 04:57:03] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [13640]
+WARNING:  WatchFiles detected changes in 'tests\test_identity.py', 'app\api\parser.py', 'app\services\identity\service.py'. Reloading...
+Process SpawnProcess-7:
+Traceback (most recent call last):
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "C:\Users\Alex\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Alex\Documents\IDE\parser\backend\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 73, in subprocess_started
+    sys.stdin = os.fdopen(stdin_fileno)  # pragma: full coverage
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 1066, in fdopen
+  File "<frozen codecs>", line 309, in __init__
+KeyboardInterrupt
+INFO:     Started server process [13956]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+[2026-08-22 04:57:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:11] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:12] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:13] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:13] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:13] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:14] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:15] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:17] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:20] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:22] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:23] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:25] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:28] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/Listing_sold_production/query?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:29] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:31] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:33] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:35] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:38] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:40] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:42] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:43] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:46] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:48] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:49] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:52] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+[2026-08-22 04:57:54] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)
+WARNING:  WatchFiles detected changes in 'app\services\identity\service.py', 'tests\test_identity.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [13956]

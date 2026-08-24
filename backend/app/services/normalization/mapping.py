@@ -9,7 +9,7 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.config import PROJECT_ROOT
+from app.core.config import PROJECT_ROOT, RESOURCE_ROOT
 
 _TOKEN = re.compile(r"([^.\[\]]+)|\[(\*|\d+)\]")
 
@@ -33,7 +33,16 @@ class SourceMappingConfig(BaseModel):
 
 
 def load_source_mapping(path: Path | None = None) -> SourceMappingConfig:
-    config_path = path or PROJECT_ROOT / "config" / "sources" / "grailed.yaml"
+    candidates = [
+        path,
+        RESOURCE_ROOT / "config" / "sources" / "grailed.yaml",
+        PROJECT_ROOT / "config" / "sources" / "grailed.yaml",
+        Path(__file__).resolve().parents[4] / "config" / "sources" / "grailed.yaml",
+    ]
+    config_path = next(
+        (p for p in candidates if p and Path(p).is_file()),
+        PROJECT_ROOT / "config" / "sources" / "grailed.yaml",
+    )
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Source mapping {config_path} must contain a YAML object")

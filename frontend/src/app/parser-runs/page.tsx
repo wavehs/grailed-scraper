@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -97,7 +97,7 @@ function WorkflowStep({
   );
 }
 
-export default function ParserRunsPage() {
+function ParserRunsContent() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const client = useQueryClient();
@@ -767,5 +767,13 @@ export default function ParserRunsPage() {
         </div>
       </Modal>
     </section>
+  );
+}
+
+export default function ParserRunsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <ParserRunsContent />
+    </Suspense>
   );
 }

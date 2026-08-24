@@ -253,7 +253,7 @@ def normalize_size(value: str | None, category: str | None) -> str | None:
             us = number
         if us is None or not Decimal(3) <= us <= Decimal(18):
             return None
-        return f"US {us.normalize()}"
+        return f"US {format(us.normalize(), 'f')}"
     return None
 
 

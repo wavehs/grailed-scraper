@@ -1,0 +1,62 @@
+   ▲ Next.js 15.5.21
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.52:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 13.3s
+ ○ Compiling /model-groups/[id] ...
+ ✓ Compiled /model-groups/[id] in 36s (1858 modules)
+ GET /model-groups/15856 200 in 27972ms
+ GET /dashboard 200 in 15611ms
+ GET /model-groups/15856 200 in 2082ms
+ GET /model-groups/15856 200 in 413ms
+ GET /model-groups/3430 200 in 270ms
+ GET /dashboard 200 in 59ms
+ ○ Compiling /listings ...
+ ✓ Compiled /listings in 1404ms (1867 modules)
+ GET /listings 200 in 1670ms
+ GET /dashboard 200 in 55ms
+ ○ Compiling /brands ...
+ ✓ Compiled /brands in 1400ms (1882 modules)
+ GET /brands 200 in 1568ms
+ ○ Compiling /identity-review ...
+ ✓ Compiled /identity-review in 898ms (1893 modules)
+ GET /identity-review 200 in 1094ms
+ GET /dashboard 200 in 41ms
+ GET /dashboard 200 in 38ms
+ GET /model-groups/4057 200 in 75ms
+ GET /dashboard 200 in 42ms
+ GET /model-groups/4057 200 in 64ms
+ GET /model-groups/25735 200 in 51ms
+ GET /model-groups/8628 200 in 49ms
+ GET /model-groups/17947 200 in 50ms
+ GET /listings 200 in 60ms
+ GET /model-groups/20668 200 in 54ms
+ GET /dashboard 200 in 33ms
+ GET /listings 200 in 36ms
+ GET /model-groups/58 200 in 51ms
+ GET /dashboard 200 in 50ms
+ GET /model-groups/4057 200 in 62ms
+ ✓ Compiled in 4s (875 modules)
+ GET /model-groups/4057 200 in 102ms
+ ✓ Compiled in 2.9s (1907 modules)
+ GET /model-groups/4057 200 in 561ms
+ ✓ Compiled in 1979ms (1907 modules)
+ GET /model-groups/4057 200 in 280ms
+ ✓ Compiled in 2s (1907 modules)
+ GET /model-groups/4057 200 in 205ms
+ ✓ Compiled in 1047ms (1907 modules)
+ GET /model-groups/4057 200 in 681ms
+ ✓ Compiled in 1891ms (1907 modules)
+ GET /model-groups/4057 200 in 256ms
+ ✓ Compiled in 3.4s (1907 modules)
+ GET /model-groups/4057 200 in 270ms
+ ✓ Compiled in 1820ms (1907 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 2.2s (2239 modules)
+ GET /model-groups/4057 500 in 3284ms
+ GET /model-groups/4057 200 in 196ms
+ GET /model-groups/4057 200 in 74ms
+ GET /model-groups/4057 200 in 1022ms
+ GET /dashboard 200 in 830ms

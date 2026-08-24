@@ -1,0 +1,77 @@
+{
+  "phase": 3,
+  "status": "PASS",
+  "source": "grailed",
+  "brand": "Rick Owens",
+  "database": {
+    "integrity": "ok",
+    "listings": 112111,
+    "active": 53616,
+    "sold": 58495,
+    "duplicate_grailed_ids": 0,
+    "schema_version_2": 112111,
+    "tier_T1": 112111,
+    "missing_parser_run_ids": 0,
+    "raw_sensitive_keys": 0,
+    "raw_user_ids": 0,
+    "decimal_sample_size": 1000,
+    "decimal_sample_valid": true
+  },
+  "full_run": {
+    "run_id": 1,
+    "status": "completed",
+    "requests": 220,
+    "coverage": "1.00000",
+    "inserted": 112111,
+    "updated": 0,
+    "http_errors": 0,
+    "retries": 0,
+    "rate_limit_hits": 0
+  },
+  "delta_run": {
+    "run_id": 3,
+    "status": "completed",
+    "requests": 6,
+    "coverage": "1.00000",
+    "inserted": 0,
+    "updated": 7,
+    "http_errors": 0,
+    "retries": 0,
+    "rate_limit_hits": 0
+  },
+  "lifecycle_canary": {
+    "run_id": 6,
+    "status": "completed",
+    "candidate_limit": 500,
+    "hard_request_limit": 20,
+    "requests": 5,
+    "checked": 500,
+    "active": 500,
+    "sold": 0,
+    "removed_pending": 0,
+    "removed": 0,
+    "inserted": 0,
+    "updated": 500,
+    "http_errors": 0,
+    "retries": 0,
+    "rate_limit_hits": 0
+  },
+  "watermarks": {
+    "active": {
+      "full_refresh_recorded": true,
+      "delta_advanced": true
+    },
+    "sold": {
+      "full_refresh_recorded": true,
+      "delta_advanced": true
+    }
+  },
+  "schema_drift": {
+    "evidence": "live source_schema sample, 200 hits",
+    "mapping_version": 2,
+    "synthetic_payload_used_for_acceptance": false
+  },
+  "interrupted_diagnostic_runs_excluded_from_gate": [2, 4, 5],
+  "credentials_included": false,
+  "seller_pii_included": false
+}

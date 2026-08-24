@@ -8,12 +8,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
 from app.db.models import (
+    Listing,
     ListingModelAssignment,
     ParserRun,
     ScoringSnapshot,
@@ -21,6 +22,7 @@ from app.db.models import (
 )
 from app.db.session import get_database_url
 from app.services.identity import IdentityResolver
+from app.services.identity.service import IDENTITY_VERSION
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
@@ -199,13 +201,14 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
         await engine.dispose()
 
 
-async def rebuild_market(settings: Settings) -> dict[str, object]:
+async def rebuild_market(settings: Settings, *, resume: bool = False) -> dict[str, object]:
     """Back up and rebuild current model identity and market snapshots."""
 
     backup = backup_database(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     transport: HttpTransport = create_http_transport(settings)
+    identity_settings = settings.model_copy(update={"identity_image_requests_per_run": 0})
     try:
         async with factory() as session:
             run_id = await session.scalar(
@@ -221,15 +224,66 @@ async def rebuild_market(settings: Settings) -> dict[str, object]:
                 )
                 or 0
             )
-            identity = await IdentityResolver(session, settings, transport).resolve_run(run_id)
-            await session.commit()
+            all_brand_ids = {
+                brand_id
+                for brand_id in await session.scalars(
+                    select(Listing.brand_id).where(Listing.brand_id.is_not(None)).distinct()
+                )
+                if brand_id is not None
+            }
+            if not resume:
+                await session.execute(
+                    update(ListingModelAssignment).values(algorithm_version="stale")
+                )
+                await session.commit()
+            stale_brand_ids = {
+                brand_id
+                for brand_id in await session.scalars(
+                    select(Listing.brand_id)
+                    .outerjoin(
+                        ListingModelAssignment,
+                        ListingModelAssignment.listing_id == Listing.id,
+                    )
+                    .where(
+                        Listing.brand_id.is_not(None),
+                        or_(
+                            ListingModelAssignment.listing_id.is_(None),
+                            ListingModelAssignment.algorithm_version != IDENTITY_VERSION,
+                        ),
+                    )
+                    .distinct()
+                )
+                if brand_id is not None
+            }
+            brand_ids = stale_brand_ids if resume else all_brand_ids
+        identity_by_brand: dict[int, dict[str, int | str]] = {}
+        for brand_id in sorted(brand_ids):
+            async with factory() as session:
+                identity_by_brand[brand_id] = await IdentityResolver(
+                    session, identity_settings, transport
+                ).resolve_run(
+                    run_id,
+                    brand_ids={brand_id},
+                    rebuild_all_physical=True,
+                )
+                await session.commit()
+        async with factory() as session:
             after = int(
                 await session.scalar(
                     select(func.count(func.distinct(ListingModelAssignment.model_group_id)))
                 )
                 or 0
             )
-        scoring = await OpportunityScoringService(factory).score_run(run_id)
+            await session.execute(
+                delete(ScoringSnapshot).where(
+                    ScoringSnapshot.parser_run_id == run_id,
+                    ScoringSnapshot.model_version == MODEL_VERSION,
+                )
+            )
+            await session.commit()
+        scoring = await OpportunityScoringService(factory).score_run(
+            run_id, brand_ids=all_brand_ids
+        )
         async with factory() as session:
             insufficient = int(
                 await session.scalar(
@@ -248,7 +302,7 @@ async def rebuild_market(settings: Settings) -> dict[str, object]:
             "groups_before": before,
             "groups_after": after,
             "insufficient_snapshots": insufficient,
-            "identity": identity,
+            "identity": identity_by_brand,
             "scoring": scoring,
         }
     finally:
@@ -278,8 +332,11 @@ def main() -> int:
     restore_parser = subparsers.add_parser("db-restore", help="verify or restore SQLite backup")
     restore_parser.add_argument("source", type=Path)
     restore_parser.add_argument("--apply", action="store_true")
-    subparsers.add_parser(
-        "market-rebuild", help="back up and rebuild identity-v4 and market-v4"
+    rebuild_parser = subparsers.add_parser(
+        "market-rebuild", help="back up and rebuild identity-v5 and market-v5"
+    )
+    rebuild_parser.add_argument(
+        "--resume", action="store_true", help="skip brands already assigned by identity-v5"
     )
     args = parser.parse_args()
     if args.command == "doctor":
@@ -313,7 +370,7 @@ def main() -> int:
         return 0
     if args.command == "market-rebuild":
         try:
-            rebuild_result = asyncio.run(rebuild_market(Settings()))
+            rebuild_result = asyncio.run(rebuild_market(Settings(), resume=args.resume))
         except RuntimeError as exc:
             print(json.dumps({"status": "error", "message": str(exc)}))
             return 1

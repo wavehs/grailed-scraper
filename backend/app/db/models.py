@@ -24,6 +24,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    desc,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -115,6 +117,7 @@ class Listing(Base):
         CheckConstraint("price > 0", name="ck_listings_price_positive"),
         Index("ix_listings_brand_status_sold_at", "brand_id", "status", "sold_at"),
         Index("ix_listings_status_last_seen_at", "status", "last_seen_at"),
+        Index("ix_listings_status_id", "status", "id"),
         Index("ix_listings_source_product", "source", "source_product_id"),
         Index("ix_listings_seller_created", "seller_identity", "created_at"),
     )
@@ -197,7 +200,7 @@ class ListingPriceHistory(Base):
 
 
 class ModelGroup(Base):
-    """Stable analytics segment backed by a rule or a brand/category fallback."""
+    """Stable automatically resolved product-line analytics segment."""
 
     __tablename__ = "model_groups"
     __table_args__ = (
@@ -217,17 +220,12 @@ class ModelGroup(Base):
     category: Mapped[str | None] = mapped_column(String(255))
     group_type: Mapped[str] = mapped_column(String(16), nullable=False)
     merged_into_id: Mapped[int | None] = mapped_column(
-        ForeignKey(
-            "model_groups.id", name="fk_model_groups_merged_into", ondelete="SET NULL"
-        )
+        ForeignKey("model_groups.id", name="fk_model_groups_merged_into", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     brand: Mapped[Brand] = relationship(back_populates="model_groups")
-    rule: Mapped[ModelRule | None] = relationship(
-        back_populates="group", cascade="all, delete-orphan", uselist=False
-    )
     snapshots: Mapped[list[ScoringSnapshot]] = relationship(back_populates="model_group")
 
 
@@ -290,7 +288,13 @@ class IdentityMatch(Base):
         UniqueConstraint(
             "level", "left_listing_id", "right_listing_id", name="uq_identity_matches_pair"
         ),
-        Index("ix_identity_matches_queue", "status", "level", "confidence"),
+        Index(
+            "ix_identity_matches_queue",
+            "status",
+            "level",
+            desc("confidence"),
+            "id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -309,33 +313,6 @@ class IdentityMatch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class ModelRule(Base):
-    """User-maintained deterministic title matcher for one model group."""
-
-    __tablename__ = "model_rules"
-    __table_args__ = (
-        UniqueConstraint("group_id", name="uq_model_rules_group"),
-        Index("ix_model_rules_brand_active", "brand_id", "is_active"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    group_id: Mapped[int] = mapped_column(
-        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False
-    )
-    brand_id: Mapped[int] = mapped_column(
-        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    include_keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    exclude_keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    category: Mapped[str | None] = mapped_column(String(255))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-    group: Mapped[ModelGroup] = relationship(back_populates="rule")
 
 
 class ScoringSnapshot(Base):
@@ -369,6 +346,23 @@ class ScoringSnapshot(Base):
             "window_days",
             "demand_score",
         ),
+        Index(
+            "ix_scoring_snapshots_run_demand",
+            "model_version",
+            "parser_run_id",
+            "window_days",
+            desc("demand_score"),
+            "id",
+        ),
+        Index(
+            "ix_scoring_snapshots_run_demand_scored",
+            "model_version",
+            "parser_run_id",
+            "window_days",
+            desc("demand_score"),
+            "id",
+            sqlite_where=text("scoring_status = 'scored'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -401,6 +395,11 @@ class ScoringSnapshot(Base):
     component_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     confidence_factors: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     quality_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    variant_breakdown: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=lambda: {"colors": [], "sizes": []},
+    )
     warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

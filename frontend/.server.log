@@ -44,3 +44,28 @@
  GET /model-groups/119287?window_days=90&run_id=5&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dfalse%26offset%3D0 200 in 911ms
  GET /dashboard?window_days=90&search=&low_data=false&offset=0 200 in 40ms
  GET /model-groups/118800?window_days=90&run_id=5&back=%2Fdashboard%3Fwindow_days%3D90%26search%3D%26low_data%3Dfalse%26offset%3D0 200 in 268ms
+   ▲ Next.js 15.5.21
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.52:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 6.2s
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 9.9s (826 modules)
+ ✓ Compiled in 498ms (341 modules)
+ ✓ Compiled in 431ms (341 modules)
+ ✓ Compiled in 336ms (341 modules)
+ ✓ Compiled in 287ms (341 modules)
+ ✓ Compiled in 608ms (341 modules)
+ ✓ Compiled in 276ms (341 modules)
+ ✓ Compiled in 263ms (341 modules)
+ ✓ Compiled in 514ms (341 modules)
+ ✓ Compiled in 293ms (341 modules)
+ ✓ Compiled in 271ms (341 modules)
+ ✓ Compiled in 520ms (341 modules)
+ ✓ Compiled in 302ms (341 modules)
+ ✓ Compiled in 1596ms (339 modules)
+ ✓ Compiled in 597ms (339 modules)
+ ✓ Compiled in 954ms (339 modules)
+ ✓ Compiled in 1668ms (339 modules)

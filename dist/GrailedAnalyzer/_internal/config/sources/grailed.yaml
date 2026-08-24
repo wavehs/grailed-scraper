@@ -1,0 +1,51 @@
+source: grailed
+schema_version: 2
+indices:
+  active: Listing_production
+  active_sorted_by_date: Listing_by_date_added_production
+  sold: Listing_sold_production
+facets:
+  brand: designers.name
+  category: category_path
+pagination:
+  strategy: auto          # auto | browse | keyset | range_split
+  key_attrs_sold: [sold_at_i, sold_at, created_at_i, created_at]
+  key_attrs_active: [created_at_i, created_at, updated_at_i, updated_at]
+  secondary_attrs: [id, objectID, price_i]
+  hits_per_page: 200
+fields:
+  grailed_id:      ["id", "objectID"]
+  url:             ["url", "permalink"]
+  title:           ["title"]
+  description:     ["description"]
+  brand_name:      ["designers[0].name", "designer_names[0]"]
+  brand_slug:      ["designers[0].slug"]
+  category:        ["category", "category_path"]
+  subcategory:     ["subcategory", "category_path"]
+  size:            ["size"]
+  condition:       ["condition"]
+  color:           ["color", "traits[color]"]
+  product_id:      ["product_id"]
+  sku_id:          ["sku_id"]
+  repost_id:       ["repost_id"]
+  price_float:     ["price", "price_i"]
+  sold_price:      ["sold_price"]
+  currency:        ["currency", "_default:USD"]
+  likes_count:     ["followerno", "hearts_count", "hearts", "_default:0"]
+  created_at:      ["created_at", "created_at_i"]
+  sold_at:         ["sold_at", "sold_at_i"]
+  updated_at:      ["updated_at", "updated_at_i"]
+  cover_photo_url: ["cover_photo.url", "photos[0].url"]
+  cover_asset_url: ["cover_photo.image_url", "cover_photo.url", "photos[0].url"]
+  photo_urls:      ["photos[*].url"]
+  photo_count:     ["photo_count"]
+  seller_id:       ["user.id", "seller.id"]
+  seller_username: ["user.username", "seller.username"]
+  sticker:         ["sticker", "sticker.type"]
+  location:        ["location", "seller.country"]
+conditions:
+  is_new: "is_new"
+  is_gently_used: "is_gently_used"
+  is_used: "is_used"
+  is_worn: "is_worn"
+  is_not_specified: "is_not_specified"

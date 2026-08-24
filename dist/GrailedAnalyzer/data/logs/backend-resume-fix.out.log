@@ -1,0 +1,335 @@
+{"scrapling_version": "0.4.11", "camoufox_version": null, "fetcher_session_available": true, "stealthy_session_available": true, "t1_available": true, "t2_available": true, "event": "parser_capabilities", "ts": "2026-08-22T03:13:56.795326Z", "level": "info", "request_id": null, "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "duration_ms": null, "msg": "parser_capabilities"}
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 223.82, "event": "request_complete", "request_id": "8980556a-add6-4395-bd91-df9f152bafca", "ts": "2026-08-22T03:13:57.289724Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52032 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 122.25, "event": "request_complete", "request_id": "d38d89fc-2bf9-47b8-be34-179353a7538b", "ts": "2026-08-22T03:14:01.274254Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52037 - "GET /api/health HTTP/1.1" 200 OK
+{"run_id": 2, "source": "grailed", "event": "parser_run_started", "request_id": "001fa072-b61f-4880-925a-d6084c15a17d", "ts": "2026-08-22T03:14:01.470366Z", "level": "info", "task_id": null, "brand": null, "index": null, "tier": null, "duration_ms": null, "msg": "parser_run_started"}
+{"method": "POST", "path": "/api/parser/runs/2/resume", "status_code": 202, "duration_ms": 53.08, "event": "request_complete", "request_id": "001fa072-b61f-4880-925a-d6084c15a17d", "ts": "2026-08-22T03:14:01.470366Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52038 - "POST /api/parser/runs/2/resume HTTP/1.1" 202 Accepted
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 35.35, "event": "request_complete", "request_id": "07573374-eb28-4433-a29a-8165a949bf94", "ts": "2026-08-22T03:14:18.653553Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52033 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 12.63, "event": "request_complete", "request_id": "7ba4b49c-13b4-475e-8846-0fb12e1f7660", "ts": "2026-08-22T03:14:20.084246Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52049 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 11385.03, "event": "request_complete", "request_id": "91b53968-fbad-4d6a-9a30-588f1dd16938", "ts": "2026-08-22T03:14:41.331061Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 3401.59, "event": "request_complete", "request_id": "a003079a-e9f3-4883-bd7b-669de7ad4481", "ts": "2026-08-22T03:14:50.483741Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52058 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 36348.19, "event": "request_complete", "request_id": "33c025a9-ecec-482c-82fd-8838b1bc2794", "ts": "2026-08-22T03:15:40.496983Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 72278.88, "event": "request_complete", "request_id": "91b7b5e4-886c-4158-b236-fdae910dee30", "ts": "2026-08-22T03:15:44.617160Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52051 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 25929.81, "event": "request_complete", "request_id": "b530af46-b2dc-4ed6-859f-24c9a224dd93", "ts": "2026-08-22T03:15:48.774723Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 13805.93, "event": "request_complete", "request_id": "c3f1d938-fe65-4066-844e-102645fc9fc2", "ts": "2026-08-22T03:15:49.468409Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52070 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 20613.61, "event": "request_complete", "request_id": "e12720c8-afb8-4353-b49f-97b336f931a5", "ts": "2026-08-22T03:16:23.585943Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 991.69, "event": "request_complete", "request_id": "496c9648-8159-4a06-ab6d-85b5cd3f0542", "ts": "2026-08-22T03:16:24.301729Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52077 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 279.45, "event": "request_complete", "request_id": "309971a1-da9d-4320-886c-e4cfdd12d9cc", "ts": "2026-08-22T03:16:30.035278Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52079 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 9.46, "event": "request_complete", "request_id": "107c3204-b1f8-411a-8d46-7d6102ce8a02", "ts": "2026-08-22T03:16:36.633608Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52080 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/26d34ae6178542acb78fc0e498d4c6f4> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/9ba2e988278d40a180d346d5e97e542f> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/320a0f76131f4165971f7f21ae26cfe5> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1d68ace02a97461c98378a883ee07a40> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/d49af27c44ee469b9d031bbac82dbca4> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/505013f515dd448e8fbd7c5d89546d56> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/6c9c903e8f494520a47688a16f0dd7a2> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 7.88, "event": "request_complete", "request_id": "df37edf6-18c5-44e3-a89c-2556a766749c", "ts": "2026-08-22T03:16:41.671260Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52084 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/e38bd6450b484b0595125beab0ec3601> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/70745bdb99cc4b3c93e2a9ff8115459b> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/f52372c1a0794a428c5050fc7dec0094> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/c12e51aa4e224f6f8bf871624aa97897> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/6df8fef2f75047bdb2b81c72f1d6a6f6> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/7d4aad79afef4fd7badc5e1b78b87dbc> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 10.12, "event": "request_complete", "request_id": "e5f9be1a-4648-4fdc-8224-95815356a072", "ts": "2026-08-22T03:16:46.701268Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52087 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/67b7b34fcb53430d88f976669297401a> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/6dee45fe9d0b4a12810e62cba2d04354> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/b75f9892ea4f446a8dcfdbf2eeb56fda> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/03a767ca4b054b3eba7bd0b1081e195a> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3fc5317d46d8448cb07cd9ddef640e72> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1fd13daa72424d74b83713f043d8c58c> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 89.27, "event": "request_complete", "request_id": "d1cb8ece-1715-45b1-badf-fd74f5c7a42a", "ts": "2026-08-22T03:16:50.207859Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 177.04, "event": "request_complete", "request_id": "53c7285e-f4cc-43e0-b02f-a583a9c67087", "ts": "2026-08-22T03:16:50.297031Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52092 - "GET /api/parser/runs?limit=5&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 244.73, "event": "request_complete", "request_id": "4c63e447-9cc2-4f01-bc06-7c72720cc100", "ts": "2026-08-22T03:16:50.351642Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52089 - "GET /api/parser/health HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/92192ae2ebd04e56ba273ac6f3c21296> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/cc7f3dd4907a4cdc8f2c58ba19d0e4ca> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/a9787516d9604aee8853c6ed24d5e71c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1273b7f186ec4940be8720697fcbe194> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/217a4f9ce646418db919374eb8fd0565> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 216.06, "event": "request_complete", "request_id": "ddffd84f-5a5f-4d80-ac39-5ec6a9b7ee6d", "ts": "2026-08-22T03:16:59.314066Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 262.54, "event": "request_complete", "request_id": "f84779bc-4ef0-452f-a3e6-52e32bafb32e", "ts": "2026-08-22T03:16:59.364996Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/brands", "status_code": 200, "duration_ms": 220.43, "event": "request_complete", "request_id": "c13ae8c1-257e-4e5c-b3f0-c512501c8a0a", "ts": "2026-08-22T03:16:59.446485Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 205.01, "event": "request_complete", "request_id": "9fed8e64-6006-4af0-acc5-86e8435af6a7", "ts": "2026-08-22T03:16:59.483576Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 195.04, "event": "request_complete", "request_id": "78eb7cdb-9b38-43cf-b8ae-85b44cba6075", "ts": "2026-08-22T03:16:59.483576Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52120 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/42bd56a13f1b44f3a7a37793b6089288> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/settings", "status_code": 200, "duration_ms": 398.24, "event": "request_complete", "request_id": "d007b46a-a126-4302-8dd5-6da3ca08f194", "ts": "2026-08-22T03:16:59.683088Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52119 - "GET /api/settings HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/settings", "status_code": 200, "duration_ms": 435.86, "event": "request_complete", "request_id": "13e01a88-21c7-4fd9-ae0e-1d2862f51abc", "ts": "2026-08-22T03:16:59.714390Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 431.2, "event": "request_complete", "request_id": "1900bbee-b6b9-4bb7-85fe-c6e25eb9c2f4", "ts": "2026-08-22T03:16:59.714390Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52117 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/brands", "status_code": 200, "duration_ms": 433.34, "event": "request_complete", "request_id": "ba30c840-b02d-4694-95b3-026c0ec7e534", "ts": "2026-08-22T03:16:59.714390Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52118 - "GET /api/brands HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 516.41, "event": "request_complete", "request_id": "7998bae1-a9c8-4114-b62e-3dd6ef1ab69d", "ts": "2026-08-22T03:16:59.746517Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52113 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/analytics/dashboard", "status_code": 200, "duration_ms": 11169.47, "event": "request_complete", "request_id": "da4963f8-eb9d-42b2-8c39-64459ffa8cc2", "ts": "2026-08-22T03:17:01.278656Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/b187330d8f804720b3a06789123bd165> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/5e1f97d05e5542519597131a93318cce> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/analytics/dashboard", "status_code": 200, "duration_ms": 17663.11, "event": "request_complete", "request_id": "d041e395-6116-4928-baa3-63ec36360a40", "ts": "2026-08-22T03:17:07.798813Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/6742829e78e14fd3b907877eecc2a298> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs/2/progress", "status_code": 200, "duration_ms": 2737.86, "event": "request_complete", "request_id": "352f5579-58f2-499d-898d-5310ebf797b8", "ts": "2026-08-22T03:17:07.996600Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52113 - "GET /api/parser/runs/2/progress HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 2855.53, "event": "request_complete", "request_id": "ca872a95-3fc8-4b23-ab99-7d154fac99bc", "ts": "2026-08-22T03:17:08.119728Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52118 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/41c5ebc4fe284d799b6d1690ea746585> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/52cb240dc09c4b709824e9ef44601f8e> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1c73d70e958a4803a2a81d91a91255ce> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/2f4b7361691042aba6c178ed310fd1b2> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/fb97b1c4c2254a3798b2488c99780448> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/dafcf42d31454baba05da039cf54a716> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/07ef3284069a41a58683ea827cd466b5> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/45632300/a297d369181f48908f197271f28aeae5> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3623e7278a4e42f1a3cdfc9ca23009c3> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/46f1e3010af54ff8b5ffb5d63467e15e> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/a8ef881b596c469bb3a1ca4a8ffe855c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/a8ef881b596c469bb3a1ca4a8ffe855c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/a8ef881b596c469bb3a1ca4a8ffe855c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/0ce9d27c74694e62994f77f5ba319128> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/13afa1b1a18c4e0fb1e065030e16b178> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/8d93e227928640d0bb464b272af79931> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/48c321f4d61c4b60a4635758acdb6afa> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3fef49ca22d34b0098603763c88ae3d3> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/60cce7d8bec741bbb9dbddc608c9173d> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3ceed4416f354ae9a2aef525951a2157> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3590acd39a9645aea5807bf596707f32> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/0f552381b96e4a2f89233f94c93ce8c5> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/d8da9a497fdd468480f8a7910c2189b7> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/cc43c1b733464cd6a300689c88301415> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/06b2b175cc894c9394471c976cb84c08> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/bbf9d38b09334d2da60b029919dad1cd> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/563a046c461448e6b987a9eb8b5d2ca1> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/9727be0f258747c0a125783713b312ec> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/c693c9bd58a44ac888d408206d6edd19> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/64ee0089585b4a04b3af696b7bde90f7> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/afb82d3de2ee41b2bbe6314c7ed027c8> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/77d7f29cc8c34679bb7cd43c04a1e46c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/df6c33603de4449ea225f4f3f96df4a3> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/4ba6d49322184f909fd7e75e505a0f6d> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/734a210a893d44028a4c845d2c36f657> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/0fea92cabd3b434da1db6b393e813101> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 28.35, "event": "request_complete", "request_id": "9703def5-68c4-4033-a46e-321034dce928", "ts": "2026-08-22T03:17:38.251710Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52259 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2/progress", "status_code": 200, "duration_ms": 47.86, "event": "request_complete", "request_id": "ecd0b950-7133-4043-b907-81f196281d32", "ts": "2026-08-22T03:17:38.270313Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs/2/progress HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/798f3fb25c7f4e5d8032eb7df677ed0c> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/44535a1903ea4b5fbc6195eb0a3c24df> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 36.26, "event": "request_complete", "request_id": "55c5738d-3334-4e51-9e01-d7c3fcad67df", "ts": "2026-08-22T03:17:39.958594Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 4.34, "event": "request_complete", "request_id": "39cfce9e-a90c-46b2-b5f8-59ee277dbc4b", "ts": "2026-08-22T03:17:40.274373Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/881bb7cb468b4e2f94f9064094c4e44e> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/ca58803b8cb9479e8dcb7dd298e60b53> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/78ff9725b3b34711a35f420ced0eac26> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 4.56, "event": "request_complete", "request_id": "47689321-8079-4322-9564-5cea5003e8df", "ts": "2026-08-22T03:17:42.293741Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/acf99a6285d64efeb39f16f4ec3ea843> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/23fc64f4115841f296bb3610e927c13e> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 4.57, "event": "request_complete", "request_id": "e5acf81d-a201-4ee9-9008-70fdbac309e0", "ts": "2026-08-22T03:17:44.458430Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/7e0e3458def842fa8fb59fe0fc84bd5d> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/a5245f8e34c34cc585245031ae2790cd> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 8.15, "event": "request_complete", "request_id": "1dce47b7-f308-4cb3-a64f-69019ae845d7", "ts": "2026-08-22T03:17:46.499741Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/ca12534a736f40ec818632dac36684c4> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/8ef0a6ec1920404b98503dae62703a5e> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 8.21, "event": "request_complete", "request_id": "4db737ff-a9ef-4785-aa03-65621ba2e45d", "ts": "2026-08-22T03:17:48.527363Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/69dda319d1fe4b1d9463bb8ad94fdb8f> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/2a046461013549a2a5e08a6398bce543> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 40.46, "event": "request_complete", "request_id": "bf0e2e26-0af3-45ec-a6b5-cf487473ac92", "ts": "2026-08-22T03:17:50.010394Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/3bd8e38c4ecc4346845fceb6a51a8a7d> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 4.95, "event": "request_complete", "request_id": "d60bdd1f-cd65-4972-b1e2-5d871f1fd772", "ts": "2026-08-22T03:17:50.559984Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/96fcf4d6ef9a4825b3151e9603486015> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1861fa02e54d479181e2532fd6a3da38> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 7.75, "event": "request_complete", "request_id": "85304ac5-921e-4968-a9bd-0bd9e554b9ef", "ts": "2026-08-22T03:17:52.576211Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/e4f18ab4e3d54fb983dd36748598f798> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 5.76, "event": "request_complete", "request_id": "47072b43-c614-4a9d-8dfb-a890c7ac3a07", "ts": "2026-08-22T03:17:52.991206Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52309 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/60670e867b8c43e983bb166062445315> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/96beaf9c64654489b5f4c775f2f123d5> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 8.35, "event": "request_complete", "request_id": "fff6ef90-7373-4ce4-a13c-c7ba217851c2", "ts": "2026-08-22T03:17:54.609362Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/31628c2ba04f44b185b48285c20424b8> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/8681150b72da44e085e75989f810c29b> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 6.72, "event": "request_complete", "request_id": "3a5d1ae9-1fd8-42a2-903b-98d48df73f78", "ts": "2026-08-22T03:17:56.649885Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/42198c13655b4905b9f8941ff450de29> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/e97055853a9e4a1981e78fdba6df942a> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/1b42ea8a2bf6491e904bfda5deb98b2f> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 428.96, "event": "request_complete", "request_id": "9d73f068-0579-455c-bab5-db0b32db9977", "ts": "2026-08-22T03:17:59.089884Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 22.69, "event": "request_complete", "request_id": "d21ed9ba-83c8-4b9e-ab55-55bdc2bb29f8", "ts": "2026-08-22T03:17:59.741939Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/health HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/111e6baec3ff43298d856c440a1f796c> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 32.23, "event": "request_complete", "request_id": "6f6c89c2-66d9-427e-a84f-1ea97e87f656", "ts": "2026-08-22T03:18:00.158362Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/d8bbbf1cf92f414097e0db59dc56739b> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 9.03, "event": "request_complete", "request_id": "492c5b12-dca7-4657-b3a7-1f404013cd33", "ts": "2026-08-22T03:18:01.109778Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/8c6973da0e2c44ceb05d523175c1a2c8> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/45b5b03eec794552bf15ca00d01c5d23> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/b9c898bbf6ca4a429425a8c1b2312916> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 10.27, "event": "request_complete", "request_id": "bcecc677-d320-423b-a1bd-345e4e692432", "ts": "2026-08-22T03:18:03.147740Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/4ea042ba68a34b699a6ee35e08e9d385> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/85380a7600dd4d878d5626d5a6634f23> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/b17397e01d254e67ba7fa3cc1dbb7395> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 12.91, "event": "request_complete", "request_id": "219ea704-51ac-4258-8bf6-a1fee9f6d711", "ts": "2026-08-22T03:18:05.247209Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/d1f9b6ee589c4938970e8b212c3eb1c8> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/19db9b9193a24c73ad79881eaceb002e> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 5.4, "event": "request_complete", "request_id": "b47ff1c3-407f-4423-97ff-12fab139ad37", "ts": "2026-08-22T03:18:07.276191Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/965cac42de694cd394205f9c8f780579> (referer: https://www.google.com/)
+Fetched (200) <GET https://media-assets.grailed.com/prd/listing/temp/8da65bbf3b3d49b4814cc845ac044e73> (referer: https://www.google.com/)
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 10.51, "event": "request_complete", "request_id": "d3b0bd82-d605-46a7-9cdf-7ff4849c65b0", "ts": "2026-08-22T03:18:09.325594Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 6.85, "event": "request_complete", "request_id": "d8ca096f-ffdb-443d-a7c1-3f557d129425", "ts": "2026-08-22T03:18:12.951242Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52365 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 222.71, "event": "request_complete", "request_id": "536450d2-c401-4031-a895-6c820df09ef0", "ts": "2026-08-22T03:18:13.158396Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 5.09, "event": "request_complete", "request_id": "0b9c84fa-06a3-4401-b8af-5b0f4cff9d70", "ts": "2026-08-22T03:18:15.150445Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 8.02, "event": "request_complete", "request_id": "3347bd4f-99bc-4112-9013-300d3118c93c", "ts": "2026-08-22T03:18:17.182578Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 12.43, "event": "request_complete", "request_id": "7aac8db3-324d-4f30-965d-09619b9b5441", "ts": "2026-08-22T03:18:19.740761Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 15.01, "event": "request_complete", "request_id": "d5b3e2f2-6fe5-4a0d-81d5-a4116d0f8692", "ts": "2026-08-22T03:18:21.959551Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 7166.34, "event": "request_complete", "request_id": "81a3ffe0-a5f0-472e-a880-b9da58f170a5", "ts": "2026-08-22T03:18:39.702540Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52396 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 7169.98, "event": "request_complete", "request_id": "6393bd17-3741-448b-a44b-a5f45dde0a03", "ts": "2026-08-22T03:18:39.702540Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52397 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 7209.99, "event": "request_complete", "request_id": "eeb5040f-c35f-40cc-a6f5-77379ef063a9", "ts": "2026-08-22T03:18:39.738538Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 11.59, "event": "request_complete", "request_id": "ae74d405-eb76-44ee-86fc-d30fd9e38b11", "ts": "2026-08-22T03:18:41.726560Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 9.05, "event": "request_complete", "request_id": "802d28d3-9769-4c9b-b71e-c96518a58d34", "ts": "2026-08-22T03:18:43.754428Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 11.6, "event": "request_complete", "request_id": "309728af-ea34-4e7c-89a4-f1044031f50d", "ts": "2026-08-22T03:18:45.799363Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 5.55, "event": "request_complete", "request_id": "51c9588b-ec85-4ebd-a887-11b1137c7c8c", "ts": "2026-08-22T03:18:47.820897Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 19.41, "event": "request_complete", "request_id": "432dce8c-7ffc-45a6-9534-a0d5fbc7e218", "ts": "2026-08-22T03:18:49.853591Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52408 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 282.75, "event": "request_complete", "request_id": "a2d04f2a-9d13-4bb8-8fe2-ab34351c0bf3", "ts": "2026-08-22T03:18:50.037074Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 5.23, "event": "request_complete", "request_id": "7c65c5d3-7e22-4a00-802b-c2d1db044257", "ts": "2026-08-22T03:18:51.868563Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 142.59, "event": "request_complete", "request_id": "dbec3705-95a9-4676-a5db-5720cece728c", "ts": "2026-08-22T03:18:54.040433Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 7.31, "event": "request_complete", "request_id": "66d5ca13-42d0-4e44-8dc8-cd6dd23c9ea6", "ts": "2026-08-22T03:18:54.615803Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52409 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 86.63, "event": "request_complete", "request_id": "c0f175c6-b09a-4c6a-a086-ad90f7fa19d0", "ts": "2026-08-22T03:18:56.153006Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 11.83, "event": "request_complete", "request_id": "f15336f7-6e06-4b4b-b80f-22b3366e9d6a", "ts": "2026-08-22T03:18:58.180137Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 110.37, "event": "request_complete", "request_id": "ccfb8022-21bb-4770-b530-69c78e7a28f8", "ts": "2026-08-22T03:19:00.165801Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 7.05, "event": "request_complete", "request_id": "6a016df9-a389-40ba-8c64-db60257b85a4", "ts": "2026-08-22T03:19:00.199681Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 40.54, "event": "request_complete", "request_id": "6f9b81a2-6203-4f2a-951a-efa3c8025efc", "ts": "2026-08-22T03:19:02.249409Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 5.9, "event": "request_complete", "request_id": "304e7ad2-ce8f-4104-a621-036f5aa3df95", "ts": "2026-08-22T03:19:04.283975Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 6.32, "event": "request_complete", "request_id": "2fb350d5-9eaf-4b6d-b4cd-8fec5a5e9c47", "ts": "2026-08-22T03:19:06.316862Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 12.85, "event": "request_complete", "request_id": "de7caf5d-3bcb-4ae3-ba0f-3ab42e13a3ab", "ts": "2026-08-22T03:19:08.360278Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 5.63, "event": "request_complete", "request_id": "b6d88f08-283d-4176-ba4e-7d2524b481dd", "ts": "2026-08-22T03:19:09.415019Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52416 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 25.54, "event": "request_complete", "request_id": "0d6153b4-cb10-48b6-8150-c16b1d904c5f", "ts": "2026-08-22T03:19:09.733352Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 50.49, "event": "request_complete", "request_id": "1e1e9286-f626-4aea-bbdb-205ae81b996f", "ts": "2026-08-22T03:19:10.234822Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 17.46, "event": "request_complete", "request_id": "ec20b44c-fd8f-4956-8c0f-9f4d435f3730", "ts": "2026-08-22T03:19:10.398441Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 13.19, "event": "request_complete", "request_id": "ed6d8da1-a496-49bc-818f-2bab8e28c0ed", "ts": "2026-08-22T03:19:12.432234Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 20.84, "event": "request_complete", "request_id": "138ee1a8-c082-472e-b8d2-e70a3063b7c2", "ts": "2026-08-22T03:19:14.480482Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 4.91, "event": "request_complete", "request_id": "170bd574-09de-46eb-8625-7e1aefbb0184", "ts": "2026-08-22T03:19:14.614194Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52420 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 10.71, "event": "request_complete", "request_id": "2d6cfa43-011e-42b8-b53d-19ad47175c07", "ts": "2026-08-22T03:19:16.512049Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 6.33, "event": "request_complete", "request_id": "839f1ab9-8279-407a-a370-df880b3da17b", "ts": "2026-08-22T03:19:18.531691Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 4.84, "event": "request_complete", "request_id": "32a3fa81-21a5-4430-a0bc-00371feea51b", "ts": "2026-08-22T03:19:19.647487Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52423 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 96.56, "event": "request_complete", "request_id": "d679a957-31c3-480e-80c2-af16c088cb4a", "ts": "2026-08-22T03:19:20.342388Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 204.67, "event": "request_complete", "request_id": "abb3bd07-4834-419b-a2e4-116658dec411", "ts": "2026-08-22T03:19:20.748764Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 256.11, "event": "request_complete", "request_id": "a5bdb228-9772-40a0-895c-7be79d24c2c0", "ts": "2026-08-22T03:19:23.076899Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"run_id": 2, "source": "grailed", "event": "parser_run_completed", "request_id": "001fa072-b61f-4880-925a-d6084c15a17d", "ts": "2026-08-22T03:19:23.098943Z", "level": "info", "task_id": null, "brand": null, "index": null, "tier": null, "duration_ms": null, "msg": "parser_run_completed"}
+{"method": "GET", "path": "/api/parser/runs/2", "status_code": 200, "duration_ms": 10.16, "event": "request_complete", "request_id": "99708b35-766d-4528-85f6-e3a8f0c2f935", "ts": "2026-08-22T03:19:24.661075Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52424 - "GET /api/parser/runs/2 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 9.89, "event": "request_complete", "request_id": "4d5781d2-bf27-4810-81cd-1b1c6c43ea5c", "ts": "2026-08-22T03:19:25.124328Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52257 - "GET /api/parser/runs?limit=50&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 35.09, "event": "request_complete", "request_id": "1b5a15a1-c24b-4965-9d36-b9c8ca886927", "ts": "2026-08-22T03:19:30.396220Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52425 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 20.6, "event": "request_complete", "request_id": "605b445b-9661-49aa-a670-613da17d0d1a", "ts": "2026-08-22T03:19:39.913110Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52428 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 49.03, "event": "request_complete", "request_id": "a36f2b79-47e3-4dbf-a32b-52870005db87", "ts": "2026-08-22T03:19:40.645218Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52428 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/analytics/dashboard", "status_code": 200, "duration_ms": 13810.26, "event": "request_complete", "request_id": "df5bf8a2-3efe-4b89-a5fe-69f2604fb441", "ts": "2026-08-22T03:19:51.511813Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52427 - "GET /api/analytics/dashboard?window_days=90 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 57.3, "event": "request_complete", "request_id": "879b0305-c10c-42f8-ab4e-e194ed0b7af4", "ts": "2026-08-22T03:19:51.580626Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52431 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/analytics/listings", "status_code": 200, "duration_ms": 568.87, "event": "request_complete", "request_id": "79c13464-ae2a-43f5-8967-f0959649a1ad", "ts": "2026-08-22T03:19:54.957946Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52432 - "GET /api/analytics/listings?limit=1 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 67.98, "event": "request_complete", "request_id": "366e7b0e-f63e-48b4-8a12-6de55df553e8", "ts": "2026-08-22T03:20:02.054810Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52434 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/analytics/model-groups/4581", "status_code": 200, "duration_ms": 8700.77, "event": "request_complete", "request_id": "59fd817c-27d4-4dbc-8b72-e23042d003b0", "ts": "2026-08-22T03:20:03.677344Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52433 - "GET /api/analytics/model-groups/4581 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 10.93, "event": "request_complete", "request_id": "8bdc30f8-b589-4949-b4eb-cb43bdc4065b", "ts": "2026-08-22T03:20:09.971943Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52435 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 33.69, "event": "request_complete", "request_id": "f9272aea-b89f-489f-bfcc-ac0c203c0758", "ts": "2026-08-22T03:20:12.226647Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52435 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 24.5, "event": "request_complete", "request_id": "365dc94b-ce7b-4f92-9d81-863ca6648c71", "ts": "2026-08-22T03:20:22.271297Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52449 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 24.93, "event": "request_complete", "request_id": "5c36713c-2ce1-48db-bfe4-ec185c275d9a", "ts": "2026-08-22T03:20:32.315537Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52450 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 14.79, "event": "request_complete", "request_id": "4b24b50e-7800-4930-977d-53c64dbcbf95", "ts": "2026-08-22T03:20:40.003837Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52451 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 26.96, "event": "request_complete", "request_id": "9e8bb7e7-1cb5-43ca-809b-c8df85b5ce1b", "ts": "2026-08-22T03:20:42.336479Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52451 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 26.16, "event": "request_complete", "request_id": "d433a22d-15e5-4059-943d-ad67e0f983bd", "ts": "2026-08-22T03:20:52.386944Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52456 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 26.97, "event": "request_complete", "request_id": "13b6b058-ab9c-41b1-98dc-6f84817b2a55", "ts": "2026-08-22T03:21:02.434003Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52457 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 10.37, "event": "request_complete", "request_id": "82c9a902-696c-471d-ac96-5559a53aef40", "ts": "2026-08-22T03:21:10.033279Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52459 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 27.53, "event": "request_complete", "request_id": "526a87af-4d15-4da9-9621-168fd6705f8b", "ts": "2026-08-22T03:21:12.481878Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52459 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 34.28, "event": "request_complete", "request_id": "e5d465a8-9356-401a-b55a-6c233919d29e", "ts": "2026-08-22T03:21:22.542667Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52462 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 35.23, "event": "request_complete", "request_id": "6b463c46-d067-4c5f-9639-97d22d9b5553", "ts": "2026-08-22T03:21:32.599816Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52469 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/settings", "status_code": 200, "duration_ms": 14.79, "event": "request_complete", "request_id": "bb7e9bfc-019d-4465-9dc0-92799bfe2ec7", "ts": "2026-08-22T03:21:36.279705Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52482 - "GET /api/settings HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/health", "status_code": 200, "duration_ms": 10.45, "event": "request_complete", "request_id": "d6b80024-1a72-42ae-875c-ceb223818a31", "ts": "2026-08-22T03:21:40.064981Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52483 - "GET /api/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 28.56, "event": "request_complete", "request_id": "479ef79d-874f-4e34-8944-c430172e3ac0", "ts": "2026-08-22T03:21:42.628648Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52483 - "GET /api/parser/health HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/runs", "status_code": 200, "duration_ms": 7.51, "event": "request_complete", "request_id": "27b708d0-ef99-4de7-9bd2-b184daf9aedd", "ts": "2026-08-22T03:21:48.062285Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52486 - "GET /api/parser/runs?limit=5&offset=0 HTTP/1.1" 200 OK
+{"method": "GET", "path": "/api/parser/health", "status_code": 200, "duration_ms": 27.58, "event": "request_complete", "request_id": "071d89c0-e55a-4b62-ae86-25ceccbb5bca", "ts": "2026-08-22T03:21:52.691968Z", "level": "info", "run_id": null, "task_id": null, "source": null, "brand": null, "index": null, "tier": null, "msg": "request_complete"}
+INFO:     127.0.0.1:52487 - "GET /api/parser/health HTTP/1.1" 200 OK

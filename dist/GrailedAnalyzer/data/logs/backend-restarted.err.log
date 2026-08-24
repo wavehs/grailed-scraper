@@ -1,0 +1,5 @@
+INFO:     Started server process [11372]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+[2026-08-22 05:57:16] INFO: Fetched (200) <POST https://MNRWEFSS2Q-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia+for+JavaScript+%284.14.3%29%3B+Browser> (referer: https://www.grailed.com/)

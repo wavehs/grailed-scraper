@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,18 +19,30 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type { CatalogListingList } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDaysOnMarket } from '@/lib/utils';
 
 export default function ListingsPage() {
   const { locale, t } = useI18n();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
-  const [offset, setOffset] = useState(0);
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [page, setPage] = useState(0);
+  const cursor = cursors[page] ?? null;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setCursors([null]);
+      setPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   const query = useQuery({
-    queryKey: ['listing-catalog', search, status, offset],
+    queryKey: ['listing-catalog', debouncedSearch, status, cursor],
     queryFn: ({ signal }) => {
-      const params = new URLSearchParams({ search, offset: String(offset) });
+      const params = new URLSearchParams({ search: debouncedSearch });
       if (status) params.set('status', status);
+      if (cursor) params.set('cursor', cursor);
       return getApi<CatalogListingList>(`/analytics/listings?${params}`, signal);
     },
   });
@@ -48,10 +60,7 @@ export default function ListingsPage() {
             className="w-full pl-9"
             placeholder={t('catalogSearch')}
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setOffset(0);
-            }}
+            onChange={(event) => setSearch(event.target.value)}
           />
         </label>
         <label>
@@ -60,7 +69,8 @@ export default function ListingsPage() {
             value={status}
             onChange={(event) => {
               setStatus(event.target.value);
-              setOffset(0);
+              setCursors([null]);
+              setPage(0);
             }}
           >
             <option value="">{t('allStatuses')}</option>
@@ -78,9 +88,9 @@ export default function ListingsPage() {
       ) : (
         <>
           <p className="text-sm text-[var(--text-muted)]">
-            {t('found')}:{' '}
+            {t('shown')}:{' '}
             <span className="tabular-nums text-[var(--text-primary)]">
-              {query.data?.total ?? 0}
+              {query.data?.data.length ?? 0}
             </span>
           </p>
           <DataTable>
@@ -89,6 +99,7 @@ export default function ListingsPage() {
                 <TableHeaderCell>{t('listing')}</TableHeaderCell>
                 <TableHeaderCell>{t('model')}</TableHeaderCell>
                 <TableHeaderCell>{t('status')}</TableHeaderCell>
+                <TableHeaderCell>{t('timeOnMarket')}</TableHeaderCell>
                 <TableHeaderCell>{t('price')}</TableHeaderCell>
                 <TableHeaderCell>{t('modelSales')}</TableHeaderCell>
                 <TableHeaderCell>{t('lastSeen')}</TableHeaderCell>
@@ -114,7 +125,7 @@ export default function ListingsPage() {
                     {item.model_group_id ? (
                       <Link
                         className="text-[var(--accent)] hover:underline"
-                        href={`/model-groups/${item.model_group_id}`}
+                        href={`/model-groups?id=${item.model_group_id}`}
                       >
                         {item.model_name}
                       </Link>
@@ -124,6 +135,11 @@ export default function ListingsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs tabular-nums text-[var(--text-secondary)]">
+                      {formatDaysOnMarket(item.days_on_market, item.status, locale)}
+                    </span>
                   </TableCell>
                   <TableCell>{formatCurrency(item.price, locale)}</TableCell>
                   <TableCell>
@@ -136,19 +152,24 @@ export default function ListingsPage() {
             </tbody>
           </DataTable>
           {!query.data?.data.length && <EmptyState />}
-          {(query.data?.total ?? 0) > (query.data?.limit ?? 50) && (
+          {(page > 0 || query.data?.next_cursor) && (
             <div className="flex items-center justify-end gap-2">
               <Button
                 variant="secondary"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - query.data!.limit))}
+                disabled={page === 0 || query.isFetching}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
               >
                 {t('previous')}
               </Button>
               <Button
                 variant="secondary"
-                disabled={offset + query.data!.limit >= query.data!.total}
-                onClick={() => setOffset(offset + query.data!.limit)}
+                disabled={!query.data?.next_cursor || query.isFetching}
+                onClick={() => {
+                  const next = query.data?.next_cursor;
+                  if (!next) return;
+                  setCursors((current) => [...current.slice(0, page + 1), next]);
+                  setPage((current) => current + 1);
+                }}
               >
                 {t('next')}
               </Button>

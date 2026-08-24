@@ -6,17 +6,19 @@ import asyncio
 import hashlib
 import re
 import unicodedata
+from bisect import bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from rapidfuzz.fuzz import token_set_ratio
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only
 
 from app.core.config import Settings
 from app.db.models import (
@@ -24,17 +26,15 @@ from app.db.models import (
     Listing,
     ListingModelAssignment,
     ModelGroup,
-    ModelRule,
     ParserRunTask,
     PhysicalItem,
     PhysicalItemMember,
 )
 from app.services.identity.images import fingerprint_url, hamming_distance
-from app.services.scoring.service import rule_matches
 from app.services.transport.protocols import HttpTransport
 from app.services.transport.rate_limiter import RateLimiter
 
-IDENTITY_VERSION = "identity-v4"
+IDENTITY_VERSION = "identity-v5"
 _GENERIC = {
     "authentic",
     "brand",
@@ -48,6 +48,7 @@ _GENERIC = {
     "price",
     "rare",
     "read",
+    "replica",
     "repost",
     "sale",
     "used",
@@ -73,6 +74,14 @@ _VARIANT_TOKENS = {
     "pink",
     "purple",
     "red",
+    "milk",
+    "dust",
+    "navy",
+    "olive",
+    "pearl",
+    "chalk",
+    "taupe",
+    "burgundy",
     "silver",
     "small",
     "slt",
@@ -99,7 +108,8 @@ _STOP_WORDS = frozenset(
 )
 _MODEL_NOISE = frozenset(
     """14k 18k 22k 925 950 999 ball chain chains cuban gold leather link links metal
-    rhodium rope rubber silver sterling suede wool cotton denim""".split()
+    rhodium rope rubber silver sterling suede wool cotton denim high low mid top mega bumper
+    jumbo lace laced mainline runway classic vintage short tongue fur""".split()
 )
 _NON_DISTINCTIVE_MODEL = frozenset(
     "classic embroidered fitted graphic logo long plain pocket print short sleeve".split()
@@ -113,6 +123,8 @@ _TOKEN_NORMALIZATION = {
     "coats": "coat",
     "earrings": "earring",
     "glasses": "eyewear",
+    "gats": "gat",
+    "geobaskets": "geobasket",
     "hats": "hat",
     "hoodies": "hoodie",
     "jackets": "jacket",
@@ -161,22 +173,45 @@ _FAMILIES: tuple[tuple[str, frozenset[str]], ...] = (
 )
 _FAMILY_TOKENS = frozenset(token for _, tokens in _FAMILIES for token in tokens)
 _CATEGORY_FAMILY = {
+    "accessories": "accessory",
     "bottoms": "bottom",
     "footwear": "footwear",
     "outerwear": "jacket",
+    "tailoring": "tailoring",
     "tops": "top",
+    "womens_accessories": "accessory",
+    "womens_bags_luggage": "bag",
     "womens_bottoms": "bottom",
     "womens_dresses": "dress",
     "womens_footwear": "footwear",
-    "womens_jewelry": "necklace",
+    "womens_jewelry": "accessory",
     "womens_outerwear": "jacket",
     "womens_tops": "top",
 }
 _TOKEN = re.compile(r"[a-z0-9]+", re.I)
+_SEASON_OR_YEAR = re.compile(r"^(?:19|20)\d{2}$|^(?:ss|fw|aw)\d{2,4}$", re.I)
 _SIZE = re.compile(
     r"\b(?:size|sz|eu|us|uk)\s*[:\-]?\s*(?:xx?s|s|m|l|xxl|\d{1,3}(?:\.\d+)?)\b",
     re.I,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class LineSignature:
+    family: str
+    key: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class MatchSpec:
+    level: Literal["physical"]
+    first: Listing
+    second: Listing
+    status: Literal["pending", "auto_confirmed"]
+    confidence: Decimal
+    evidence: dict[str, Any]
+    relation_type: Literal["relist"] | None = None
 
 
 class IdentityResolver:
@@ -189,31 +224,101 @@ class IdentityResolver:
         self._session = session
         self._settings = settings
         self._transport = transport
-        self._match_cache: dict[tuple[str, int, int], IdentityMatch] | None = None
 
-    async def resolve_run(self, run_id: int) -> dict[str, int | str]:
-        brand_ids = set(
+    async def resolve_run(
+        self,
+        run_id: int,
+        *,
+        brand_ids: set[int] | None = None,
+        rebuild_all_physical: bool = False,
+    ) -> dict[str, int | str]:
+        if brand_ids is None:
+            brand_ids = {
+                brand_id
+                for brand_id in await self._session.scalars(
+                    select(ParserRunTask.brand_id).where(
+                        ParserRunTask.run_id == run_id,
+                        ParserRunTask.brand_id.is_not(None),
+                    )
+                )
+                if brand_id is not None
+            }
+        if not brand_ids:
+            return {"version": IDENTITY_VERSION, "listings": 0, "pending": 0, "linked": 0}
+
+        stale = list(
             await self._session.scalars(
-                select(ParserRunTask.brand_id).where(
-                    ParserRunTask.run_id == run_id, ParserRunTask.brand_id.is_not(None)
+                select(Listing)
+                .where(
+                    Listing.brand_id.in_(brand_ids),
+                    or_(
+                        Listing.identity_version.is_(None),
+                        Listing.identity_version != IDENTITY_VERSION,
+                    ),
+                )
+                .options(
+                    load_only(
+                        Listing.id,
+                        Listing.raw_json,
+                        Listing.source_product_id,
+                        Listing.source_sku_id,
+                        Listing.source_repost_id,
+                        Listing.color,
+                        Listing.cover_asset_key,
+                        Listing.cover_photo_url,
+                        Listing.identity_version,
+                    )
                 )
             )
         )
-        if not brand_ids:
-            return {"version": IDENTITY_VERSION, "listings": 0, "pending": 0, "linked": 0}
+        await self._backfill(stale)
+        await self._session.flush()
+        for listing in stale:
+            self._session.expire(listing, ["raw_json"])
+
         listings = list(
             await self._session.scalars(
                 select(Listing)
                 .where(Listing.brand_id.in_(brand_ids))
+                .options(
+                    load_only(
+                        Listing.id,
+                        Listing.source,
+                        Listing.grailed_id,
+                        Listing.status,
+                        Listing.title,
+                        Listing.brand_name_raw,
+                        Listing.brand_id,
+                        Listing.category,
+                        Listing.size_raw,
+                        Listing.color,
+                        Listing.price,
+                        Listing.created_at,
+                        Listing.sold_at,
+                        Listing.updated_at,
+                        Listing.first_seen_at,
+                        Listing.last_seen_at,
+                        Listing.seller_identity,
+                        Listing.parser_run_id,
+                        Listing.source_product_id,
+                        Listing.source_sku_id,
+                        Listing.source_repost_id,
+                        Listing.cover_asset_key,
+                        Listing.cover_photo_url,
+                        Listing.cover_content_sha256,
+                        Listing.cover_dhash,
+                        Listing.identity_version,
+                    )
+                )
                 .order_by(Listing.brand_id, Listing.created_at, Listing.id)
             )
         )
         retired_candidates = await self._retire_stale_candidates()
-        await self._backfill(listings)
         await self._assign_models(listings)
-        model = await self._model_candidates(listings)
-        physical = await self._physical_candidates(listings, run_id)
-        candidates = [*model, *physical]
+        candidate_specs = await self._physical_candidates(
+            listings, None if rebuild_all_physical else run_id
+        )
+        candidates = await self._upsert_matches(candidate_specs)
         image_requests = await self._fingerprint_candidates(candidates)
         await self._reevaluate_candidates(candidates)
         await self.rebuild_physical_items()
@@ -240,25 +345,6 @@ class IdentityResolver:
             "image_requests": image_requests,
             "retired_candidates": retired_candidates,
         }
-
-    async def decide(
-        self,
-        match_id: int,
-        decision: Literal["confirmed", "rejected"],
-    ) -> IdentityMatch:
-        match = await self._session.get(IdentityMatch, match_id)
-        if match is None:
-            raise LookupError("identity_match_not_found")
-        now = datetime.now(UTC)
-        match.status = decision
-        match.reviewed_at = now
-        match.updated_at = now
-        if decision == "confirmed" and match.level == "model":
-            await self._confirm_model(match.left_listing_id, match.right_listing_id)
-        if match.level == "physical":
-            await self.rebuild_physical_items()
-        await self._session.flush()
-        return match
 
     async def rebuild_physical_items(self) -> None:
         edges = list(
@@ -376,231 +462,219 @@ class IdentityResolver:
             listing.identity_version = IDENTITY_VERSION
 
     async def _assign_models(self, listings: Sequence[Listing]) -> None:
-        rules = list(
+        brand_ids = {listing.brand_id for listing in listings if listing.brand_id is not None}
+        group_rows = list(
             await self._session.scalars(
-                select(ModelRule)
-                .where(ModelRule.is_active.is_(True))
-                .options(selectinload(ModelRule.group))
-                .order_by(ModelRule.id)
+                select(ModelGroup).where(ModelGroup.brand_id.in_(brand_ids))
             )
         )
-        by_brand: dict[int, list[ModelRule]] = defaultdict(list)
-        for rule in rules:
-            by_brand[rule.brand_id].append(rule)
-        group_rows = list(await self._session.scalars(select(ModelGroup)))
-        groups = {
-            group.stable_key: group
-            for group in group_rows
-            if group.group_type in {"source_product", "resolved"}
-        }
+        groups = {group.stable_key: group for group in group_rows}
         groups_by_id = {group.id: group for group in group_rows}
         existing = {
             row.listing_id: row
-            for row in await self._session.scalars(select(ListingModelAssignment))
+            for row in await self._session.scalars(
+                select(ListingModelAssignment)
+                .join(Listing, Listing.id == ListingModelAssignment.listing_id)
+                .where(Listing.brand_id.in_(brand_ids))
+            )
         }
         now = datetime.now(UTC)
-        decisions: list[tuple[Listing, ModelGroup, str]] = []
-        for index, listing in enumerate(listings):
-            if index % 250 == 0:
-                await asyncio.sleep(0)
-            assignment = existing.get(listing.id)
-            if assignment is not None and assignment.method == "manual":
-                continue
+        signatures: dict[int, LineSignature | None] = {}
+        buckets: dict[tuple[int, str], list[Listing]] = defaultdict(list)
+        for listing in listings:
             if listing.brand_id is None:
                 continue
-            matches = [
-                rule
-                for rule in by_brand.get(listing.brand_id or -1, [])
-                if rule_matches(rule, listing.title, listing.category)
-            ]
-            group: ModelGroup | None = None
-            method = ""
-            if matches:
-                winner = min(matches, key=lambda item: (-len(item.include_keywords), item.id))
-                group, method = winner.group, "rule"
-            else:
-                signature = model_signature(
-                    listing.title,
-                    listing.brand_name_raw,
-                    listing.size_raw,
-                    listing.color,
-                    listing.category,
-                )
-                if signature is not None:
-                    family, core = signature
-                    stable_key = f"resolved-v4:{listing.brand_id}:{family}:{core}"
-                    group = groups.get(stable_key)
-                    if group is None:
-                        group = ModelGroup(
-                            stable_key=stable_key,
-                            brand_id=listing.brand_id,
-                            name=model_name(signature)[:255],
-                            category=listing.category,
-                            group_type="resolved",
-                            created_at=now,
-                            updated_at=now,
-                        )
-                        self._session.add(group)
-                        groups[stable_key] = group
-                    method = "model_signature"
-            if group is None and listing.source_product_id:
-                stable_key = (
-                    f"source:{listing.source}:{listing.brand_id}:product:"
-                    f"{listing.source_product_id}"
-                )
-                group = groups.get(stable_key)
-                if group is None:
-                    group = ModelGroup(
-                        stable_key=stable_key,
-                        brand_id=listing.brand_id,
-                        name=listing.title[:255],
-                        category=listing.category,
-                        group_type="source_product",
-                        created_at=now,
-                        updated_at=now,
+            signature = line_signature(
+                listing.title,
+                listing.brand_name_raw,
+                listing.size_raw,
+                listing.color,
+                listing.category,
+            )
+            signatures[listing.id] = signature
+            if signature is not None:
+                buckets[(listing.brand_id, signature.family)].append(listing)
+
+        decisions: list[tuple[Listing, ModelGroup, str, Decimal]] = []
+        for (brand_id, family), bucket in sorted(buckets.items()):
+            keys = Counter(
+                signature.key
+                for item in bucket
+                if (signature := signatures[item.id]) is not None
+            )
+            token_sets = {key: frozenset(key.split()) for key in keys}
+            keys_by_token: dict[str, set[str]] = defaultdict(set)
+            for key, tokens in token_sets.items():
+                for token in tokens:
+                    keys_by_token[token].add(key)
+            coverage = {
+                anchor: sum(keys[key] for key in _superset_keys(anchor_tokens, keys_by_token))
+                for anchor, anchor_tokens in token_sets.items()
+            }
+            anchors = {key for key, count in coverage.items() if count >= 2}
+            anchors_by_token: dict[str, set[str]] = defaultdict(set)
+            fuzzy_anchors: dict[str, set[str]] = defaultdict(set)
+            for anchor in anchors:
+                for token in token_sets[anchor]:
+                    anchors_by_token[token].add(anchor)
+                    if len(token) >= 5:
+                        for deletion in _deletions(token):
+                            fuzzy_anchors[deletion].add(anchor)
+            names: dict[str, Counter[str]] = defaultdict(Counter)
+            exact_names: dict[str, Counter[str]] = defaultdict(Counter)
+            categories: dict[str, Counter[str]] = defaultdict(Counter)
+            resolved: list[tuple[Listing, str, str, Decimal]] = []
+            for listing in bucket:
+                signature = signatures[listing.id]
+                assert signature is not None
+                subset = {
+                    anchor
+                    for token in token_sets[signature.key]
+                    for anchor in anchors_by_token[token]
+                    if token_sets[anchor] <= token_sets[signature.key]
+                }
+                if subset:
+                    anchor = min(
+                        subset,
+                        key=lambda key: (-coverage[key], len(token_sets[key]), key),
                     )
-                    self._session.add(group)
-                    groups[stable_key] = group
-                method = "source_product_id"
-            if group is None:
-                stable_key = (
-                    f"resolved:{listing.brand_id}:{listing.category or ''}:"
-                    f"listing:{listing.grailed_id}"
-                )
+                    method, confidence = (
+                        ("exact_line", Decimal(1))
+                        if anchor == signature.key
+                        else ("subset_line", Decimal("0.9500"))
+                    )
+                else:
+                    fuzzy_candidates = {
+                        candidate
+                        for token in token_sets[signature.key]
+                        if len(token) >= 5
+                        for deletion in _deletions(token)
+                        for candidate in fuzzy_anchors[deletion]
+                    }
+                    fuzzy = [
+                        (token_set_ratio(signature.key, candidate), candidate)
+                        for candidate in fuzzy_candidates
+                        if _fuzzy_line_allowed(signature.key, candidate)
+                    ]
+                    score, anchor = max(
+                        fuzzy,
+                        key=lambda item: (item[0], coverage[item[1]], item[1]),
+                        default=(0, ""),
+                    )
+                    if score < 90:
+                        anchor = f"listing:{listing.grailed_id}"
+                        method, confidence = "unique_listing", Decimal(1)
+                    else:
+                        method, confidence = "fuzzy_line", Decimal(str(score / 100))
+                names[anchor][signature.name] += 1
+                if signature.key == anchor:
+                    exact_names[anchor][signature.name] += 1
+                if listing.category:
+                    categories[anchor][listing.category] += 1
+                resolved.append((listing, anchor, method, confidence))
+
+            for listing, anchor, method, confidence in resolved:
+                stable_key = f"line-v5:{brand_id}:{family}:{anchor}"
                 group = groups.get(stable_key)
+                fallback_name = listing.title[:255]
+                name_counts = exact_names[anchor] or names[anchor]
+                chosen_name = (
+                    min(
+                        name_counts,
+                        key=lambda name: (-name_counts[name], len(name), name),
+                    )
+                    if name_counts
+                    else fallback_name
+                )
+                chosen_category = (
+                    min(
+                        categories[anchor],
+                        key=lambda value: (-categories[anchor][value], value),
+                    )
+                    if categories[anchor]
+                    else listing.category
+                )
                 if group is None:
                     group = ModelGroup(
                         stable_key=stable_key,
-                        brand_id=listing.brand_id,
-                        name=listing.title[:255],
-                        category=listing.category,
+                        brand_id=brand_id,
+                        name=chosen_name[:255],
+                        category=chosen_category,
                         group_type="resolved",
                         created_at=now,
                         updated_at=now,
                     )
                     self._session.add(group)
                     groups[stable_key] = group
-                method = "unique_listing"
-            decisions.append((listing, group, method))
+                elif group.name != chosen_name[:255] or group.category != chosen_category:
+                    group.name = chosen_name[:255]
+                    group.category = chosen_category
+                    group.updated_at = now
+                decisions.append((listing, group, method, confidence))
+
+        assigned_ids = {listing.id for listing, *_ in decisions}
+        for listing in listings:
+            if listing.brand_id is None or listing.id in assigned_ids:
+                continue
+            family = _product_family(model_text(listing.title), listing.category) or "unknown"
+            stable_key = f"line-v5:{listing.brand_id}:{family}:listing:{listing.grailed_id}"
+            group = groups.get(stable_key)
+            if group is None:
+                group = ModelGroup(
+                    stable_key=stable_key,
+                    brand_id=listing.brand_id,
+                    name=listing.title[:255],
+                    category=listing.category,
+                    group_type="resolved",
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._session.add(group)
+                groups[stable_key] = group
+            decisions.append((listing, group, "unique_listing", Decimal(1)))
         await self._session.flush()
         merge_targets: dict[int, set[int]] = defaultdict(set)
-        for listing, group, method in decisions:
+        for listing, group, method, confidence in decisions:
             assignment = existing.get(listing.id)
             if assignment is None:
                 assignment = ListingModelAssignment(
                     listing_id=listing.id,
                     model_group_id=group.id,
                     method=method,
-                    confidence=Decimal(1),
+                    confidence=confidence,
                     algorithm_version=IDENTITY_VERSION,
                     updated_at=now,
                 )
                 self._session.add(assignment)
                 existing[listing.id] = assignment
-            elif assignment.method != "manual" and (
+            elif (
                 assignment.model_group_id != group.id
                 or assignment.method != method
-                or assignment.confidence != Decimal(1)
+                or assignment.confidence != confidence
                 or assignment.algorithm_version != IDENTITY_VERSION
             ):
                 if assignment.model_group_id != group.id:
                     merge_targets[assignment.model_group_id].add(group.id)
                 assignment.model_group_id = group.id
                 assignment.method = method
-                assignment.confidence = Decimal(1)
+                assignment.confidence = confidence
                 assignment.algorithm_version = IDENTITY_VERSION
                 assignment.updated_at = now
         for old_group_id, targets in merge_targets.items():
             if len(targets) == 1 and old_group_id not in targets:
                 old_group = groups_by_id.get(old_group_id)
-                if old_group is not None and old_group.group_type != "rule":
+                if old_group is not None:
                     old_group.merged_into_id = next(iter(targets))
                     old_group.updated_at = now
 
-    async def _model_candidates(self, listings: Sequence[Listing]) -> list[IdentityMatch]:
-        assignments = {
-            row.listing_id: row
-            for row in await self._session.scalars(select(ListingModelAssignment))
-        }
-        buckets: dict[tuple[int | None, str], list[Listing]] = defaultdict(list)
-        canonical: dict[int, str] = {}
-        for listing in listings:
-            assignment = assignments.get(listing.id)
-            if assignment is not None and assignment.method in {
-                "manual",
-                "model_signature",
-                "rule",
-            }:
-                continue
-            text = model_text(
-                listing.title, listing.brand_name_raw, listing.size_raw, listing.color
-            )
-            family = _product_family(text, listing.category)
-            if family is None:
-                continue
-            canonical[listing.id] = text
-            buckets[(listing.brand_id, family)].append(listing)
-        matches: list[IdentityMatch] = []
-        for group in buckets.values():
-            texts = {item.id: canonical[item.id] for item in group}
-            token_frequency = Counter(
-                token for value in texts.values() for token in set(value.split())
-            )
-            inverted: dict[str, list[Listing]] = defaultdict(list)
-            for item in group:
-                for token in texts[item.id].split():
-                    if token not in _GENERIC:
-                        inverted[token].append(item)
-            for listing_index, listing in enumerate(group):
-                if listing_index % 250 == 0:
-                    await asyncio.sleep(0)
-                candidates: dict[int, Listing] = {}
-                tokens = sorted(
-                    set(texts[listing.id].split()) - _GENERIC,
-                    key=lambda token: token_frequency[token],
-                )[:3]
-                for token in tokens:
-                    for candidate in inverted[token]:
-                        if candidate.id != listing.id:
-                            candidates[candidate.id] = candidate
-                ranked = sorted(
-                    (
-                        (
-                            token_set_ratio(texts[listing.id], texts[candidate.id]),
-                            candidate,
-                        )
-                        for candidate in candidates.values()
-                        if (
-                            assignments.get(listing.id) is None
-                            or assignments.get(candidate.id) is None
-                            or assignments[listing.id].model_group_id
-                            != assignments[candidate.id].model_group_id
-                        )
-                    ),
-                    key=lambda item: (item[0], item[1].id),
-                )
-                for score, candidate in ranked[-5:]:
-                    if score >= 90 and _distinctive_overlap(texts[listing.id], texts[candidate.id]):
-                        matches.append(await self._upsert_match(
-                            "model",
-                            listing,
-                            candidate,
-                            status="pending",
-                            confidence=Decimal(str(score / 100)),
-                            evidence={"title_similarity": score, "method": "model_text"},
-                        ))
-        return list(
-            {(item.left_listing_id, item.right_listing_id): item for item in matches}.values()
-        )
-
     async def _physical_candidates(
-        self, listings: Sequence[Listing], run_id: int
-    ) -> list[IdentityMatch]:
+        self, listings: Sequence[Listing], run_id: int | None
+    ) -> list[MatchSpec]:
         by_seller: dict[str, list[Listing]] = defaultdict(list)
         for listing in listings:
             if listing.seller_identity:
                 by_seller[listing.seller_identity].append(listing)
-        candidates: list[IdentityMatch] = []
+        candidates: list[MatchSpec] = []
         for seller_listings in by_seller.values():
             ordered = sorted(seller_listings, key=_created)
             sale_times = sorted(
@@ -611,14 +685,15 @@ class IdentityResolver:
             for index, current in enumerate(ordered):
                 if index % 250 == 0:
                     await asyncio.sleep(0)
-                if current.parser_run_id != run_id:
+                if run_id is not None and current.parser_run_id != run_id:
                     continue
                 for previous in reversed(ordered[max(0, index - 50) : index]):
                     if previous.brand_id != current.brand_id:
                         continue
-                    if any(
-                        _aware(_created(previous)) < sold_at <= _aware(_created(current))
-                        for sold_at in sale_times
+                    sold_index = bisect_right(sale_times, _aware(_created(previous)))
+                    if (
+                        sold_index < len(sale_times)
+                        and sale_times[sold_index] <= _aware(_created(current))
                     ):
                         continue
                     if (
@@ -666,7 +741,7 @@ class IdentityResolver:
                     elif (
                         age <= timedelta(days=30) and title >= 95 and price_delta < Decimal("0.10")
                     ):
-                        status, confidence = "pending", Decimal("0.8000")
+                        status, confidence = "auto_confirmed", Decimal("0.9000")
                     elif (
                         age <= timedelta(days=180)
                         and title >= 80
@@ -675,26 +750,27 @@ class IdentityResolver:
                         status, confidence = "pending", Decimal("0.7000")
                     if status is None:
                         continue
-                    match = await self._upsert_match(
-                        "physical",
-                        previous,
-                        current,
-                        status=status,
-                        confidence=confidence,
-                        evidence={
-                            "method": "same_seller_relist",
-                            "same_seller": True,
-                            "exact_asset": exact_asset,
-                            "title_similarity": title,
-                            "price_delta": str(price_delta),
-                            "nonoverlap": nonoverlap,
-                            "days_apart": age.days,
-                        },
-                        relation_type="relist",
+                    candidates.append(
+                        MatchSpec(
+                            level="physical",
+                            first=previous,
+                            second=current,
+                            status=status,
+                            confidence=confidence,
+                            evidence={
+                                "method": "same_seller_relist",
+                                "same_seller": True,
+                                "exact_asset": exact_asset,
+                                "title_similarity": title,
+                                "price_delta": str(price_delta),
+                                "nonoverlap": nonoverlap,
+                                "days_apart": age.days,
+                            },
+                            relation_type="relist",
+                        )
                     )
-                    candidates.append(match)
         return list(
-            {(item.left_listing_id, item.right_listing_id): item for item in candidates}.values()
+            {tuple(sorted((item.first.id, item.second.id))): item for item in candidates}.values()
         )
 
     async def _fingerprint_candidates(self, matches: Sequence[IdentityMatch]) -> int:
@@ -705,7 +781,18 @@ class IdentityResolver:
         }
         listings = {
             item.id: item
-            for item in await self._session.scalars(select(Listing).where(Listing.id.in_(ids)))
+            for item in await self._session.scalars(
+                select(Listing)
+                .where(Listing.id.in_(ids))
+                .options(
+                    load_only(
+                        Listing.id,
+                        Listing.cover_photo_url,
+                        Listing.cover_content_sha256,
+                        Listing.cover_dhash,
+                    )
+                )
+            )
         }
         limiter = RateLimiter(
             requests_per_minute=min(self._settings.requests_per_minute, 90),
@@ -732,7 +819,17 @@ class IdentityResolver:
         }
         listings = {
             item.id: item
-            for item in await self._session.scalars(select(Listing).where(Listing.id.in_(ids)))
+            for item in await self._session.scalars(
+                select(Listing)
+                .where(Listing.id.in_(ids))
+                .options(
+                    load_only(
+                        Listing.id,
+                        Listing.cover_content_sha256,
+                        Listing.cover_dhash,
+                    )
+                )
+            )
         }
         for match in matches:
             if match.status in {"confirmed", "rejected"}:
@@ -753,18 +850,6 @@ class IdentityResolver:
                 "content_equal": content_equal,
             }
             match.evidence = evidence
-            if match.level == "model":
-                if (
-                    (content_equal or distance is not None and distance <= 4)
-                    and int(evidence.get("title_similarity", 0)) >= 92
-                ):
-                    match.status = "auto_confirmed"
-                    match.confidence = Decimal("0.9800")
-                    await self._confirm_model(match.left_listing_id, match.right_listing_id)
-                elif distance is not None and distance <= 8:
-                    match.confidence = max(match.confidence, Decimal("0.8500"))
-                match.updated_at = datetime.now(UTC)
-                continue
             if (
                 (content_equal or distance is not None and distance <= 4)
                 and bool(evidence.get("nonoverlap"))
@@ -773,124 +858,66 @@ class IdentityResolver:
             ):
                 match.status = "auto_confirmed"
                 match.confidence = Decimal("0.9800")
-            elif distance is not None and distance <= 8:
-                match.confidence = max(match.confidence, Decimal("0.8500"))
+            elif match.status == "pending":
+                match.status = "rejected"
             match.updated_at = datetime.now(UTC)
 
-    async def _upsert_match(
-        self,
-        level: Literal["model", "physical"],
-        first: Listing,
-        second: Listing,
-        *,
-        status: Literal["pending", "auto_confirmed"],
-        confidence: Decimal,
-        evidence: dict[str, Any],
-        relation_type: Literal["relist"] | None = None,
-    ) -> IdentityMatch:
-        left, right = sorted((first.id, second.id))
-        if self._match_cache is None:
-            self._match_cache = {
-                (item.level, item.left_listing_id, item.right_listing_id): item
-                for item in await self._session.scalars(select(IdentityMatch))
-            }
-        key = (level, left, right)
-        match = self._match_cache.get(key)
-        now = datetime.now(UTC)
-        if match is None:
-            match = IdentityMatch(
-                level=level,
-                left_listing_id=left,
-                right_listing_id=right,
-                relation_type=relation_type,
-                status=status,
-                confidence=confidence,
-                evidence=evidence,
-                algorithm_version=IDENTITY_VERSION,
-                created_at=now,
-                updated_at=now,
-            )
-            self._session.add(match)
-            self._match_cache[key] = match
-        elif match.status not in {"confirmed", "rejected"} and (
-            match.status != status
-            or match.confidence != confidence
-            or match.evidence != evidence
-            or match.algorithm_version != IDENTITY_VERSION
-        ):
-            match.status = status
-            match.confidence = confidence
-            match.evidence = evidence
-            match.algorithm_version = IDENTITY_VERSION
-            match.updated_at = now
-        return match
+    async def _upsert_matches(self, specs: Sequence[MatchSpec]) -> list[IdentityMatch]:
+        deduplicated: dict[tuple[str, int, int], MatchSpec] = {}
+        for spec in specs:
+            left, right = sorted((spec.first.id, spec.second.id))
+            deduplicated[(spec.level, left, right)] = spec
+        if not deduplicated:
+            return []
 
-    async def _confirm_model(self, left_id: int, right_id: int) -> None:
-        assignments = {
-            row.listing_id: row
-            for row in await self._session.scalars(
-                select(ListingModelAssignment).where(
-                    ListingModelAssignment.listing_id.in_((left_id, right_id))
+        existing: dict[tuple[str, int, int], IdentityMatch] = {}
+        keys = list(deduplicated)
+        for offset in range(0, len(keys), 200):
+            batch = keys[offset : offset + 200]
+            rows = await self._session.scalars(
+                select(IdentityMatch).where(
+                    tuple_(
+                        IdentityMatch.level,
+                        IdentityMatch.left_listing_id,
+                        IdentityMatch.right_listing_id,
+                    ).in_(batch)
                 )
             )
-        }
-        now = datetime.now(UTC)
-        group_ids = sorted({row.model_group_id for row in assignments.values()})
-        if not group_ids:
-            listing = await self._session.get(Listing, left_id)
-            assert listing is not None and listing.brand_id is not None
-            group = ModelGroup(
-                stable_key=f"manual:{min(left_id, right_id)}",
-                brand_id=listing.brand_id,
-                name=listing.title[:255],
-                category=listing.category,
-                group_type="resolved",
-                created_at=now,
-                updated_at=now,
+            existing.update(
+                {(item.level, item.left_listing_id, item.right_listing_id): item for item in rows}
             )
-            self._session.add(group)
-            await self._session.flush()
-            target_group_id = group.id
-        else:
-            target_group_id = group_ids[0]
-            for source_group_id in group_ids[1:]:
-                source = await self._session.get(ModelGroup, source_group_id)
-                if source is not None:
-                    source.merged_into_id = target_group_id
-                    source.updated_at = now
-                source_assignments = list(
-                    await self._session.scalars(
-                        select(ListingModelAssignment).where(
-                            ListingModelAssignment.model_group_id == source_group_id
-                        )
-                    )
-                )
-                for source_assignment in source_assignments:
-                    source_assignment.model_group_id = target_group_id
-                    source_assignment.method = "manual"
-                    source_assignment.confidence = Decimal(1)
-                    source_assignment.algorithm_version = IDENTITY_VERSION
-                    source_assignment.updated_at = now
-        for listing_id in (left_id, right_id):
-            assignment = assignments.get(listing_id)
-            if assignment is None:
-                self._session.add(
-                    ListingModelAssignment(
-                        listing_id=listing_id,
-                        model_group_id=target_group_id,
-                        method="manual",
-                        confidence=Decimal(1),
-                        algorithm_version=IDENTITY_VERSION,
-                        updated_at=now,
-                    )
-                )
-            else:
-                assignment.model_group_id = target_group_id
-                assignment.method = "manual"
-                assignment.confidence = Decimal(1)
-                assignment.algorithm_version = IDENTITY_VERSION
-                assignment.updated_at = now
 
+        now = datetime.now(UTC)
+        matches: list[IdentityMatch] = []
+        for key, spec in deduplicated.items():
+            match = existing.get(key)
+            if match is None:
+                match = IdentityMatch(
+                    level=spec.level,
+                    left_listing_id=key[1],
+                    right_listing_id=key[2],
+                    relation_type=spec.relation_type,
+                    status=spec.status,
+                    confidence=spec.confidence,
+                    evidence=spec.evidence,
+                    algorithm_version=IDENTITY_VERSION,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._session.add(match)
+            elif match.status not in {"confirmed", "rejected"} and (
+                match.status != spec.status
+                or match.confidence != spec.confidence
+                or match.evidence != spec.evidence
+                or match.algorithm_version != IDENTITY_VERSION
+            ):
+                match.status = spec.status
+                match.confidence = spec.confidence
+                match.evidence = spec.evidence
+                match.algorithm_version = IDENTITY_VERSION
+                match.updated_at = now
+            matches.append(match)
+        return matches
 
 def model_text(
     title: str,
@@ -900,13 +927,16 @@ def model_text(
 ) -> str:
     value = unicodedata.normalize("NFKD", _SIZE.sub(" ", title.casefold()))
     normalized = "".join(char for char in value if not unicodedata.combining(char))
-    brand_tokens = set(_TOKEN.findall((brand or "").casefold()))
-    variant_tokens = set(_TOKEN.findall(f"{size or ''} {color or ''}".casefold()))
+    brand_tokens = {_singularize(token) for token in _TOKEN.findall((brand or "").casefold())}
+    variant_tokens = {
+        _singularize(token)
+        for token in _TOKEN.findall(f"{size or ''} {color or ''}".casefold())
+    }
     raw_tokens = _TOKEN.findall(normalized)
     tokens: list[str] = []
     index = 0
     while index < len(raw_tokens):
-        token = _TOKEN_NORMALIZATION.get(raw_tokens[index], raw_tokens[index])
+        token = _singularize(raw_tokens[index])
         if token == "t" and index + 1 < len(raw_tokens) and raw_tokens[index + 1] == "shirt":
             token = "tee"
             index += 1
@@ -932,6 +962,7 @@ def model_text(
             and token not in _VARIANT_TOKENS
             and token not in variant_tokens
             and token not in {"size", "sz"}
+            and not _SEASON_OR_YEAR.fullmatch(token)
         ):
             tokens.append(token)
         index += 1
@@ -947,37 +978,95 @@ def model_signature(
     color: str | None = None,
     category: str | None = None,
 ) -> tuple[str, str] | None:
-    """Return an explainable, order-independent exact-model signature."""
+    """Compatibility wrapper for the v5 product-line signature."""
+
+    signature = line_signature(title, brand, size, color, category)
+    return (signature.family, signature.key) if signature else None
+
+
+def line_signature(
+    title: str,
+    brand: str | None = None,
+    size: str | None = None,
+    color: str | None = None,
+    category: str | None = None,
+) -> LineSignature | None:
+    """Return the normalized family, stable token key and readable line name."""
 
     canonical = model_text(title, brand, size, color)
     family = _product_family(canonical, category)
     if family is None:
         return None
-    core_tokens = sorted(
-        set(canonical.split()) - _STOP_WORDS - _MODEL_NOISE - _FAMILY_TOKENS
-    )
+    ordered = [
+        token
+        for token in canonical.split()
+        if token not in _STOP_WORDS
+        and token not in _MODEL_NOISE
+        and token not in _FAMILY_TOKENS
+        and not _SEASON_OR_YEAR.fullmatch(token)
+    ]
+    core_tokens = sorted(set(ordered))
     if not any(
         token not in _NON_DISTINCTIVE_MODEL
         and (len(token) >= 3 or any(char.isdigit() for char in token))
         for token in core_tokens
     ):
         return None
-    return family, " ".join(core_tokens)
+    return LineSignature(
+        family=family,
+        key=" ".join(core_tokens),
+        name=" ".join(dict.fromkeys(ordered)).title(),
+    )
 
 
 def model_name(signature: tuple[str, str]) -> str:
     family, core = signature
-    return core.title() if family in {"accessory", "bottom", "footwear", "top"} else (
-        f"{core} {family}".title()
+    return (
+        core.title()
+        if family in {"accessory", "bottom", "footwear", "top"}
+        else (f"{core} {family}".title())
     )
 
 
 def _product_family(canonical: str, category: str | None) -> str | None:
+    category_family = _CATEGORY_FAMILY.get((category or "").casefold())
+    if category_family is not None:
+        return category_family
     tokens = set(canonical.split())
     for family, aliases in _FAMILIES:
         if tokens & aliases:
             return family
-    return _CATEGORY_FAMILY.get((category or "").casefold())
+    return None
+
+
+def _singularize(token: str) -> str:
+    explicit = _TOKEN_NORMALIZATION.get(token)
+    if explicit is not None:
+        return explicit
+    if len(token) > 4 and token.endswith("ies"):
+        return f"{token[:-3]}y"
+    if len(token) > 4 and token.endswith(("ches", "shes", "xes", "zes", "sses")):
+        return token[:-2]
+    if len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
+
+
+def _fuzzy_line_allowed(left: str, right: str) -> bool:
+    return any(len(token) >= 5 for token in left.split()) and any(
+        len(token) >= 5 for token in right.split()
+    )
+
+
+def _deletions(token: str) -> set[str]:
+    return {token, *(f"{token[:index]}{token[index + 1:]}" for index in range(len(token)))}
+
+
+def _superset_keys(
+    tokens: frozenset[str], keys_by_token: dict[str, set[str]]
+) -> set[str]:
+    candidates = [keys_by_token[token] for token in tokens]
+    return set.intersection(*candidates) if candidates else set()
 
 
 def asset_key(value: str | None) -> str | None:
@@ -988,14 +1077,6 @@ def asset_key(value: str | None) -> str | None:
         return None
     canonical = urlunsplit((parts.scheme.casefold(), parts.hostname.casefold(), parts.path, "", ""))
     return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _distinctive_overlap(left: str, right: str) -> bool:
-    return any(
-        token not in _NON_DISTINCTIVE_MODEL
-        and (len(token) >= 4 or any(char.isdigit() for char in token))
-        for token in set(left.split()) & set(right.split())
-    )
 
 
 def _positive_int(value: Any) -> int | None:

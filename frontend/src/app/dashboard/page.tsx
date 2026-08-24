@@ -1,29 +1,38 @@
+'use client';
+
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Dashboard } from '@/components/dashboard';
+import { LoadingState } from '@/components/states';
 import type { DashboardProductType } from '@/lib/types';
 
 const PRODUCT_TYPES = new Set<DashboardProductType>(['footwear', 'clothing', 'accessories']);
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const offsetValue = Number(params.offset);
-  const brandId = Number(params.brand_id);
-  const productType = typeof params.product_type === 'string' ? params.product_type : '';
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const brandId = Number(searchParams.get('brand_id'));
+  const productType = searchParams.get('product_type') ?? '';
+  const viewMode = searchParams.get('view_mode') === 'brands' ? 'brands' : 'models';
   return (
     <Dashboard
-      initialWindowDays={params.window_days === '30' ? 30 : 90}
-      initialSearch={typeof params.search === 'string' ? params.search : ''}
-      initialLowData={params.low_data === 'true'}
-      initialOffset={Number.isInteger(offsetValue) && offsetValue >= 0 ? offsetValue : 0}
+      initialWindowDays={searchParams.get('window_days') === '30' ? 30 : 90}
+      initialSearch={searchParams.get('search') ?? ''}
+      initialLowData={searchParams.get('low_data') === 'true'}
       initialBrandId={Number.isInteger(brandId) && brandId > 0 ? brandId : undefined}
       initialProductType={
         PRODUCT_TYPES.has(productType as DashboardProductType)
           ? (productType as DashboardProductType)
           : undefined
       }
+      initialViewMode={viewMode}
     />
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
 import ParserRunsPage from '@/app/parser-runs/page';
 import SettingsPage from '@/app/settings/page';
+import ModelDetailClient from '@/app/model-groups/[id]/model-detail-client';
 import { Dashboard } from '@/components/dashboard';
 import { HealthBanner } from '@/components/health-banner';
 import { HelpTip } from '@/components/ui/help-tip';
@@ -67,7 +68,7 @@ describe('stage 10 screens', () => {
               confidence_score: '58.10',
               market_opportunity_score: '66.84',
               scoring_status: 'scored',
-              model_version: 'market-v4',
+              model_version: 'market-v5',
               window_days: 30,
               run_id: 3,
             },
@@ -94,12 +95,137 @@ describe('stage 10 screens', () => {
     );
   });
 
+  it('switches to brand analytics view and drills down on click', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health'))
+        return json({
+          status: 'ready',
+          reasons: [],
+          transports: { T1: true },
+          discovery: { status: 'valid' },
+          schema: { active_alerts: 0, alerts: [] },
+        });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
+      if (url.includes('/analytics/brands?'))
+        return json({
+          data: [
+            {
+              id: 1,
+              name: 'Chrome Hearts',
+              groups_count: 5,
+              sold_count: 50,
+              exact_sold_count: 50,
+              active_count: 100,
+              median_sold_price: 60000,
+              median_days_to_sell: '14.0',
+              median_sold_likes: '25.0',
+              demand_score: '82.50',
+              liquidity_score: '78.00',
+              confidence_score: '80.00',
+              scoring_status: 'scored',
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        });
+      if (url.includes('/analytics/dashboard?'))
+        return json({
+          data: [
+            {
+              id: 1,
+              name: 'Dagger Necklace',
+              brand_name: 'Chrome Hearts',
+              available_sizes: [],
+              available_conditions: [],
+              sold_count: 24,
+              exact_sold_count: 24,
+              active_count: 111,
+              median_sold_price: 45000,
+              liquidity_score: '72.72',
+              demand_score: '66.84',
+              price_score: '0.00',
+              confidence_score: '58.10',
+              scoring_status: 'scored',
+              model_version: 'market-v5',
+              window_days: 90,
+              run_id: 3,
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<Dashboard />);
+    expect(await screen.findByRole('button', { name: 'By brands' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'By brands' }));
+    expect(await screen.findByRole('button', { name: 'Chrome Hearts' })).toBeInTheDocument();
+    expect(screen.getByText('82.5')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Chrome Hearts' }));
+    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
+  });
+
   it('opens setting help on click', async () => {
     renderApp(<HelpTip label="Limit" text="Maximum requests for this run." />);
     const help = screen.getByRole('button', { name: 'Help' });
     await userEvent.click(help);
     expect(screen.getByRole('tooltip')).toHaveTextContent('Maximum requests for this run.');
     expect(help).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('shows the best-selling colors and sizes for a model group', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        json({
+          id: 1,
+          name: 'Geobasket',
+          brand: 'Rick Owens',
+          category: 'footwear',
+          group_type: 'resolved',
+          model_version: 'market-v5',
+          window_days: 90,
+          run_id: 3,
+          input_digest: 'abc123',
+          variant_breakdown: {
+            colors: [
+              { value: 'black', sold_count: 4, active_count: 2, sell_through: '0.666667' },
+            ],
+            sizes: [{ value: '42', sold_count: 3, active_count: 1, sell_through: '0.750000' }],
+          },
+          metrics: {
+            sold_count: 4,
+            exact_sold_count: 4,
+            active_count: 2,
+            sell_through: '0.666667',
+            median_sold_price: 50000,
+            median_days_to_sell: '12',
+            median_sold_likes: '20',
+            liquidity_score: '50',
+            demand_score: '50',
+            price_score: '0',
+            confidence_score: '90',
+            market_opportunity_score: '50',
+            scoring_status: 'scored',
+            components: {},
+            confidence_factors: {},
+            quality_summary: {},
+            warnings: [],
+          },
+          sold_examples: [],
+          active_examples: [],
+        }),
+      ),
+    );
+    renderApp(<ModelDetailClient />);
+    expect(await screen.findByText('Best-selling variants')).toBeInTheDocument();
+    expect(screen.getByText('black')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
   });
 
   it('announces parser degradation and its actionable reason', async () => {

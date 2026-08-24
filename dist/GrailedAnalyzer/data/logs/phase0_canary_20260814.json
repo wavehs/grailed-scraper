@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-08-14T15:42:48+03:00",
+  "source": "grailed",
+  "brand": "Rick Owens",
+  "tier": "T1",
+  "index": "Listing_production",
+  "limit": 50,
+  "fetched": 50,
+  "valid": 50,
+  "rejected": 0,
+  "latency_ms": 3131,
+  "requests_per_minute": 90,
+  "max_concurrency": 3,
+  "discovery": {
+    "status": "ready",
+    "method": "intercept",
+    "app_id_present": true,
+    "search_key_present": true,
+    "agent_present": true,
+    "active_index": "Listing_production",
+    "sold_index": "Listing_sold_production",
+    "replicas": [],
+    "brand_facet": "designers.name",
+    "category_facet": "category_path",
+    "key_acl": [
+      "search"
+    ],
+    "can_browse": false,
+    "pagination_limit": 1000,
+    "max_hits_per_page": 1000,
+    "schema_sample_size": 200,
+    "schema_field_count": 102,
+    "latency_ms": 27087
+  },
+  "verified_listing_fields": [
+    "id",
+    "objectID",
+    "title",
+    "price",
+    "designers",
+    "category",
+    "size",
+    "condition",
+    "created_at",
+    "sold"
+  ],
+  "credentials_included": false,
+  "seller_pii_included": false
+}

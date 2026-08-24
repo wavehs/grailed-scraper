@@ -10,7 +10,7 @@ import {
   type SortingState,
   useReactTable,
 } from '@tanstack/react-table';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,12 +25,20 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
-import { useBrandsQuery, useDashboardQuery, useParserHealth, useRunsQuery } from '@/lib/queries';
+import type { BrandAnalyticsRow, DashboardProductType, DashboardRow } from '@/lib/types';
+import {
+  useBrandDashboardQuery,
+  useBrandsQuery,
+  useDashboardQuery,
+  useParserHealth,
+  useRunsQuery,
+} from '@/lib/queries';
 import { formatCurrency, formatPercent } from '@/lib/utils';
-import type { DashboardProductType, DashboardRow } from '@/lib/types';
 
 const column = createColumnHelper<DashboardRow>();
+const brandColumn = createColumnHelper<BrandAnalyticsRow>();
 const EMPTY_ROWS: DashboardRow[] = [];
+const EMPTY_BRAND_ROWS: BrandAnalyticsRow[] = [];
 
 function scoreColor(score: number): string {
   if (score >= 70) return 'text-[var(--success)]';
@@ -42,33 +50,48 @@ export function Dashboard({
   initialWindowDays = 90,
   initialSearch = '',
   initialLowData = false,
-  initialOffset = 0,
   initialBrandId,
   initialProductType,
+  initialViewMode = 'models',
 }: {
   initialWindowDays?: number;
   initialSearch?: string;
   initialLowData?: boolean;
-  initialOffset?: number;
   initialBrandId?: number;
   initialProductType?: DashboardProductType;
+  initialViewMode?: 'models' | 'brands';
 }) {
   const { locale, t } = useI18n();
+  const [viewMode, setViewMode] = useState<'models' | 'brands'>(initialViewMode);
   const [windowDays, setWindowDays] = useState(initialWindowDays);
   const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch.trim());
   const [showLowData, setShowLowData] = useState(initialLowData);
-  const [offset, setOffset] = useState(initialOffset);
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [page, setPage] = useState(0);
+  const cursor = cursors[page] ?? null;
+  const resetPage = () => {
+    setCursors([null]);
+    setPage(0);
+  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setCursors([null]);
+      setPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   const [brandId, setBrandId] = useState(initialBrandId);
   const [productType, setProductType] = useState(initialProductType);
   const dashboardReturn = `/dashboard?${new URLSearchParams({
     window_days: String(windowDays),
     search,
     low_data: String(showLowData),
-    offset: String(offset),
+    view_mode: viewMode,
     ...(brandId ? { brand_id: String(brandId) } : {}),
     ...(productType ? { product_type: productType } : {}),
   })}`;
-  const deferredSearch = useDeferredValue(search.trim());
   const [sorting, setSorting] = useState<SortingState>([{ id: 'demand_score', desc: true }]);
   const health = useParserHealth();
   const runs = useRunsQuery(5);
@@ -76,15 +99,27 @@ export function Dashboard({
   const activeSort = sorting[0] ?? { id: 'demand_score', desc: true };
   const analytics = useDashboardQuery(
     windowDays,
-    deferredSearch,
+    debouncedSearch,
     !showLowData,
-    offset,
+    cursor,
     activeSort.id,
     activeSort.desc,
     brandId,
     productType,
+    viewMode === 'models',
+  );
+  const brandAnalytics = useBrandDashboardQuery(
+    windowDays,
+    debouncedSearch,
+    !showLowData,
+    activeSort.id,
+    activeSort.desc,
+    productType,
+    viewMode === 'brands',
   );
   const rows = analytics.data?.data ?? EMPTY_ROWS;
+  const brandRows = brandAnalytics.data?.data ?? EMPTY_BRAND_ROWS;
+
   const columns = useMemo(
     () => [
       column.accessor('name', {
@@ -93,7 +128,7 @@ export function Dashboard({
           <div className="min-w-48">
             <Link
               className="font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
-              href={`/model-groups/${info.row.original.id}?window_days=${windowDays}&run_id=${info.row.original.run_id}&back=${encodeURIComponent(dashboardReturn)}`}
+              href={`/model-groups?id=${info.row.original.id}&window_days=${windowDays}&run_id=${info.row.original.run_id}&back=${encodeURIComponent(dashboardReturn)}`}
             >
               {info.getValue()}
             </Link>
@@ -166,21 +201,129 @@ export function Dashboard({
     ],
     [dashboardReturn, locale, t, windowDays],
   );
-  const table = useReactTable({
+
+  const brandColumns = useMemo(
+    () => [
+      brandColumn.accessor('name', {
+        header: t('brand'),
+        cell: (info) => (
+          <div className="min-w-40">
+            <button
+              type="button"
+              className="text-left font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)] hover:underline focus-visible:outline-none"
+              onClick={() => {
+                setBrandId(info.row.original.id);
+                setViewMode('models');
+                resetPage();
+              }}
+            >
+              {info.getValue()}
+            </button>
+          </div>
+        ),
+      }),
+      brandColumn.accessor('sold_count', { header: t('sold') }),
+      brandColumn.accessor('active_count', { header: t('activeNow') }),
+      brandColumn.display({
+        id: 'evidence',
+        header: t('saleEvidence'),
+        cell: (info) => (
+          <div className="min-w-32 space-y-0.5 text-xs tabular-nums text-[var(--text-secondary)]">
+            <p>
+              {t('daysToSell')}:{' '}
+              {info.row.original.median_days_to_sell === null
+                ? '—'
+                : Number(info.row.original.median_days_to_sell).toFixed(0)}
+            </p>
+            <p>
+              {t('likes')}:{' '}
+              {info.row.original.median_sold_likes === null
+                ? '—'
+                : Number(info.row.original.median_sold_likes).toFixed(0)}
+            </p>
+          </div>
+        ),
+      }),
+      brandColumn.accessor('median_sold_price', {
+        header: t('medianPrice'),
+        cell: (info) => (
+          <span className="text-[var(--text-primary)]">
+            {formatCurrency(info.getValue(), locale)}
+          </span>
+        ),
+      }),
+      brandColumn.accessor((row) => (row.demand_score === null ? null : Number(row.demand_score)), {
+        id: 'demand_score',
+        header: t('demand'),
+        cell: (info) => {
+          const val = info.getValue();
+          if (val === null)
+            return (
+              <span className="text-[var(--text-muted)]">
+                {t(info.row.original.scoring_status)}
+              </span>
+            );
+          return <span className={`font-semibold ${scoreColor(val)}`}>{val.toFixed(1)}</span>;
+        },
+      }),
+      brandColumn.accessor(
+        (row) => (row.liquidity_score === null ? null : Number(row.liquidity_score)),
+        {
+          id: 'liquidity_score',
+          header: t('liquidity'),
+          cell: (info) => {
+            const value = info.getValue();
+            return value === null ? (
+              <span className="text-[var(--text-muted)]">—</span>
+            ) : (
+              <span className={`font-semibold ${scoreColor(value)}`}>{value.toFixed(1)}</span>
+            );
+          },
+        },
+      ),
+      brandColumn.accessor('groups_count', {
+        header: t('brandModels'),
+        cell: (info) => (
+          <span className="text-xs tabular-nums text-[var(--text-secondary)]">
+            {info.getValue()}
+          </span>
+        ),
+      }),
+    ],
+    [locale, t],
+  );
+
+  const modelTable = useReactTable({
     data: rows,
     columns,
     state: { sorting },
     onSortingChange: (updater) => {
       setSorting(updater);
-      setOffset(0);
+      resetPage();
     },
     manualSorting: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
-  const error = health.error ?? runs.error ?? analytics.error;
-  if (health.isLoading && runs.isLoading && analytics.isLoading) return <LoadingState />;
-  if (error && !health.data && !runs.data && !analytics.data)
+
+  const brandTable = useReactTable({
+    data: brandRows,
+    columns: brandColumns,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      resetPage();
+    },
+    manualSorting: true,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  const currentQuery = viewMode === 'models' ? analytics : brandAnalytics;
+  const currentRows = viewMode === 'models' ? rows : brandRows;
+  const error = health.error ?? runs.error ?? currentQuery.error;
+  if (health.isLoading && runs.isLoading && currentQuery.isLoading) return <LoadingState />;
+  if (error && !health.data && !runs.data && !currentQuery.data)
     return (
       <ErrorState
         error={error}
@@ -309,40 +452,70 @@ export function Dashboard({
       {/* Filters */}
       <Card className="order-2 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-[var(--text-primary)]">{t('rankedResults')}</h2>
-            <p className="mt-0.5 text-sm text-[var(--text-muted)]">{t('rankedResultsHint')}</p>
+          <div className="space-y-2">
+            <div>
+              <h2 className="font-semibold text-[var(--text-primary)]">{t('rankedResults')}</h2>
+              <p className="mt-0.5 text-sm text-[var(--text-muted)]">{t('rankedResultsHint')}</p>
+            </div>
+            {/* View Mode Toggle */}
+            <div className="inline-flex rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-0.5">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  viewMode === 'models'
+                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  setViewMode('models');
+                  resetPage();
+                }}
+              >
+                {t('byModels')}
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  viewMode === 'brands'
+                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  setViewMode('brands');
+                  resetPage();
+                }}
+              >
+                {t('byBrands')}
+              </button>
+            </div>
           </div>
           <span aria-live="polite" className="text-sm tabular-nums text-[var(--text-muted)]">
-            {analytics.isLoading
-              ? t('loading')
-              : `${analytics.data?.total ?? 0} ${t(showLowData ? 'modelsFound' : 'scoredModels')}`}
-            {(analytics.data?.total ?? 0) > rows.length
-              ? ` · ${offset + 1}–${Math.min(offset + rows.length, analytics.data?.total ?? 0)}`
-              : ''}
+            {currentQuery.isLoading ? t('loading') : `${t('shown')}: ${currentRows.length}`}
           </span>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            {t('brand')}
-            <select
-              id="dashboard-brand"
-              name="brand_id"
-              className="min-h-10 max-w-56 rounded-lg"
-              value={brandId ?? ''}
-              onChange={(event) => {
-                setBrandId(event.target.value ? Number(event.target.value) : undefined);
-                setOffset(0);
-              }}
-            >
-              <option value="">{t('allBrands')}</option>
-              {brands.data?.data.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {viewMode === 'models' && (
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              {t('brand')}
+              <select
+                id="dashboard-brand"
+                name="brand_id"
+                className="min-h-10 max-w-56 rounded-lg"
+                value={brandId ?? ''}
+                onChange={(event) => {
+                  setBrandId(event.target.value ? Number(event.target.value) : undefined);
+                  resetPage();
+                }}
+              >
+                <option value="">{t('allBrands')}</option>
+                {brands.data?.data.map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
             {t('productType')}
             <select
@@ -354,7 +527,7 @@ export function Dashboard({
                 setProductType(
                   (event.target.value || undefined) as DashboardProductType | undefined,
                 );
-                setOffset(0);
+                resetPage();
               }}
             >
               <option value="">{t('allProductTypes')}</option>
@@ -372,7 +545,7 @@ export function Dashboard({
               value={windowDays}
               onChange={(e) => {
                 setWindowDays(Number(e.target.value));
-                setOffset(0);
+                resetPage();
               }}
             >
               <option value={30}>30</option>
@@ -393,7 +566,7 @@ export function Dashboard({
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setOffset(0);
+                resetPage();
               }}
             />
             {search && (
@@ -402,7 +575,7 @@ export function Dashboard({
                 className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 onClick={() => {
                   setSearch('');
-                  setOffset(0);
+                  resetPage();
                 }}
                 type="button"
               >
@@ -417,7 +590,7 @@ export function Dashboard({
               checked={showLowData}
               onChange={(event) => {
                 setShowLowData(event.target.checked);
-                setOffset(0);
+                resetPage();
               }}
               type="checkbox"
             />
@@ -426,60 +599,102 @@ export function Dashboard({
         </div>
       </Card>
 
-      {/* Model table */}
-      <DataTable
-        className={`order-4 min-h-[420px] transition-opacity ${analytics.isFetching ? 'opacity-60' : ''}`}
-      >
-        <TableHead>
-          {table.getHeaderGroups().map((group) => (
-            <tr key={group.id}>
-              {group.headers.map((header) => (
-                <TableHeaderCell
-                  key={header.id}
-                  onClick={
-                    header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined
-                  }
-                  sortDir={header.column.getIsSorted()}
-                >
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHeaderCell>
-              ))}
-            </tr>
-          ))}
-        </TableHead>
-        <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </tbody>
-      </DataTable>
-      {(analytics.data?.total ?? 0) > (analytics.data?.limit ?? 50) && (
+      {/* Table */}
+      {viewMode === 'models' ? (
+        <DataTable
+          className={`order-4 min-h-[420px] transition-opacity ${analytics.isFetching ? 'opacity-60' : ''}`}
+        >
+          <TableHead>
+            {modelTable.getHeaderGroups().map((group) => (
+              <tr key={group.id}>
+                {group.headers.map((header) => (
+                  <TableHeaderCell
+                    key={header.id}
+                    onClick={
+                      header.column.getCanSort()
+                        ? header.column.getToggleSortingHandler()
+                        : undefined
+                    }
+                    sortDir={header.column.getIsSorted()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHeaderCell>
+                ))}
+              </tr>
+            ))}
+          </TableHead>
+          <tbody>
+            {modelTable.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </tbody>
+        </DataTable>
+      ) : (
+        <DataTable
+          className={`order-4 min-h-[420px] transition-opacity ${brandAnalytics.isFetching ? 'opacity-60' : ''}`}
+        >
+          <TableHead>
+            {brandTable.getHeaderGroups().map((group) => (
+              <tr key={group.id}>
+                {group.headers.map((header) => (
+                  <TableHeaderCell
+                    key={header.id}
+                    onClick={
+                      header.column.getCanSort()
+                        ? header.column.getToggleSortingHandler()
+                        : undefined
+                    }
+                    sortDir={header.column.getIsSorted()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHeaderCell>
+                ))}
+              </tr>
+            ))}
+          </TableHead>
+          <tbody>
+            {brandTable.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </tbody>
+        </DataTable>
+      )}
+      {viewMode === 'models' && (page > 0 || analytics.data?.next_cursor) && (
         <div className="order-5 flex items-center justify-end gap-2">
           <Button
             variant="secondary"
-            disabled={offset === 0 || analytics.isFetching}
-            onClick={() => setOffset(Math.max(0, offset - analytics.data!.limit))}
+            disabled={page === 0 || analytics.isFetching}
+            onClick={() => setPage((current) => Math.max(0, current - 1))}
           >
             {t('previous')}
           </Button>
           <Button
             variant="secondary"
-            disabled={
-              analytics.isFetching || offset + analytics.data!.limit >= analytics.data!.total
-            }
-            onClick={() => setOffset(offset + analytics.data!.limit)}
+            disabled={!analytics.data?.next_cursor || analytics.isFetching}
+            onClick={() => {
+              const next = analytics.data?.next_cursor;
+              if (!next) return;
+              setCursors((current) => [...current.slice(0, page + 1), next]);
+              setPage((current) => current + 1);
+            }}
           >
             {t('next')}
           </Button>
         </div>
       )}
-      {!analytics.isLoading && !rows.length && (
+      {!currentQuery.isLoading && !currentRows.length && (
         <div className="order-5">
           <EmptyState />
         </div>

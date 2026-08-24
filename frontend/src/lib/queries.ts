@@ -2,10 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { getApi, getHealthApi } from '@/lib/api';
 import type {
   ApiHealth,
+  BrandAnalyticsList,
   BrandList,
   DashboardRow,
+  CursorPage,
   ModelGroupDetail,
-  ModelRule,
   ParserHealth,
   RunList,
   SettingsResponse,
@@ -59,11 +60,12 @@ export function useDashboardQuery(
   windowDays: number = 90,
   search: string = '',
   scoredOnly: boolean = true,
-  offset: number = 0,
+  cursor: string | null = null,
   sortBy: string = 'demand_score',
   sortDesc: boolean = true,
   brandId?: number,
   productType?: DashboardProductType,
+  enabled: boolean = true,
 ) {
   return useQuery({
     queryKey: [
@@ -71,28 +73,58 @@ export function useDashboardQuery(
       windowDays,
       search,
       scoredOnly,
-      offset,
+      cursor,
       sortBy,
       sortDesc,
       brandId,
       productType,
     ],
     queryFn: ({ signal }) =>
-      getApi<{ data: DashboardRow[]; total: number; limit: number; offset: number }>(
+      getApi<CursorPage<DashboardRow>>(
         `/analytics/dashboard?${new URLSearchParams({
           window_days: String(windowDays),
           limit: '50',
-          offset: String(offset),
           scored_only: String(scoredOnly),
           sort_by: sortBy,
           sort_desc: String(sortDesc),
           search,
+          ...(cursor ? { cursor } : {}),
           ...(brandId ? { brand_id: String(brandId) } : {}),
           ...(productType ? { product_type: productType } : {}),
         })}`,
         signal,
       ),
     placeholderData: (previousData) => previousData,
+    enabled,
+  });
+}
+
+export function useBrandDashboardQuery(
+  windowDays: number = 90,
+  search: string = '',
+  scoredOnly: boolean = true,
+  sortBy: string = 'demand_score',
+  sortDesc: boolean = true,
+  productType?: DashboardProductType,
+  enabled: boolean = true,
+) {
+  return useQuery({
+    queryKey: ['brand-dashboard', windowDays, search, scoredOnly, sortBy, sortDesc, productType],
+    queryFn: ({ signal }) =>
+      getApi<BrandAnalyticsList>(
+        `/analytics/brands?${new URLSearchParams({
+          window_days: String(windowDays),
+          limit: '200',
+          scored_only: String(scoredOnly),
+          sort_by: sortBy,
+          sort_desc: String(sortDesc),
+          search,
+          ...(productType ? { product_type: productType } : {}),
+        })}`,
+        signal,
+      ),
+    placeholderData: (previousData) => previousData,
+    enabled,
   });
 }
 
@@ -115,12 +147,5 @@ export function useSettingsQuery() {
   return useQuery({
     queryKey: ['settings'],
     queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
-  });
-}
-
-export function useModelRulesQuery() {
-  return useQuery({
-    queryKey: ['rules'],
-    queryFn: ({ signal }) => getApi<ModelRule[]>('/model-rules', signal),
   });
 }

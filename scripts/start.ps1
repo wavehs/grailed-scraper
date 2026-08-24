@@ -1,4 +1,4 @@
-﻿﻿# ==============================================================================
+# ==============================================================================
 # Grailed Liquidity Analyzer - Interactive Launcher & Process Supervisor
 # ==============================================================================
 [CmdletBinding()]
@@ -72,9 +72,38 @@ function Stop-PortProcesses([int]$Port) {
     } catch {}
 }
 
+function Start-DesktopApp {
+    Show-Banner
+    Write-Color ">> Запуск нативного Десктопного приложения..." Green
+    Write-Host ""
+
+    Stop-PortProcesses 8000
+
+    # Check if compiled frontend exists, if not build it
+    if (-not (Test-Path (Join-Path $RootDir "frontend\out\index.html"))) {
+        Write-Host "Сборка встроенного интерфейса Next.js..." -ForegroundColor Cyan
+        Push-Location (Join-Path $RootDir "frontend")
+        try {
+            $pnpmCmd = if (Get-Command "pnpm.cmd" -ErrorAction SilentlyContinue) { "pnpm.cmd" } else { "pnpm" }
+            & $pnpmCmd run build
+        } finally {
+            Pop-Location
+        }
+    }
+
+    Write-Host "Открытие нативного окна программы (Microsoft Edge WebView2)..." -ForegroundColor Yellow
+    Push-Location (Join-Path $RootDir "backend")
+    try {
+        & $VenvPython -m app.desktop
+    } finally {
+        Pop-Location
+        Stop-PortProcesses 8000
+    }
+}
+
 function Start-ProductionApp {
     Show-Banner
-    Write-Color ">> Запуск приложения в Production режиме..." Green
+    Write-Color ">> Запуск веб-версии приложения в браузере..." Green
     Write-Host ""
     
     Stop-PortProcesses 8000
@@ -234,6 +263,18 @@ function Run-DoctorAndChecks {
     $null = [Console]::ReadKey($true)
 }
 
+function Build-DesktopExecutable {
+    Show-Banner
+    Write-Color ">> Сборка автономного GrailedAnalyzer.exe..." Cyan
+    Write-Host ""
+
+    & (Join-Path $RootDir "installer\windows\build_desktop_exe.ps1")
+
+    Write-Host ""
+    Write-Host "Нажмите любую клавишу для возврата в меню..."
+    $null = [Console]::ReadKey($true)
+}
+
 function Update-Dependencies {
     Show-Banner
     Write-Color ">> Быстрое обновление зависимостей и накатывание миграций..." Cyan
@@ -307,7 +348,11 @@ function Manage-Database {
 # --- Main Dispatcher ---
 Test-Prerequisites
 
-if ($Mode -eq "run") {
+if ($Mode -eq "desktop") {
+    Start-DesktopApp
+    exit 0
+}
+if ($Mode -eq "run" -or $Mode -eq "web") {
     Start-ProductionApp
     exit 0
 }
@@ -319,26 +364,32 @@ if ($Mode -eq "dev") {
 while ($true) {
     Show-Banner
     Write-Host "  [1] " -NoNewline -ForegroundColor Green
-    Write-Host "Запустить приложение (Production: Backend + Frontend)"
-    Write-Host "  [2] " -NoNewline -ForegroundColor Yellow
+    Write-Host "Запустить Desktop-приложение (Нативное окно без браузера)"
+    Write-Host "  [2] " -NoNewline -ForegroundColor Green
+    Write-Host "Запустить веб-версию (в браузере)"
+    Write-Host "  [3] " -NoNewline -ForegroundColor Yellow
     Write-Host "Запустить в режиме разработки (Dev mode)"
-    Write-Host "  [3] " -NoNewline -ForegroundColor Cyan
-    Write-Host "Проверка здоровья (Doctor) и запуск тестов"
     Write-Host "  [4] " -NoNewline -ForegroundColor Cyan
+    Write-Host "Проверка здоровья (Doctor) и запуск тестов"
+    Write-Host "  [5] " -NoNewline -ForegroundColor Cyan
+    Write-Host "Скомпилировать автономный GrailedAnalyzer.exe"
+    Write-Host "  [6] " -NoNewline -ForegroundColor Cyan
     Write-Host "Обновить зависимости и накат миграций"
-    Write-Host "  [5] " -NoNewline -ForegroundColor Magenta
+    Write-Host "  [7] " -NoNewline -ForegroundColor Magenta
     Write-Host "Управление базой данных (Бэкап / Retention / Rebuild)"
     Write-Host "  [0] " -NoNewline -ForegroundColor Red
     Write-Host "Выход"
     Write-Host ""
 
-    $choice = Read-Host "Выберите пункт меню [1, 2, 3, 4, 5, 0]"
+    $choice = Read-Host "Выберите пункт меню [1, 2, 3, 4, 5, 6, 7, 0]"
     switch ($choice) {
-        "1" { Start-ProductionApp }
-        "2" { Start-DevApp }
-        "3" { Run-DoctorAndChecks }
-        "4" { Update-Dependencies }
-        "5" { Manage-Database }
+        "1" { Start-DesktopApp }
+        "2" { Start-ProductionApp }
+        "3" { Start-DevApp }
+        "4" { Run-DoctorAndChecks }
+        "5" { Build-DesktopExecutable }
+        "6" { Update-Dependencies }
+        "7" { Manage-Database }
         "0" { exit 0 }
         default { Write-Warn "Неверный выбор. Повторите попытку."; Start-Sleep -Seconds 1 }
     }

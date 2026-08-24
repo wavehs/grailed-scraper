@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
-  BookOpen,
   Database,
-  Fingerprint,
   LayoutDashboard,
   Menu,
   Moon,
@@ -31,13 +29,6 @@ const navItems: NavItem[] = [
   { key: 'catalog', href: '/listings', icon: <Database size={18} />, group: 'analytics' },
   { key: 'brands', href: '/brands', icon: <Tags size={18} />, group: 'management' },
   { key: 'parserRuns', href: '/parser-runs', icon: <Play size={18} />, group: 'management' },
-  { key: 'modelRules', href: '/model-rules', icon: <BookOpen size={18} />, group: 'management' },
-  {
-    key: 'identityReview',
-    href: '/identity-review',
-    icon: <Fingerprint size={18} />,
-    group: 'management',
-  },
   { key: 'settings', href: '/settings', icon: <Settings size={18} />, group: 'system' },
 ];
 

@@ -1,0 +1,43 @@
+{
+  "source": "grailed",
+  "checked_at": "2026-08-14",
+  "brand": "Rick Owens",
+  "discovery_status": "ready",
+  "discovery_method": "intercept",
+  "acl": [
+    "search"
+  ],
+  "can_browse": false,
+  "pagination_limit": 1000,
+  "max_hits_per_page": 1000,
+  "active": {
+    "index": "Listing_production",
+    "strategy": "keyset",
+    "sorted_index": "Listing_by_date_added_production",
+    "key_attribute": "created_at_i",
+    "live_expected_hits": 47503
+  },
+  "sold": {
+    "index": "Listing_sold_production",
+    "strategy": "range_split",
+    "sorted_index": null,
+    "key_attribute": "sold_at_i",
+    "live_expected_hits": 91750
+  },
+  "validated_sorted_indices": [
+    "Listing_by_date_added_production",
+    "Listing_by_low_price_production",
+    "Listing_by_high_price_production"
+  ],
+  "missing_candidates": [
+    "Listing_by_popularity_production",
+    "Listing_sold_by_date_added_production"
+  ],
+  "t1_canary": {
+    "fetched": 50,
+    "valid": 50,
+    "rejected": 0
+  },
+  "credentials_included": false,
+  "seller_pii_included": false
+}

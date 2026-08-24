@@ -199,6 +199,36 @@ export type DashboardRow = {
   run_id: number;
 };
 
+export type CursorPage<T> = {
+  data: T[];
+  limit: number;
+  next_cursor: string | null;
+};
+
+export type BrandAnalyticsRow = {
+  id: number;
+  name: string;
+  groups_count: number;
+  sold_count: number;
+  exact_sold_count: number;
+  active_count: number;
+  median_sold_price: number | null;
+  median_days_to_sell: string | null;
+  median_sold_likes: string | null;
+  sell_through?: string | null;
+  demand_score: string | null;
+  liquidity_score: string | null;
+  confidence_score: string;
+  market_opportunity_score: string | null;
+  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
+  average_liquidity_score?: string | null;
+  average_demand_score?: string | null;
+  average_confidence_score?: string;
+  average_market_opportunity_score?: string | null;
+};
+
+export type BrandAnalyticsList = CursorPage<BrandAnalyticsRow>;
+
 export type ScoreComponent = {
   score: string;
   weight?: string;
@@ -212,6 +242,14 @@ export type ListingExample = {
   price: number;
   likes: number;
   sold_at?: string;
+  created_at?: string;
+  days_on_market?: number | null;
+};
+export type VariantPerformance = {
+  value: string | null;
+  sold_count: number;
+  active_count: number;
+  sell_through: string;
 };
 export type ModelGroupDetail = {
   id: number;
@@ -223,6 +261,10 @@ export type ModelGroupDetail = {
   window_days: number;
   run_id: number;
   input_digest: string;
+  variant_breakdown: {
+    colors: VariantPerformance[];
+    sizes: VariantPerformance[];
+  };
   metrics: {
     sold_count: number;
     exact_sold_count: number;
@@ -244,55 +286,6 @@ export type ModelGroupDetail = {
   };
   sold_examples: ListingExample[];
   active_examples: ListingExample[];
-};
-
-export type ModelRule = {
-  id: number;
-  group_id: number;
-  brand_id: number;
-  name: string;
-  include_keywords: string[];
-  exclude_keywords: string[];
-  category?: string;
-  is_active: boolean;
-  matches_count: number;
-};
-export type RuleMatch = { id: number; title: string; status: string };
-
-export type IdentityListing = {
-  id: number;
-  grailed_id: number;
-  title: string;
-  status: string;
-  price: number;
-  brand: string;
-  category?: string;
-  size?: string;
-  color?: string;
-  cover_photo_url?: string;
-};
-export type IdentityCandidate = {
-  id: number;
-  level: 'model' | 'physical';
-  relation_type?: 'relist';
-  status: 'pending' | 'auto_confirmed' | 'confirmed' | 'rejected';
-  confidence: string;
-  evidence: Record<string, unknown>;
-  left: IdentityListing;
-  right: IdentityListing;
-};
-export type IdentityCandidateList = {
-  data: IdentityCandidate[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-export type IdentityHistory = {
-  listing: IdentityListing;
-  model_group?: { id: number; name: string; type: string; method: string; confidence: string };
-  physical_item_id?: number;
-  members: IdentityListing[];
-  matches: Array<Record<string, unknown>>;
 };
 
 export type SettingOrigin = 'default' | 'env' | 'database';
@@ -328,14 +321,10 @@ export type CatalogListing = {
   created_at?: string;
   sold_at?: string;
   last_seen_at: string;
+  days_on_market?: number | null;
   model_group_id?: number;
   model_name?: string;
   model_sold_count: number;
   model_active_count: number;
 };
-export type CatalogListingList = {
-  data: CatalogListing[];
-  total: number;
-  limit: number;
-  offset: number;
-};
+export type CatalogListingList = CursorPage<CatalogListing>;

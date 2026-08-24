@@ -1,0 +1,293 @@
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v24.19.0","pnpm":"9.15.9"})
+
+> grailed-liquidity-analyzer-frontend@ dev C:\Users\Alex\Documents\IDE\parser\frontend
+> next dev
+
+   ▲ Next.js 15.5.21
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.52:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.1s
+ ○ Compiling / ...
+ ✓ Compiled / in 3.7s (774 modules)
+ GET / 200 in 4627ms
+ GET / 200 in 204ms
+ GET / 200 in 114ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1949ms (820 modules)
+ GET /dashboard 200 in 2158ms
+ ○ Compiling /brands ...
+ ✓ Compiled /brands in 727ms (835 modules)
+ GET /brands 200 in 918ms
+ ○ Compiling /identity-review ...
+ ✓ Compiled /identity-review in 1235ms (846 modules)
+ GET /identity-review 200 in 1463ms
+ ○ Compiling /parser-runs ...
+ ✓ Compiled /parser-runs in 874ms (873 modules)
+ GET /parser-runs 200 in 987ms
+ GET /dashboard 200 in 98ms
+ GET /dashboard 200 in 33ms
+ GET /dashboard 200 in 38ms
+ GET /brands 200 in 79ms
+ GET /parser-runs 200 in 66ms
+ GET /brands 200 in 56ms
+ GET /parser-runs 200 in 38ms
+ ○ Compiling /model-rules ...
+ ✓ Compiled /settings in 5.4s (914 modules)
+ GET /settings 200 in 2645ms
+ GET /model-rules 200 in 5668ms
+ GET /settings 200 in 75ms
+ GET /settings 200 in 68ms
+ GET /settings 200 in 270ms
+ GET /settings 200 in 43ms
+ GET /brands 200 in 54ms
+ GET /parser-runs 200 in 85ms
+ GET /brands 200 in 42ms
+ GET /dashboard 200 in 90ms
+ GET /brands 200 in 43ms
+ GET /model-rules 200 in 48ms
+ GET /identity-review 200 in 88ms
+ GET /brands 200 in 53ms
+ GET /identity-review 200 in 43ms
+ GET /model-rules 200 in 47ms
+ GET /dashboard 200 in 43ms
+ GET /brands 200 in 43ms
+ GET /dashboard 200 in 40ms
+ GET /brands 200 in 39ms
+ GET /dashboard 200 in 42ms
+ GET /dashboard 200 in 39ms
+ GET /dashboard 200 in 38ms
+ GET /brands 200 in 38ms
+ GET /dashboard 200 in 43ms
+ GET /brands 200 in 113ms
+ GET /parser-runs 200 in 53ms
+ GET /settings 200 in 44ms
+ GET /dashboard 200 in 187ms
+ GET /parser-runs 200 in 77ms
+ GET /parser-runs 200 in 42ms
+ ✓ Compiled in 2.8s (909 modules)
+ GET /parser-runs 200 in 215ms
+ GET /parser-runs 200 in 52ms
+ ✓ Compiled in 2.6s (911 modules)
+ GET /parser-runs 200 in 2228ms
+ GET /parser-runs 200 in 54ms
+ ✓ Compiled in 928ms (911 modules)
+ GET /parser-runs 200 in 281ms
+ ✓ Compiled in 3.9s (911 modules)
+ GET /parser-runs 200 in 302ms
+ ✓ Compiled in 1660ms (911 modules)
+ GET /parser-runs 200 in 274ms
+ ✓ Compiled in 1021ms (911 modules)
+ GET /parser-runs 200 in 144ms
+ ✓ Compiled in 4.3s (911 modules)
+ GET /parser-runs 200 in 683ms
+ ✓ Compiled in 1439ms (911 modules)
+ GET /parser-runs 200 in 323ms
+ ✓ Compiled in 1326ms (911 modules)
+ GET /parser-runs 200 in 247ms
+ ✓ Compiled in 807ms (911 modules)
+ GET /parser-runs 200 in 218ms
+ ✓ Compiled in 329ms (380 modules)
+ GET /parser-runs 200 in 84ms
+ ✓ Compiled in 1188ms (911 modules)
+ GET /parser-runs 200 in 195ms
+ GET /parser-runs 200 in 469ms
+ ○ Compiling /listings ...
+ ✓ Compiled /listings in 2.1s (906 modules)
+ GET /listings 200 in 2335ms
+ GET /parser-runs 200 in 69ms
+ GET /brands 200 in 55ms
+ GET /parser-runs 200 in 38ms
+ GET /dashboard 200 in 56ms
+ GET /parser-runs 200 in 36ms
+ GET /settings 200 in 70ms
+ GET /brands 200 in 62ms
+ GET /parser-runs 200 in 49ms
+ ✓ Compiled in 1167ms (908 modules)
+ GET /parser-runs 200 in 198ms
+ ✓ Compiled in 956ms (908 modules)
+ GET /parser-runs 200 in 210ms
+ ✓ Compiled in 514ms (908 modules)
+ GET /parser-runs 200 in 84ms
+ GET /parser-runs 200 in 359ms
+ GET /parser-runs 200 in 95ms
+ GET /parser-runs 200 in 358ms
+ GET /dashboard 200 in 81ms
+ GET /parser-runs 200 in 51ms
+ GET /parser-runs 200 in 242ms
+ GET /listings 200 in 111ms
+ ○ Compiling /model-groups/[id] ...
+ ✓ Compiled /model-groups/[id] in 15.5s (1935 modules)
+ GET /model-groups/5370 200 in 21846ms
+ GET /model-groups/474 200 in 12372ms
+ GET /dashboard 200 in 133ms
+ GET /parser-runs 200 in 195ms
+ GET /settings 200 in 81ms
+ ○ Compiling /model-rules ...
+ ✓ Compiled /model-rules in 2.1s (1052 modules)
+ GET /model-rules 200 in 2537ms
+ GET /model-rules 200 in 76ms
+ GET /model-rules 200 in 53ms
+ GET /parser-runs 200 in 66ms
+ GET /dashboard 200 in 88ms
+ GET /listings 200 in 178ms
+ ○ Compiling /identity-review ...
+ ✓ Compiled /identity-review in 2.2s (1059 modules)
+ GET /identity-review 200 in 2320ms
+ ✓ Compiled in 7.1s (1953 modules)
+ GET /identity-review 200 in 797ms
+ GET /listings 200 in 432ms
+ GET /dashboard 200 in 533ms
+ GET /listings 200 in 67ms
+ ✓ Compiled in 5.5s (1939 modules)
+ GET /listings 200 in 3545ms
+ GET /listings 200 in 1604ms
+ GET /dashboard 200 in 118ms
+ ✓ Compiled in 3.1s (902 modules)
+ GET /dashboard 200 in 129ms
+ GET /dashboard 200 in 572ms
+ ○ Compiling /settings ...
+ ✓ Compiled /settings in 2.7s (1048 modules)
+ GET /settings 200 in 3099ms
+ GET /settings 200 in 371ms
+ ○ Compiling /parser-runs ...
+ ✓ Compiled /parser-runs in 1625ms (537 modules)
+ GET /parser-runs 200 in 2097ms
+ ○ Compiling /brands ...
+ ✓ Compiled /brands in 2.7s (530 modules)
+ GET /brands 200 in 3417ms
+ GET /listings 200 in 2251ms
+ GET /listings 200 in 72ms
+ ○ Compiling /model-groups/[id] ...
+ ✓ Compiled /model-groups/[id] in 1563ms (1053 modules)
+ GET /model-groups/3430 200 in 2837ms
+ GET /model-groups/2264 200 in 64ms
+ GET /model-groups/172 200 in 67ms
+ GET /parser-runs 200 in 55ms
+ ✓ Compiled in 5.2s (1937 modules)
+ GET /parser-runs 200 in 248ms
+ ✓ Compiled in 917ms (902 modules)
+ GET /parser-runs 200 in 88ms
+ GET /parser-runs 200 in 488ms
+ GET /listings 200 in 65ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 5.3s (1048 modules)
+ GET /dashboard 200 in 5832ms
+ GET /dashboard 200 in 174ms
+ GET /parser-runs 200 in 66ms
+ ✓ Compiled in 4.8s (1950 modules)
+ GET /parser-runs 200 in 378ms
+ ✓ Compiled in 687ms (902 modules)
+ GET /parser-runs 200 in 101ms
+ ✓ Compiled in 1802ms (1944 modules)
+ GET /parser-runs 200 in 1481ms
+ GET /parser-runs 200 in 416ms
+ ○ Compiling /listings ...
+ ✓ Compiled /listings in 893ms (1048 modules)
+ GET /listings 200 in 1091ms
+ GET /parser-runs 200 in 50ms
+ ✓ Compiled in 2.9s (1943 modules)
+ GET /parser-runs 200 in 109ms
+ ✓ Compiled in 616ms (902 modules)
+ GET /parser-runs 200 in 77ms
+ GET /parser-runs 200 in 314ms
+ GET /parser-runs 200 in 371ms
+ GET /dashboard 200 in 88ms
+ GET /parser-runs 200 in 41ms
+ GET /dashboard 200 in 39ms
+ ○ Compiling /identity-review ...
+ ✓ Compiled /identity-review in 1772ms (1048 modules)
+ GET /identity-review 200 in 2585ms
+ GET /parser-runs 200 in 63ms
+ GET /identity-review 200 in 37ms
+ GET /listings 200 in 63ms
+ GET /listings 200 in 38ms
+ GET /model-groups/692 200 in 124ms
+ GET /dashboard 200 in 93ms
+ ✓ Compiled in 2.9s (902 modules)
+ GET /dashboard 200 in 203ms
+ ✓ Compiled in 7.1s (1941 modules)
+ GET /dashboard 200 in 516ms
+ ✓ Compiled in 620ms (902 modules)
+ GET /dashboard 200 in 100ms
+ GET /dashboard 200 in 70ms
+ GET /parser-runs 200 in 515ms
+ GET /listings 200 in 161ms
+ ○ Compiling /brands ...
+ ✓ Compiled /brands in 5.9s (1047 modules)
+ GET /brands 200 in 8315ms
+ GET /dashboard 200 in 6235ms
+ GET /dashboard 200 in 556ms
+ GET /dashboard 200 in 419ms
+ GET /dashboard 200 in 112ms
+ GET /parser-runs 200 in 47ms
+ GET /dashboard 200 in 39ms
+ GET /dashboard 200 in 306ms
+ GET /model-groups/913 200 in 99ms
+ GET /brands 200 in 30ms
+ GET /listings 200 in 42ms
+ GET /model-groups/871 200 in 46ms
+ GET /parser-runs 200 in 32ms
+ ✓ Compiled in 3.7s (1941 modules)
+ GET /parser-runs 200 in 215ms
+ GET /dashboard 200 in 66ms
+ GET /parser-runs 200 in 44ms
+ GET /parser-runs 200 in 451ms
+ GET /parser-runs 200 in 155ms
+ GET /listings 200 in 59ms
+ GET /dashboard 200 in 70ms
+ GET /parser-runs 200 in 40ms
+ GET /dashboard 200 in 62ms
+ GET /identity-review 200 in 149ms
+ GET /dashboard 200 in 38ms
+ GET /listings 200 in 49ms
+ GET /dashboard 200 in 46ms
+ GET /dashboard 200 in 68ms
+ GET /dashboard 200 in 56ms
+ GET /dashboard 200 in 62ms
+ GET /dashboard 200 in 55ms
+ GET /parser-runs 200 in 54ms
+ GET /identity-review 200 in 60ms
+ GET /dashboard 200 in 39ms
+ ○ Compiling /brands ...
+ ✓ Compiled /brands in 1785ms (1047 modules)
+ GET /brands 200 in 2562ms
+ GET /parser-runs 200 in 816ms
+ GET /parser-runs 200 in 112ms
+ GET /parser-runs 200 in 188ms
+ GET /dashboard 200 in 82ms
+ GET /listings 200 in 105ms
+ GET /dashboard 200 in 55ms
+ GET /listings 200 in 47ms
+ GET /model-groups/348 200 in 125ms
+ GET /dashboard 200 in 62ms
+ GET /listings 200 in 58ms
+ GET /model-groups/348 200 in 112ms
+ GET /dashboard 200 in 107ms
+ GET /listings 200 in 237ms
+ GET /dashboard 200 in 131ms
+ ✓ Compiled in 14.2s (1941 modules)
+ GET /dashboard 200 in 872ms
+ GET /listings 200 in 537ms
+ ○ Compiling /model-rules ...
+ ✓ Compiled /settings in 3.2s (1047 modules)
+ ✓ Compiled (1066 modules)
+ ○ Compiling /_error ...
+ GET /brands 200 in 12687ms
+ GET /model-rules 200 in 12703ms
+ GET /settings 200 in 12054ms
+ ✓ Compiled /_error in 14.5s (2300 modules)
+ GET /identity-review 500 in 27116ms
+ GET /parser-runs 500 in 27155ms
+ GET /model-groups/15856 500 in 14096ms
+ GET /model-groups/2677 500 in 13950ms
+ GET /model-groups/1957 500 in 13337ms
+ GET /model-groups/6083 200 in 2108ms
+ GET /model-groups/25363 200 in 2113ms
+ GET /model-groups/14338 200 in 2127ms
+ GET /model-groups/26852 200 in 2129ms
+ GET /model-groups/22191 200 in 2141ms
+ GET /model-groups/15856 200 in 2346ms
+ GET /model-groups/15856 500 in 1202ms

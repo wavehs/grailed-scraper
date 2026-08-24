@@ -23,15 +23,15 @@ from app.db.models import (
     Base,
     Brand,
     Listing,
+    ListingModelAssignment,
     ListingPriceHistory,
-    ModelGroup,
-    ModelRule,
     ParserRun,
     ParserRunTask,
     ScoringSnapshot,
 )
 from app.db.session import get_db
 from app.main import app
+from app.services.identity.service import IdentityResolver
 from app.services.scoring.calculator import (
     confidence_score,
     engagement_score,
@@ -39,7 +39,7 @@ from app.services.scoring.calculator import (
     ratio_score,
     velocity_score,
 )
-from app.services.scoring.service import OpportunityScoringService, rule_matches
+from app.services.scoring.service import OpportunityScoringService
 
 AS_OF = datetime(2026, 8, 8, 12, tzinfo=UTC)
 
@@ -61,24 +61,6 @@ def test_decimal_formula_boundaries_are_absolute_and_frequency_capped() -> None:
         degraded=True,
         truncated=True,
     ) == Decimal("69.00")
-
-
-def test_rule_matching_is_normalized_and_category_aware() -> None:
-    rule = ModelRule(
-        id=2,
-        group_id=2,
-        brand_id=1,
-        name="Jackets",
-        include_keywords=["Défilé", "jacket"],
-        exclude_keywords=["kids"],
-        category="Outerwear",
-        is_active=True,
-        created_at=AS_OF,
-        updated_at=AS_OF,
-    )
-    assert rule_matches(rule, "Defile leather JACKET", "outerwear")
-    assert not rule_matches(rule, "Defile kids jacket", "outerwear")
-    assert not rule_matches(rule, "Defile leather jacket", "tops")
 
 
 async def _database(
@@ -104,6 +86,8 @@ def _listing(
     sold_days_ago: int | None = None,
     flags: list[str] | None = None,
     no_photos: bool = False,
+    size: str = "M",
+    color: str | None = "Black",
 ) -> Listing:
     sold_at = AS_OF - timedelta(days=sold_days_ago) if sold_days_ago is not None else None
     created_at = AS_OF - timedelta(days=created_days_ago)
@@ -120,10 +104,11 @@ def _listing(
         brand_id=brand_id,
         category=category,
         subcategory=None,
-        size_raw="M",
-        size_normalized="M",
+        size_raw=size,
+        size_normalized=size,
         condition_raw="Used",
         condition="used",
+        color=color,
         price=Decimal(price),
         price_original=Decimal(price),
         currency_original="USD",
@@ -195,52 +180,6 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                 for index_type in ("active", "sold")
             ]
         )
-        generic_group = ModelGroup(
-            stable_key="rule:generic",
-            brand_id=brand.id,
-            name="Archive",
-            category=None,
-            group_type="rule",
-            created_at=AS_OF,
-            updated_at=AS_OF,
-        )
-        specific_group = ModelGroup(
-            stable_key="rule:specific",
-            brand_id=brand.id,
-            name="Archive Jackets",
-            category="outerwear",
-            group_type="rule",
-            created_at=AS_OF,
-            updated_at=AS_OF,
-        )
-        session.add_all([generic_group, specific_group])
-        await session.flush()
-        session.add_all(
-            [
-                ModelRule(
-                    group_id=generic_group.id,
-                    brand_id=brand.id,
-                    name="Archive",
-                    include_keywords=["archive"],
-                    exclude_keywords=[],
-                    category=None,
-                    is_active=True,
-                    created_at=AS_OF,
-                    updated_at=AS_OF,
-                ),
-                ModelRule(
-                    group_id=specific_group.id,
-                    brand_id=brand.id,
-                    name="Archive Jackets",
-                    include_keywords=["archive", "jacket"],
-                    exclude_keywords=[],
-                    category="outerwear",
-                    is_active=True,
-                    created_at=AS_OF,
-                    updated_at=AS_OF,
-                ),
-            ]
-        )
         session.add_all(
             [
                 _listing(
@@ -254,6 +193,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     created_days_ago=20,
                     sold_days_ago=5,
                     no_photos=True,
+                    size="M",
+                    color="Black",
                 ),
                 _listing(
                     listing_id=1002,
@@ -264,6 +205,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     status="active",
                     price="120.00",
                     created_days_ago=2,
+                    size="M",
+                    color="Black",
                 ),
                 _listing(
                     listing_id=1003,
@@ -275,6 +218,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     price="80.00",
                     created_days_ago=15,
                     sold_days_ago=4,
+                    size="S",
+                    color=None,
                 ),
                 _listing(
                     listing_id=1004,
@@ -285,6 +230,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     status="active",
                     price="300.00",
                     created_days_ago=3,
+                    size="42",
+                    color="Milk",
                 ),
                 _listing(
                     listing_id=1005,
@@ -297,6 +244,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     created_days_ago=10,
                     sold_days_ago=2,
                     flags=["possible_replica"],
+                    size="L",
+                    color="Red",
                 ),
                 _listing(
                     listing_id=1006,
@@ -308,6 +257,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     price="110.00",
                     created_days_ago=1,
                     flags=["repost"],
+                    size="L",
+                    color="Red",
                 ),
                 _listing(
                     listing_id=1007,
@@ -319,6 +270,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     price="130.00",
                     created_days_ago=18,
                     sold_days_ago=3,
+                    size="L",
+                    color="Red",
                 ),
                 _listing(
                     listing_id=1008,
@@ -330,6 +283,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     price="140.00",
                     created_days_ago=12,
                     sold_days_ago=1,
+                    size="M",
+                    color="Black",
                 ),
                 _listing(
                     listing_id=1009,
@@ -340,11 +295,23 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
                     status="active",
                     price="310.00",
                     created_days_ago=60,
+                    size="43",
+                    color="Milk",
                 ),
             ]
         )
+        await session.flush()
+        await IdentityResolver(session, get_settings()).resolve_run(run.id)
+        specific_group_id = int(
+            await session.scalar(
+                select(ListingModelAssignment.model_group_id)
+                .join(Listing, Listing.id == ListingModelAssignment.listing_id)
+                .where(Listing.grailed_id == 1001)
+            )
+            or 0
+        )
         await session.commit()
-        return run.id, brand.id, specific_group.id
+        return run.id, brand.id, specific_group_id
 
 
 async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -356,7 +323,7 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
     assert first == second
     assert first == {
         "status": "completed",
-        "model_version": "market-v4",
+        "model_version": "market-v5",
         "windows": [30, 90],
         "groups": 3,
         "snapshots": 6,
@@ -394,6 +361,10 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
         "no_photos": 1,
         "price_excluded": 0,
     }
+    assert specific.variant_breakdown["sizes"][:2] == [
+        {"value": "m", "sold_count": 2, "active_count": 1, "sell_through": "0.666667"},
+        {"value": "l", "sold_count": 1, "active_count": 1, "sell_through": "0.500000"},
+    ]
     assert specific.confidence_score < 100
     assert specific.scoring_status == "scored"
     assert specific.demand_score is not None
@@ -407,7 +378,7 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
     await engine.dispose()
 
 
-def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_stage9_analytics_api_uses_exact_cents(tmp_path) -> None:  # type: ignore[no-untyped-def]
     async def scenario() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], int, int, int]:
         engine, factory = await _database(tmp_path)
         run_id, brand_id, group_id = await _seed(factory)
@@ -450,19 +421,37 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
         brands = client.get("/api/analytics/brands?window_days=30")
         brand = client.get(f"/api/analytics/brands/{brand_id}?window_days=30")
         listing = client.get(f"/api/analytics/listings/{listing_id}")
-        catalog = client.get("/api/analytics/listings?search=boots")
-        history = client.get(f"/api/analytics/listings/{listing_id}/price-history")
-        created = client.post(
-            "/api/model-rules",
-            json={
-                "brand_id": brand_id,
-                "name": "Boots",
-                "include_keywords": ["boots"],
-                "exclude_keywords": [],
+        catalog = client.get("/api/analytics/listings")
+        catalog_first = client.get("/api/analytics/listings?limit=1")
+        catalog_cursor = catalog_first.json()["next_cursor"]
+
+        async def touch_last_seen() -> None:
+            async with factory() as session:
+                newest = await session.scalar(select(Listing).order_by(Listing.id.desc()))
+                assert newest is not None
+                newest.last_seen_at = AS_OF + timedelta(days=1)
+                await session.commit()
+
+        asyncio.run(touch_last_seen())
+        catalog_second = client.get(
+            "/api/analytics/listings", params={"limit": 1, "cursor": catalog_cursor}
+        )
+        invalid_catalog_cursor = client.get(
+            "/api/analytics/listings",
+            params={"limit": 1, "status": "sold", "cursor": catalog_cursor},
+        )
+        dashboard_first = client.get("/api/analytics/dashboard?window_days=30&limit=1")
+        dashboard_second = client.get(
+            "/api/analytics/dashboard",
+            params={
+                "window_days": 30,
+                "limit": 1,
+                "cursor": dashboard_first.json()["next_cursor"],
             },
         )
-        matches = client.get(f"/api/model-rules/{created.json()['id']}/matches")
-        deleted = client.delete(f"/api/model-rules/{created.json()['id']}")
+        history = client.get(f"/api/analytics/listings/{listing_id}/price-history")
+        removed_rules = client.get("/api/model-rules")
+        removed_identity = client.get("/api/identity/candidates")
     finally:
         app.dependency_overrides.clear()
     assert dashboard.status_code == 200, dashboard.text
@@ -470,19 +459,39 @@ def test_stage9_analytics_and_rule_api_use_exact_cents(tmp_path) -> None:  # typ
     assert len(dashboard.json()["data"]) == 3
     sold_counts = [item["sold_count"] for item in sorted_dashboard.json()["data"]]
     assert sold_counts == sorted(sold_counts)
-    assert filtered_dashboard.json()["total"] == 1
+    assert filtered_dashboard.json()["next_cursor"] is None
     assert filtered_dashboard.json()["data"][0]["category"] == "footwear"
     assert isinstance(detail.json()["metrics"]["median_sold_price"], int)
+    variants = detail.json()["variant_breakdown"]
+    assert (
+        sum(row["sold_count"] for row in variants["sizes"])
+        == detail.json()["metrics"]["sold_count"]
+    )
+    assert (
+        sum(row["active_count"] for row in variants["sizes"])
+        == detail.json()["metrics"]["active_count"]
+    )
+    assert brands.json()["next_cursor"] is None
     assert brands.json()["data"][0]["groups_count"] == 3
+    assert brands.json()["data"][0]["sold_count"] == 4
+    assert brands.json()["data"][0]["exact_sold_count"] == 4
+    assert brands.json()["data"][0]["active_count"] == 4
+    assert brands.json()["data"][0]["demand_score"] is not None
+    assert isinstance(brands.json()["data"][0]["median_sold_price"], int)
     assert brand.status_code == listing.status_code == history.status_code == 200
     assert isinstance(listing.json()["price"], int)
     assert catalog.status_code == 200
-    assert catalog.json()["total"] >= 1
+    assert catalog.json()["data"]
     assert isinstance(catalog.json()["data"][0]["price"], int)
+    assert catalog.json()["data"][0]["days_on_market"] is not None
+    assert catalog_first.json()["data"][0]["id"] != catalog_second.json()["data"][0]["id"]
+    assert invalid_catalog_cursor.status_code == 422
+    assert dashboard_first.json()["data"][0]["id"] != dashboard_second.json()["data"][0]["id"]
+    assert (
+        dashboard_first.json()["data"][0]["run_id"] == dashboard_second.json()["data"][0]["run_id"]
+    )
     assert history.json()["data"][0]["price"] == 9999
-    assert created.status_code == 201
-    assert len(matches.json()) == 2
-    assert deleted.status_code == 204
+    assert removed_rules.status_code == removed_identity.status_code == 404
     asyncio.run(engine.dispose())
 
 
@@ -497,7 +506,8 @@ async def test_stage9_model_exposes_tables_constraints_and_indexes(tmp_path) -> 
                 },
             }
         )
-    assert {"model_groups", "model_rules", "scoring_snapshots"} <= cast(set[str], schema["tables"])
+    assert {"model_groups", "scoring_snapshots"} <= cast(set[str], schema["tables"])
+    assert "model_rules" not in cast(set[str], schema["tables"])
     assert {
         "ix_scoring_snapshots_group_window_run",
         "ix_scoring_snapshots_brand_window_opportunity",

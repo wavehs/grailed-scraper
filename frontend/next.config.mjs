@@ -8,6 +8,10 @@ const __dirname = path.dirname(__filename);
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.join(__dirname, '../'),
+  output: process.env.NEXT_EXPORT === 'false' ? undefined : 'export',
+  images: {
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;

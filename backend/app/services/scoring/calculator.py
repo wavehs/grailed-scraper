@@ -1,4 +1,4 @@
-"""Pure Decimal calculations for the market-v4 demand and liquidity model."""
+"""Pure Decimal calculations for the market-v5 demand and liquidity model."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ class MetricDraft:
     confidence_score: Decimal
     confidence_factors: dict[str, str]
     quality_summary: dict[str, Any]
+    variant_breakdown: dict[str, list[dict[str, Any]]]
     warnings: list[str]
     input_digest: str
 

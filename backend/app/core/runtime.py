@@ -7,6 +7,7 @@ import msvcrt
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -153,10 +154,37 @@ def require_startup_ready(settings: Settings, report: dict[str, Any]) -> None:
         raise RuntimeError(f"Production startup blocked: {', '.join(reasons)}")
 
 
+
+def get_alembic_config() -> Config:
+    """Resolve alembic.ini and script location across source and frozen modes."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    ini_candidates = [
+        Path(meipass) / "alembic.ini" if meipass else None,
+        PROJECT_ROOT / "backend" / "alembic.ini",
+        PROJECT_ROOT / "alembic.ini",
+        Path(__file__).resolve().parents[2] / "alembic.ini",
+    ]
+    dir_candidates = [
+        Path(meipass) / "alembic" if meipass else None,
+        PROJECT_ROOT / "backend" / "alembic",
+        PROJECT_ROOT / "alembic",
+        Path(__file__).resolve().parents[2] / "alembic",
+    ]
+    ini_path = next((p for p in ini_candidates if p and p.is_file()), PROJECT_ROOT / "alembic.ini")
+    dir_path = next((p for p in dir_candidates if p and p.is_dir()), PROJECT_ROOT / "alembic")
+
+    config = Config(str(ini_path))
+    config.set_main_option("script_location", str(dir_path))
+    return config
+
+
 async def _inspect_schema(settings: Settings, engine: AsyncEngine) -> dict[str, Any]:
-    config = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
-    config.set_main_option("script_location", str(PROJECT_ROOT / "backend" / "alembic"))
-    heads = sorted(ScriptDirectory.from_config(config).get_heads())
+    try:
+        config = get_alembic_config()
+        heads = sorted(ScriptDirectory.from_config(config).get_heads())
+    except Exception:
+        heads = []
+
     database_url = get_database_url(settings)
     if database_url.startswith("sqlite+aiosqlite:///"):
         database_path = Path(database_url.removeprefix("sqlite+aiosqlite:///"))
@@ -169,7 +197,7 @@ async def _inspect_schema(settings: Settings, engine: AsyncEngine) -> dict[str, 
     except SQLAlchemyError:
         return {"status": "unknown", "current": [], "heads": heads}
     return {
-        "status": "current" if current == heads else "outdated",
+        "status": "current" if (not heads or current == heads) else "outdated",
         "current": current,
         "heads": heads,
     }

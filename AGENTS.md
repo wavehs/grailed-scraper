@@ -1,163 +1,48 @@
-## Parser Architecture (v2: Scrapling + Camoufox)
+# Repository instructions
 
-### Toolchain roles — DO NOT MIX THESE UP
+This file is intentionally short because it is loaded for every task.
 
-| Concern | Tool | Wrapper module |
-|---|---|---|
-| HTTP requests to Algolia | `scrapling.fetchers.FetcherSession` (curl_cffi, TLS impersonation) | `services/transport/scrapling_http.py` |
-| HTTP fallback | `httpx[socks]` | `services/transport/httpx_http.py` |
-| Stealth browser | `scrapling.fetchers.StealthySession` / `AsyncStealthySession` (Camoufox engine) | `services/sources/grailed/browser/session_pool.py` |
-| Emergency browser | `camoufox.async_api.AsyncCamoufox` | `browser/raw_camoufox.py` |
-| HTML parsing | `scrapling.Selector(adaptive=True)` | `services/sources/grailed/dom/*` |
+## Read only what the task needs
 
-Camoufox is NEVER imported outside `browser/`. Scrapling is NEVER imported
-outside `transport/` and `sources/grailed/{browser,dom}/`. Everything else
-depends only on the `HttpTransport` / `BrowserSession` Protocols in
-`services/transport/protocols.py`. This isolates us from upstream API drift.
+- `README.md`: setup and entry points.
+- `TASKS.md`: current priorities, status, and gates.
+- `docs/INDEX.md`: routing to canonical requirements. Before source or transport work,
+  read `docs/PARSING.md`, `docs/COMPLIANCE.md`, and `docs/TESTING.md`. Before mapping or
+  lifecycle work, read `docs/DATA_MODEL.md`, `docs/LIFECYCLE.md`, and
+  `docs/CONFIGURATION.md`.
+- Prefer Codebase Memory for structural discovery and coverage checks. Use `rg` for
+  literals, configuration/non-code files, and ranges the index did not cover.
 
-### Live-first product rule — HIGHEST PRIORITY
+## Non-negotiable constraints
 
-This repository exists to parse the real Grailed source. Do not add or maintain
-mock/replay source modes, T0 transports, fake Algolia servers, synthetic listing
-generators, offline parser fixtures, or offline e2e flows. They are not acceptable
-evidence that the parser works.
+- This is a live Grailed parser. Do not add mock/replay sources, fake Algolia servers,
+  synthetic listings, offline parser fixtures, or offline acceptance flows.
+  Source-independent tests are allowed, but parser/source acceptance requires the
+  smallest bounded live canary described in `docs/TESTING.md`.
+- Access only public, read-only data. Follow current ToS, `robots.txt`, and applicable
+  law. Stop on CAPTCHA, prohibited automation, or repeated 429 responses. Never use
+  Selenium, Puppeteer, undetected-chromedriver, or manual CAPTCHA bypasses.
+- T1 direct Algolia is the default; activate T2/T3 only for an observed live failure.
+  Keep Scrapling imports inside `backend/app/services/transport/` and
+  `backend/app/services/sources/grailed/{browser,dom}/`, and Camoufox imports inside
+  `backend/app/services/sources/grailed/browser/`. Other modules depend on
+  `backend/app/services/transport/protocols.py`.
+- Defaults must not exceed 90 requests/minute or three concurrent requests. Keep API
+  keys, proxy credentials, salts, and seller PII out of logs and responses. Store seller
+  usernames only in the configured privacy mode. Use `Decimal` for money end to end.
+- Field mappings belong in `config/sources/grailed.yaml`, not Python. Upsert by
+  `grailed_id`; persist `raw_json`, `schema_version`, fetch tier, and parser run ID.
+  A missing active listing becomes `removed_pending`, never implicitly sold.
+- Pagination must never fail silently: use browse, then keyset, then adaptive range
+  splitting as available; report coverage and explicit `partial`/`truncated` state.
+- Runs must remain resumable through `parser_run_tasks`; persist progress at least every
+  two seconds. Pin Scrapling and let it select its compatible Camoufox version.
 
-Small source-independent checks are allowed for money, privacy, migrations, database
-constraints, and duplicate prevention, but every parser milestone must pass a bounded
-live canary. This rule supersedes older documentation that describes T0/mock/replay;
-update those documents when touching them.
+## Change discipline
 
-### Three-tier live fetch strategy
-- T1 direct Algolia over Scrapling HTTP — DEFAULT
-- T2 browser-mediated Algolia (in-page `fetch()` via `page.evaluate`, or
-  `page.on("response")` interception) — auto-escalation on 401/403/429/WAF
-- T3 DOM fallback with Scrapling adaptive selectors + `__NEXT_DATA__`
-Escalation/de-escalation rules and circuit breakers: see docs/PARSING.md §2.
-
-### Discovery phase (run rarely, cached)
-Credentials, index names, replicas, brand facet name, key ACL
-(`GET /1/keys/{key}` → detects `browse` permission, `validUntil`,
-`maxQueriesPerIPPerHour`), `paginationLimitedTo`, max `hitsPerPage`,
-and a schema sample. Persisted in `source_credentials` + `source_schema`.
-Invalidate on 401/403 (under a lock — never launch N browsers concurrently).
-
-### Pagination — MANDATORY rules
-Algolia caps `page * hitsPerPage <= paginationLimitedTo` (usually 1000).
-Never assume static price buckets are enough. Use, in priority order:
-1. `/browse` with cursor (if ACL allows)
-2. keyset/seek pagination on a sorted replica via `numericFilters`
-3. adaptive recursive range splitting with `hitsPerPage=0` probes
-Always compute a coverage ratio per brand and surface `partial`/`truncated`
-in the run report. Silent data loss is a bug.
-
-### Efficiency rules
-- Use `POST /1/indexes/*/queries` (multi-query, up to 8 sub-queries per call).
-- Set `analytics=false`, `clickAnalytics=false`, `attributesToHighlight=[]`.
-- Retry across Algolia hosts: `-dsn.algolia.net`, then `-1/-2/-3.algolianet.com`.
-- Reuse one browser per run; hard-restart every 300 requests / 20 minutes.
-- Bridge cookies + UA + Accept-Language + proxy between browser and HTTP
-  session — they must look like ONE client.
-
-### Field mapping
-Field mapping lives in `config/sources/grailed.yaml`, NOT in Python.
-Each logical field has an ordered list of candidate JSON paths.
-Adding/renaming a source field must be a YAML change.
-
-### Hard prohibitions
-- Do NOT use Selenium/Puppeteer/undetected-chromedriver.
-- Do NOT bypass captchas manually; only Scrapling's built-in interstitial handling.
-- Do NOT log or return API keys unmasked.
-- Do NOT use float for money — use `Decimal` end to end.
-- Do NOT treat a disappeared active listing as sold; use `removed_pending`.
-- Do NOT store seller usernames in plaintext unless explicitly enabled.
-- Do NOT exceed 90 req/min or 3 concurrent requests by default.
-- Do NOT build mock/replay/offline substitutes for Grailed.
-- Do NOT treat offline tests, fixtures, or snapshots as parser acceptance.
-
-### Always
-- upsert by `grailed_id`, never duplicate;
-- persist `raw_json` and `schema_version`;
-- write `parser_run_tasks` so a run is resumable;
-- update `parser_run` progress at least every 2 seconds;
-- prove parser changes with the smallest permitted live canary;
-- pin `scrapling==X.Y.Z` and let Scrapling pull its compatible Camoufox.
-
-### Repository path map — read before changing a subsystem
-
-Documentation index: `docs/INDEX.md`.
-
-| Topic | Canonical path |
-|---|---|
-| Repository entry point | `README.md` |
-| Documentation index | `docs/INDEX.md` |
-| Product scope | `docs/PRD.md` |
-| Architecture, toolchain, tiers | `docs/PARSING.md` |
-| Credentials, indexes, facets, schema | `docs/DISCOVERY.md` |
-| Algolia requests and error handling | `docs/ALGOLIA.md` |
-| Pagination and coverage | `docs/PAGINATION.md` |
-| T2/T3 browser and DOM fallbacks | `docs/BROWSER_FALLBACKS.md` |
-| Listing mapping and data quality | `docs/DATA_MODEL.md` |
-| Watermarks and listing lifecycle | `docs/LIFECYCLE.md` |
-| Brand source mapping | `docs/BRAND_MAPPING.md` |
-| Rate limits, proxies, persistence | `docs/OPERATIONS.md` |
-| Logs, metrics, health | `docs/OBSERVABILITY.md` |
-| Live verification and source-independent checks | `docs/TESTING.md` |
-| Runtime settings and field mapping | `docs/CONFIGURATION.md`, `config/sources/grailed.yaml` |
-| Scoring contract | `docs/SCORING.md` |
-| Legal and ethical limits | `docs/COMPLIANCE.md` |
-| Ordered implementation plan | `docs/TASKS.md` |
-| Acceptance gate | `docs/DEFINITION_OF_DONE.md` |
-| Post-MVP work | `docs/ROADMAP.md` |
-
-### Implementation path map
-
-```text
-backend/requirements.txt
-backend/app/services/transport/
-backend/app/services/sources/base/
-backend/app/services/sources/grailed/discovery/
-backend/app/services/sources/grailed/algolia/
-backend/app/services/sources/grailed/browser/
-backend/app/services/sources/grailed/dom/
-backend/app/services/parser/
-backend/app/services/normalization/
-backend/app/services/scoring/
-backend/app/services/analytics/
-backend/tests/
-config/sources/grailed.yaml
-data/cache/
-data/logs/
-frontend/src/app/
-frontend/src/components/
-frontend/src/lib/
-```
-
-### Installed AAS skills for this repository
-
-The following skills from `sickn33/agentic-awesome-skills` are installed in
-the Codex user profile at `C:\Users\Alex\.codex\skills`. Invoke one only when
-its task match is clear; they are supplemental playbooks, not project policy.
-
-| Skill | Use for |
-|---|---|
-| `architecture-patterns` | Cross-cutting backend boundaries or significant refactors. |
-| `python-fastapi-development` | FastAPI routes, Pydantic models, SQLAlchemy integration, and API errors. |
-| `async-python-patterns` | Cancellation, backpressure, timeouts, concurrency, and async I/O. |
-| `web-scraper` | Extraction strategy, validation, data quality, and pagination. |
-| `database-design` | Schema, indexes, relationships, migrations, and query performance. |
-| `python-testing-patterns` | Pytest, async fixtures, fakes, mocks, property tests, and coverage. |
-| `nextjs-app-router-patterns` | Next.js 14 App Router pages, data fetching, and caching. |
-| `frontend-api-integration-patterns` | React Query/API state, cancellation, retries, and error presentation. |
-| `accessibility-compliance-accessibility-audit` | Keyboard, focus, contrast, and WCAG checks for UI changes. |
-| `security-requirement-extraction` | Threat-informed acceptance criteria and security test cases. |
-| `pre-ship-gate` | Staging/production release verification, especially when migrations ship. |
-
-#### Conflict resolution for installed skills
-
-This file, root `TASKS.md`, and the canonical documents in `docs/` always take precedence over
-an installed skill. In particular, when applying `web-scraper`, retain the
-Scrapling + Camoufox toolchain, three-tier live fetch strategy, 90 req/min and three
-concurrent-request limits, and robots/ToS requirements. Do not substitute
-Selenium, Puppeteer, or undetected-chromedriver; do
-not bypass CAPTCHAs; and do not weaken the `Decimal`, lifecycle, masking, or
-coverage requirements above.
+- Reuse existing helpers and boundaries; make the smallest complete change.
+- Run the smallest relevant checks. Parser/source changes also require the bounded live
+  gate; offline tests never replace it.
+- Update the canonical document when a contract changes. Do not copy implementation
+  trees, full document indexes, dependency versions, or installed-skill catalogs here.
+  Project rules and canonical docs override external playbooks.

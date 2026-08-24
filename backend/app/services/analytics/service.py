@@ -8,9 +8,9 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.db.models import (
     Brand,
@@ -22,6 +22,7 @@ from app.db.models import (
     ScoringSnapshot,
 )
 from app.domain.listings import decimal_to_cents
+from app.services.scoring.calculator import decimal_median
 from app.services.scoring.service import MODEL_VERSION
 
 PRODUCT_TYPE_CATEGORIES = {
@@ -47,6 +48,7 @@ PRODUCT_TYPE_CATEGORIES = {
 
 @dataclass(frozen=True, slots=True)
 class GroupRowData:
+    snapshot_id: int
     id: int
     name: str
     brand_name: str
@@ -99,6 +101,8 @@ class ListingExampleData:
     price: int
     likes: int
     sold_at: Any | None
+    created_at: Any | None = None
+    days_on_market: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +116,7 @@ class GroupDetailData:
     window_days: int
     run_id: int
     input_digest: str
+    variant_breakdown: dict[str, list[dict[str, Any]]]
     metrics: ScoreMetricsData
     sold_examples: list[ListingExampleData]
     active_examples: list[ListingExampleData]
@@ -123,11 +128,27 @@ class BrandAnalyticsData:
     name: str
     groups_count: int
     sold_count: int
+    exact_sold_count: int
     active_count: int
+    median_sold_price: int | None
+    median_days_to_sell: Decimal | None
+    median_sold_likes: Decimal | None
+    sell_through: Decimal | None
+    demand_score: Decimal | None
+    liquidity_score: Decimal | None
+    confidence_score: Decimal
+    market_opportunity_score: Decimal | None
+    scoring_status: str
     average_liquidity_score: Decimal | None
     average_demand_score: Decimal | None
     average_confidence_score: Decimal
     average_market_opportunity_score: Decimal | None
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotPosition:
+    value: str | int | Decimal | None
+    id: int
 
 
 class AnalyticsService:
@@ -142,28 +163,25 @@ class AnalyticsService:
         brand_id: int | None = None,
         product_type: str | None = None,
     ) -> int | None:
-        eligible = (
-            select(ScoringSnapshot.parser_run_id)
-            .join(ParserRun, ParserRun.id == ScoringSnapshot.parser_run_id)
-            .join(ModelGroup, ModelGroup.id == ScoringSnapshot.model_group_id)
-            .where(
-                ScoringSnapshot.model_version == MODEL_VERSION,
-                ScoringSnapshot.window_days.in_((30, 90)),
-            )
-        )
-        if brand_id is not None:
-            eligible = eligible.where(ScoringSnapshot.brand_id == brand_id)
-        if product_type is not None:
-            eligible = eligible.where(_product_type_filter(product_type))
+        eligible = select(ParserRun.id)
         if run_id is not None:
-            eligible = eligible.where(ScoringSnapshot.parser_run_id == run_id)
+            eligible = eligible.where(ParserRun.id == run_id)
         else:
             eligible = eligible.where(ParserRun.status.in_(("completed", "partial")))
-        eligible = eligible.group_by(ScoringSnapshot.parser_run_id).having(
-            func.count(func.distinct(ScoringSnapshot.window_days)) == 2
-        )
-        candidates = eligible.subquery()
-        value = await self._session.scalar(select(func.max(candidates.c.parser_run_id)))
+        for required_window in (30, 90):
+            probe = select(ScoringSnapshot.id).where(
+                ScoringSnapshot.parser_run_id == ParserRun.id,
+                ScoringSnapshot.model_version == MODEL_VERSION,
+                ScoringSnapshot.window_days == required_window,
+            )
+            if brand_id is not None:
+                probe = probe.where(ScoringSnapshot.brand_id == brand_id)
+            if product_type is not None:
+                probe = probe.join(
+                    ModelGroup, ModelGroup.id == ScoringSnapshot.model_group_id
+                ).where(_product_type_filter(product_type))
+            eligible = eligible.where(probe.exists())
+        value = await self._session.scalar(eligible.order_by(ParserRun.id.desc()).limit(1))
         return int(value) if value is not None else None
 
     async def list_group_rows(
@@ -178,7 +196,7 @@ class AnalyticsService:
         sort_by: str = "demand_score",
         sort_desc: bool = True,
         limit: int | None = None,
-        offset: int = 0,
+        position: SnapshotPosition | None = None,
     ) -> list[GroupRowData]:
         snapshots = await self._snapshots(
             run_id,
@@ -190,27 +208,24 @@ class AnalyticsService:
             sort_by=sort_by,
             sort_desc=sort_desc,
             limit=limit,
-            offset=offset,
+            position=position,
         )
-        listings_by_group = await self._listings_by_group(
-            [snapshot.model_group for snapshot in snapshots]
+        facets_by_group = await self._listing_facets_by_group(
+            [snapshot.model_group_id for snapshot in snapshots]
         )
         rows: list[GroupRowData] = []
         for snapshot in snapshots:
             group = snapshot.model_group
-            listings = listings_by_group[group.id]
+            sizes, conditions = facets_by_group[group.id]
             rows.append(
                 GroupRowData(
+                    snapshot_id=snapshot.id,
                     id=group.id,
                     name=group.name,
                     brand_name=group.brand.name,
                     category=group.category,
-                    available_sizes=sorted(
-                        {item.size_normalized for item in listings if item.size_normalized}
-                    ),
-                    available_conditions=sorted(
-                        {item.condition for item in listings if item.condition}
-                    ),
+                    available_sizes=sorted(sizes),
+                    available_conditions=sorted(conditions),
                     sold_count=snapshot.sold_count,
                     exact_sold_count=snapshot.exact_sold_count,
                     active_count=snapshot.active_count,
@@ -280,13 +295,11 @@ class AnalyticsService:
             )
             .options(
                 selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand),
-                selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.rule),
             )
         )
         if snapshot is None:
             return None
-        examples = (await self._listings_by_group([snapshot.model_group]))[group_id]
-        sold, active = _snapshot_examples(examples, snapshot.as_of, snapshot.window_days)
+        sold, active = await self._listing_examples(group_id, snapshot.as_of, snapshot.window_days)
         group = snapshot.model_group
         return GroupDetailData(
             id=group.id,
@@ -298,14 +311,69 @@ class AnalyticsService:
             window_days=snapshot.window_days,
             run_id=snapshot.parser_run_id,
             input_digest=snapshot.input_digest,
+            variant_breakdown=snapshot.variant_breakdown,
             metrics=self._metrics(snapshot),
             sold_examples=[self._example(item) for item in sold],
             active_examples=[self._example(item) for item in active],
         )
 
-    async def list_brand_analytics(self, run_id: int, window_days: int) -> list[BrandAnalyticsData]:
-        snapshots = await self._snapshots(run_id, window_days)
-        return self._brand_aggregates(snapshots)
+    async def list_brand_analytics(
+        self,
+        run_id: int,
+        window_days: int,
+        *,
+        search: str = "",
+        product_type: str | None = None,
+        scored_only: bool = False,
+        sort_by: str = "demand_score",
+        sort_desc: bool = True,
+        limit: int | None = None,
+    ) -> tuple[list[BrandAnalyticsData], int]:
+        snapshots = await self._snapshots(
+            run_id,
+            window_days,
+            product_type=product_type,
+            search=search,
+            scored_only=scored_only,
+        )
+        aggregates = self._brand_aggregates(snapshots)
+        if search.strip():
+            term = search.strip().casefold()
+            aggregates = [b for b in aggregates if term in b.name.casefold()]
+        if scored_only:
+            aggregates = [b for b in aggregates if b.scoring_status == "scored"]
+        sorted_aggregates = self._sort_brand_aggregates(
+            aggregates, sort_by=sort_by, sort_desc=sort_desc
+        )
+        total = len(sorted_aggregates)
+        if limit is not None:
+            sorted_aggregates = sorted_aggregates[:limit]
+        return sorted_aggregates, total
+
+    def _sort_brand_aggregates(
+        self,
+        items: list[BrandAnalyticsData],
+        sort_by: str = "demand_score",
+        sort_desc: bool = True,
+    ) -> list[BrandAnalyticsData]:
+        def key_fn(item: BrandAnalyticsData) -> Any:
+            if sort_by == "name":
+                return item.name.casefold()
+            if sort_by == "sold_count":
+                return item.sold_count
+            if sort_by == "active_count":
+                return item.active_count
+            if sort_by == "median_sold_price":
+                return -1 if item.median_sold_price is None else item.median_sold_price
+            if sort_by == "median_days_to_sell":
+                if item.median_days_to_sell is None:
+                    return Decimal("-1") if sort_desc else Decimal("999999")
+                return item.median_days_to_sell
+            if sort_by == "liquidity_score":
+                return Decimal(-1) if item.liquidity_score is None else item.liquidity_score
+            return Decimal(-1) if item.demand_score is None else item.demand_score
+
+        return sorted(items, key=key_fn, reverse=sort_desc if sort_by != "name" else not sort_desc)
 
     async def get_brand_detail(
         self,
@@ -345,7 +413,7 @@ class AnalyticsService:
         sort_by: str = "demand_score",
         sort_desc: bool = True,
         limit: int | None = None,
-        offset: int = 0,
+        position: SnapshotPosition | None = None,
     ) -> list[ScoringSnapshot]:
         sort_column = {
             "name": ModelGroup.name,
@@ -355,21 +423,22 @@ class AnalyticsService:
             "demand_score": ScoringSnapshot.demand_score,
             "liquidity_score": ScoringSnapshot.liquidity_score,
         }.get(sort_by, ScoringSnapshot.demand_score)
-        statement = (
-            select(ScoringSnapshot)
-            .join(ModelGroup, ModelGroup.id == ScoringSnapshot.model_group_id)
-            .join(Brand, Brand.id == ScoringSnapshot.brand_id)
-            .where(
-                ScoringSnapshot.parser_run_id == run_id,
-                ScoringSnapshot.window_days == window_days,
-                ScoringSnapshot.model_version == MODEL_VERSION,
-            )
-            .options(selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand))
-            .order_by(
-                sort_column.is_(None),
-                sort_column.desc() if sort_desc else sort_column.asc(),
-                ScoringSnapshot.id,
-            )
+        statement = select(ScoringSnapshot).where(
+            ScoringSnapshot.parser_run_id == run_id,
+            ScoringSnapshot.window_days == window_days,
+            ScoringSnapshot.model_version == MODEL_VERSION,
+        )
+        needs_group = product_type is not None or bool(search.strip()) or sort_by == "name"
+        if needs_group:
+            statement = statement.join(ModelGroup, ModelGroup.id == ScoringSnapshot.model_group_id)
+        if search.strip():
+            statement = statement.join(Brand, Brand.id == ScoringSnapshot.brand_id)
+        statement = statement.options(
+            selectinload(ScoringSnapshot.model_group).selectinload(ModelGroup.brand)
+        ).order_by(
+            sort_column.is_(None),
+            sort_column.desc() if sort_desc else sort_column.asc(),
+            ScoringSnapshot.id,
         )
         if brand_id is not None:
             statement = statement.where(ScoringSnapshot.brand_id == brand_id)
@@ -379,23 +448,100 @@ class AnalyticsService:
             statement = statement.where(_search_filter(search))
         if scored_only:
             statement = statement.where(ScoringSnapshot.scoring_status == "scored")
+        if position is not None:
+            if position.value is None:
+                statement = statement.where(sort_column.is_(None), ScoringSnapshot.id > position.id)
+            else:
+                range_filter = (
+                    sort_column < position.value if sort_desc else sort_column > position.value
+                )
+                statement = statement.where(
+                    or_(
+                        sort_column.is_(None),
+                        range_filter,
+                        and_(
+                            sort_column == position.value,
+                            ScoringSnapshot.id > position.id,
+                        ),
+                    )
+                )
         if limit is not None:
-            statement = statement.limit(limit).offset(offset)
+            statement = statement.limit(limit)
         return list(await self._session.scalars(statement))
 
-    async def _listings_by_group(self, groups: list[ModelGroup]) -> dict[int, list[Listing]]:
-        selected: dict[int, list[Listing]] = {group.id: [] for group in groups}
-        if not groups:
+    async def _listing_facets_by_group(
+        self, group_ids: list[int]
+    ) -> dict[int, tuple[set[str], set[str]]]:
+        selected: dict[int, tuple[set[str], set[str]]] = {
+            group_id: (set(), set()) for group_id in group_ids
+        }
+        if not group_ids:
             return selected
         rows = await self._session.execute(
-            select(Listing, ListingModelAssignment.model_group_id)
+            select(
+                ListingModelAssignment.model_group_id,
+                Listing.size_normalized,
+                Listing.condition,
+            )
             .join(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
-            .where(ListingModelAssignment.model_group_id.in_(selected))
-            .order_by(Listing.sold_at.desc(), Listing.id)
+            .where(ListingModelAssignment.model_group_id.in_(group_ids))
+            .distinct()
         )
-        for listing, group_id in rows:
-            selected[group_id].append(listing)
+        for group_id, size, condition in rows:
+            if size:
+                selected[group_id][0].add(size)
+            if condition:
+                selected[group_id][1].add(condition)
         return selected
+
+    async def _listing_examples(
+        self, group_id: int, as_of: datetime, window_days: int
+    ) -> tuple[list[Listing], list[Listing]]:
+        end = _aware(as_of)
+        cutoff = end - timedelta(days=window_days)
+        columns = (
+            Listing.id,
+            Listing.grailed_id,
+            Listing.title,
+            Listing.price,
+            Listing.sold_price,
+            Listing.likes_count,
+            Listing.status,
+            Listing.sold_at,
+            Listing.created_at,
+            Listing.first_seen_at,
+            Listing.last_seen_at,
+            Listing.days_on_market,
+        )
+        base = (
+            select(Listing)
+            .join(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
+            .where(ListingModelAssignment.model_group_id == group_id)
+            .options(load_only(*columns))
+        )
+        sold = list(
+            await self._session.scalars(
+                base.where(
+                    Listing.status == "sold",
+                    Listing.sold_at.is_not(None),
+                    Listing.sold_at >= cutoff,
+                    Listing.sold_at <= end,
+                )
+                .order_by(Listing.sold_at.desc(), Listing.id)
+                .limit(20)
+            )
+        )
+        active = list(
+            await self._session.scalars(
+                base.where(
+                    Listing.status == "active",
+                    func.coalesce(Listing.created_at, Listing.first_seen_at) <= end,
+                )
+                .order_by(Listing.id)
+                .limit(20)
+            )
+        )
+        return sold, active
 
     def _metrics(self, snapshot: ScoringSnapshot) -> ScoreMetricsData:
         return ScoreMetricsData(
@@ -429,18 +575,58 @@ class AnalyticsService:
         result: list[BrandAnalyticsData] = []
         for items in grouped.values():
             count = Decimal(len(items))
+            sold_count = sum(item.sold_count for item in items)
+            exact_sold_count = sum(item.exact_sold_count for item in items)
+            active_count = sum(item.active_count for item in items)
+            prices = [
+                item.median_sold_price for item in items if item.median_sold_price is not None
+            ]
+            median_price = decimal_median(prices)
+            median_sold_price = decimal_to_cents(median_price) if median_price is not None else None
+            days = [
+                item.median_days_to_sell for item in items if item.median_days_to_sell is not None
+            ]
+            median_days_to_sell = decimal_median(days)
+            likes = [item.median_sold_likes for item in items if item.median_sold_likes is not None]
+            median_sold_likes = decimal_median(likes)
+            sell_through = (
+                (Decimal(sold_count) / Decimal(sold_count + active_count)).quantize(
+                    Decimal("0.000001")
+                )
+                if (sold_count + active_count) > 0
+                else Decimal(0)
+            )
             liquidity = [item.liquidity_score for item in items if item.liquidity_score is not None]
             demand = [item.demand_score for item in items if item.demand_score is not None]
             avg_liquidity = _average(liquidity)
             avg_demand = _average(demand)
-            avg_confidence = sum((item.confidence_score for item in items), Decimal(0)) / count
+            avg_confidence = (
+                sum((item.confidence_score for item in items), Decimal(0)) / count
+            ).quantize(Decimal("0.01"))
+            scoring_status = (
+                "scored"
+                if avg_demand is not None
+                else "insufficient_sales"
+                if sold_count < 3
+                else "insufficient_temporal_data"
+            )
             result.append(
                 BrandAnalyticsData(
                     id=items[0].brand_id,
                     name=items[0].model_group.brand.name,
                     groups_count=len(items),
-                    sold_count=sum(item.sold_count for item in items),
-                    active_count=sum(item.active_count for item in items),
+                    sold_count=sold_count,
+                    exact_sold_count=exact_sold_count,
+                    active_count=active_count,
+                    median_sold_price=median_sold_price,
+                    median_days_to_sell=median_days_to_sell,
+                    median_sold_likes=median_sold_likes,
+                    sell_through=sell_through,
+                    demand_score=avg_demand,
+                    liquidity_score=avg_liquidity,
+                    confidence_score=avg_confidence,
+                    market_opportunity_score=avg_demand,
+                    scoring_status=scoring_status,
                     average_liquidity_score=avg_liquidity,
                     average_demand_score=avg_demand,
                     average_confidence_score=avg_confidence,
@@ -449,11 +635,27 @@ class AnalyticsService:
             )
         return sorted(
             result,
-            key=lambda item: item.average_demand_score or Decimal(-1),
+            key=lambda item: item.demand_score or Decimal(-1),
             reverse=True,
         )
 
     def _example(self, listing: Listing) -> ListingExampleData:
+        created = listing.created_at or listing.first_seen_at
+        now = datetime.now(UTC)
+        if listing.status == "sold":
+            if listing.days_on_market is not None:
+                days = listing.days_on_market
+            elif listing.sold_at and created:
+                days = max((_aware(listing.sold_at) - _aware(created)).days, 0)
+            else:
+                days = None
+        elif listing.status == "active":
+            days = max((now - _aware(created)).days, 0) if created else None
+        else:
+            days = listing.days_on_market or (
+                max((_aware(listing.last_seen_at) - _aware(created)).days, 0) if created else None
+            )
+
         return ListingExampleData(
             id=listing.id,
             grailed_id=listing.grailed_id,
@@ -461,6 +663,8 @@ class AnalyticsService:
             price=decimal_to_cents(listing.sold_price or listing.price),
             likes=listing.likes_count,
             sold_at=listing.sold_at,
+            created_at=created,
+            days_on_market=days,
         )
 
 
@@ -475,26 +679,6 @@ def _search_filter(value: str) -> Any:
 
 def _product_type_filter(value: str) -> Any:
     return func.lower(ModelGroup.category).in_(PRODUCT_TYPE_CATEGORIES[value])
-
-
-def _snapshot_examples(
-    listings: list[Listing], as_of: datetime, window_days: int
-) -> tuple[list[Listing], list[Listing]]:
-    end = _aware(as_of)
-    cutoff = end - timedelta(days=window_days)
-    sold = [
-        item
-        for item in listings
-        if item.status == "sold"
-        and item.sold_at is not None
-        and cutoff <= _aware(item.sold_at) <= end
-    ][:20]
-    active = [
-        item
-        for item in listings
-        if item.status == "active" and _aware(item.created_at or item.first_seen_at) <= end
-    ][:20]
-    return sold, active
 
 
 def _average(values: list[Decimal]) -> Decimal | None:

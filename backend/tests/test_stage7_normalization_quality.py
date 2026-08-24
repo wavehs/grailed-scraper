@@ -9,9 +9,17 @@ from app.core.config import Settings
 from app.domain.listings import ListingData
 from app.services.normalization.fx import StaticFxRateProvider
 from app.services.normalization.mapping import load_source_mapping, resolve_path
-from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
+from app.services.normalization.normalizer import (
+    ListingNormalizer,
+    NormalizationContext,
+    normalize_size,
+)
 from app.services.normalization.quality import QualityProcessor
 from app.services.sources.base.models import RawHit
+
+
+def test_normalize_size_does_not_emit_scientific_notation() -> None:
+    assert normalize_size("10", "footwear") == "US 10"
 
 
 async def test_yaml_normalizer_maps_decimal_fx_ms_and_sold_fallback() -> None:

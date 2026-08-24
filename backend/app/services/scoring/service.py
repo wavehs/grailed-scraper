@@ -1,9 +1,8 @@
-"""Database-backed market-v4 scoring with resolved model identity."""
+"""Database-backed market-v5 scoring with resolved line identity."""
 
 from __future__ import annotations
 
 import hashlib
-import unicodedata
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -13,19 +12,19 @@ from typing import Protocol
 import orjson
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import load_only, selectinload
+from sqlalchemy.orm import load_only
 
 from app.db.models import (
     Brand,
     Listing,
     ListingModelAssignment,
     ModelGroup,
-    ModelRule,
     ParserRun,
     ParserRunTask,
     PhysicalItemMember,
     ScoringSnapshot,
 )
+from app.services.identity.service import IDENTITY_VERSION
 from app.services.scoring.calculator import (
     HUNDRED,
     SIX_PLACES,
@@ -41,14 +40,16 @@ from app.services.scoring.calculator import (
     velocity_score,
 )
 
-MODEL_VERSION = "market-v4"
+MODEL_VERSION = "market-v5"
 WINDOWS = (30, 90)
 _FULL_EXCLUSIONS = {"possible_replica"}
 _PRICE_EXCLUSIONS = {"price_outlier", "lot_or_bundle"}
 
 
 class ScoringService(Protocol):
-    async def score_run(self, run_id: int) -> dict[str, object]: ...
+    async def score_run(
+        self, run_id: int, *, brand_ids: set[int] | None = None
+    ) -> dict[str, object]: ...
 
 
 class OpportunityScoringService:
@@ -57,13 +58,21 @@ class OpportunityScoringService:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
-    async def score_run(self, run_id: int) -> dict[str, object]:
+    async def score_run(
+        self, run_id: int, *, brand_ids: set[int] | None = None
+    ) -> dict[str, object]:
         async with self._sessions() as session:
             run = await session.get(ParserRun, run_id)
             if run is None:
                 raise LookupError(f"Parser run {run_id} does not exist")
             as_of = _aware(run.started_at or run.created_at)
             coverage, truncated = await _coverage(session, run_id, run.coverage_avg)
+            if brand_ids is not None:
+                coverage = {
+                    brand_id: coverage.get(brand_id, run.coverage_avg or Decimal(1))
+                    for brand_id in brand_ids
+                }
+                truncated &= brand_ids
             degraded = run.degraded_mode
             groups_total = snapshots_total = 0
             cutoff = as_of - timedelta(days=max(WINDOWS))
@@ -81,6 +90,8 @@ class OpportunityScoringService:
                                 Listing.brand_id,
                                 Listing.title,
                                 Listing.category,
+                                Listing.size_normalized,
+                                Listing.color,
                                 Listing.status,
                                 Listing.price,
                                 Listing.sold_price,
@@ -102,9 +113,7 @@ class OpportunityScoringService:
                                 ),
                                 and_(
                                     Listing.status == "active",
-                                    func.coalesce(
-                                        Listing.created_at, Listing.first_seen_at
-                                    )
+                                    func.coalesce(Listing.created_at, Listing.first_seen_at)
                                     <= as_of,
                                 ),
                             ),
@@ -112,20 +121,7 @@ class OpportunityScoringService:
                     )
                 )
                 listings = await _canonical_relistings(session, listings)
-                rules = list(
-                    await session.scalars(
-                        select(ModelRule)
-                        .where(
-                            ModelRule.brand_id == brand_id,
-                            ModelRule.is_active.is_(True),
-                        )
-                        .options(selectinload(ModelRule.group))
-                        .order_by(ModelRule.id)
-                    )
-                )
-                assignments, groups = await self._assign_groups(
-                    session, listings, rules, {brand_id: brand}, as_of
-                )
+                assignments, groups = await self._resolved_groups(session, listings, brand_id)
                 drafts = _build_drafts(
                     listings=listings,
                     assignments=assignments,
@@ -149,92 +145,41 @@ class OpportunityScoringService:
                 "snapshots": snapshots_total,
             }
 
-    async def _assign_groups(
+    async def _resolved_groups(
         self,
         session: AsyncSession,
         listings: Sequence[Listing],
-        rules: Sequence[ModelRule],
-        brands: dict[int, Brand],
-        now: datetime,
+        brand_id: int,
     ) -> tuple[dict[int, int], dict[int, ModelGroup]]:
-        rules_by_brand: dict[int, list[ModelRule]] = defaultdict(list)
-        groups = {rule.group.id: rule.group for rule in rules}
-        for rule in rules:
-            rules_by_brand[rule.brand_id].append(rule)
-
         listing_ids = {listing.id for listing in listings}
-        persisted_rows = (
+        rows = (
             await session.execute(
                 select(ListingModelAssignment, ModelGroup)
-                .join(
-                    ModelGroup,
-                    ModelGroup.id == ListingModelAssignment.model_group_id,
-                )
+                .join(ModelGroup, ModelGroup.id == ListingModelAssignment.model_group_id)
                 .join(Listing, Listing.id == ListingModelAssignment.listing_id)
-                .where(Listing.brand_id.in_(brands))
+                .where(Listing.brand_id == brand_id)
             )
         ).tuples()
         persisted = [
             (assignment, group)
-            for assignment, group in persisted_rows
+            for assignment, group in rows
             if assignment.listing_id in listing_ids
         ]
-        persisted_groups = {group.id: group for _, group in persisted}
-        groups.update(persisted_groups)
         assignments = {
             assignment.listing_id: assignment.model_group_id for assignment, _ in persisted
         }
-        fallback_needed: dict[str, tuple[int, str]] = {}
-        fallback_for_listing: dict[int, str] = {}
-        for listing in listings:
-            assert listing.brand_id is not None
-            if listing.id in assignments:
-                continue
-            matches = [
-                rule
-                for rule in rules_by_brand[listing.brand_id]
-                if rule_matches(rule, listing.title, listing.category)
-            ]
-            if matches:
-                winner = min(matches, key=lambda item: (-len(item.include_keywords), item.id))
-                assignments[listing.id] = winner.group_id
-                continue
-            category = listing.category or "Uncategorized"
-            normalized = normalize_text(category) or "uncategorized"
-            digest = hashlib.sha256(normalized.encode()).hexdigest()[:16]
-            stable_key = f"fallback:{listing.brand_id}:{digest}"
-            fallback_needed[stable_key] = (listing.brand_id, category)
-            fallback_for_listing[listing.id] = stable_key
-
-        existing = (
-            {
-                group.stable_key: group
-                for group in await session.scalars(
-                    select(ModelGroup).where(ModelGroup.stable_key.in_(fallback_needed))
-                )
-            }
-            if fallback_needed
-            else {}
-        )
-        for stable_key, (brand_id, category) in fallback_needed.items():
-            group = existing.get(stable_key)
-            if group is None:
-                brand = brands[brand_id]
-                group = ModelGroup(
-                    stable_key=stable_key,
-                    brand_id=brand_id,
-                    name=f"{brand.name} · {category}",
-                    category=category,
-                    group_type="fallback",
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(group)
-                await session.flush()
-                existing[stable_key] = group
-            groups[group.id] = group
-        for listing_id, stable_key in fallback_for_listing.items():
-            assignments[listing_id] = existing[stable_key].id
+        stale = [
+            assignment.listing_id
+            for assignment, _ in persisted
+            if assignment.algorithm_version != IDENTITY_VERSION
+        ]
+        missing = sorted(listing_ids - assignments.keys())
+        if stale or missing:
+            raise RuntimeError(
+                "identity_assignment_missing: "
+                f"brand={brand_id} missing={missing[:10]} stale={stale[:10]}"
+            )
+        groups = {group.id: group for _, group in persisted}
         return assignments, groups
 
     @staticmethod
@@ -272,26 +217,10 @@ class OpportunityScoringService:
 class NoOpScoringService:
     """Explicit test seam retained for callers that opt out of stage-nine scoring."""
 
-    async def score_run(self, run_id: int) -> dict[str, object]:
+    async def score_run(
+        self, run_id: int, *, brand_ids: set[int] | None = None
+    ) -> dict[str, object]:
         return {"run_id": run_id, "status": "skipped", "reason": "scoring_disabled"}
-
-
-def normalize_text(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value.casefold())
-    return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
-
-
-def rule_matches(rule: ModelRule, title: str, category: str | None) -> bool:
-    normalized_title = normalize_text(title)
-    includes = [normalize_text(item) for item in rule.include_keywords if item.strip()]
-    excludes = [normalize_text(item) for item in rule.exclude_keywords if item.strip()]
-    if rule.category is not None and normalize_text(rule.category) != normalize_text(
-        category or ""
-    ):
-        return False
-    return all(item in normalized_title for item in includes) and not any(
-        item in normalized_title for item in excludes
-    )
 
 
 async def _coverage(
@@ -436,6 +365,10 @@ def _build_drafts(
                     "no_photos": no_photo,
                     "price_excluded": sum(bool(_flags(item) & _PRICE_EXCLUSIONS) for item in sold),
                 },
+                variant_breakdown={
+                    "colors": _variant_rows(usable, "color"),
+                    "sizes": _variant_rows(usable, "size_normalized"),
+                },
                 warnings=warnings,
                 input_digest=digest,
             )
@@ -494,6 +427,7 @@ def _finalize_rows(
                     component_breakdown=metrics.component_breakdown,
                     confidence_factors=draft.confidence_factors,
                     quality_summary=draft.quality_summary,
+                    variant_breakdown=draft.variant_breakdown,
                     warnings=draft.warnings,
                     input_digest=draft.input_digest,
                     created_at=now,
@@ -538,12 +472,50 @@ def _digest(
                 "likes": item.likes_count,
                 "days": item.days_on_market,
                 "estimated": item.sold_at_is_estimated,
+                "size": _variant_value(item.size_normalized),
+                "color": _variant_value(item.color),
                 "flags": sorted(item.quality_flags),
             }
             for item in sorted(listings, key=lambda candidate: candidate.grailed_id)
         ],
     }
     return hashlib.sha256(orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)).hexdigest()
+
+
+def _variant_rows(listings: Sequence[Listing], attribute: str) -> list[dict[str, object]]:
+    counts: dict[str | None, list[int]] = defaultdict(lambda: [0, 0])
+    for listing in listings:
+        value = _variant_value(getattr(listing, attribute))
+        counts[value][0 if listing.status == "sold" else 1] += 1
+    ranked = sorted(
+        counts.items(),
+        key=lambda item: (
+            item[0] is None,
+            -item[1][0],
+            -(Decimal(item[1][0]) / Decimal(sum(item[1])) if sum(item[1]) else Decimal(0)),
+            item[0] or "",
+        ),
+    )
+    return [
+        {
+            "value": value,
+            "sold_count": sold,
+            "active_count": active,
+            "sell_through": str(
+                (Decimal(sold) / Decimal(sold + active)).quantize(SIX_PLACES)
+                if sold or active
+                else Decimal(0)
+            ),
+        }
+        for value, (sold, active) in ranked
+    ]
+
+
+def _variant_value(value: str | None) -> str | None:
+    normalized = " ".join((value or "").casefold().split())
+    if not normalized or normalized in {"n/a", "na", "none", "unknown"}:
+        return None
+    return "gray" if normalized == "grey" else normalized
 
 
 def _aware(value: datetime) -> datetime:

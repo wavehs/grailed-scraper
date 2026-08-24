@@ -30,3 +30,22 @@ export function formatDate(value?: string | null, locale: string = 'en-US'): str
     return value;
   }
 }
+
+export function formatDaysOnMarket(
+  days?: number | null,
+  status: string = 'sold',
+  locale: string = 'en',
+): string {
+  if (days === undefined || days === null) return '—';
+  const isRu = locale.startsWith('ru');
+  if (status === 'active') {
+    if (days < 1) {
+      return isRu ? '< 1 дн. в продаже' : 'Active < 1 d';
+    }
+    return isRu ? `${days} дн. в продаже` : `Active ${days} d`;
+  }
+  if (days < 1) {
+    return isRu ? '< 1 дн.' : '< 1 d';
+  }
+  return isRu ? `${days} дн.` : `${days} d`;
+}
