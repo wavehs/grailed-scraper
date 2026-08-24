@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "623af504860101170e1c546ea4707d0af8075e95",
-    "indexed_at": "2026-08-24T01:32:56Z",
+    "commit": "601251b3b117fa13434935e8d230d568bbb46fb7",
+    "indexed_at": "2026-08-24T18:44:07Z",
     "project": "C-Users-Alex-Documents-IDE-parser",
     "nodes": 2135,
-    "edges": 9513,
+    "edges": 9496,
     "original_size": 11927552,
-    "compressed_size": 2210824,
+    "compressed_size": 2207054,
     "compression_level": 3
 }

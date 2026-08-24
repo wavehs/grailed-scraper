@@ -4133,10 +4133,9 @@ imported by:
  &#8226;   <a href="#anyio.to_thread">anyio.to_thread</a>
  &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -9335,10 +9334,9 @@ imports:
 imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -9354,6 +9352,7 @@ imported by:
 imports:
     <a href="#__future__">__future__</a>
  &#8226;   <a href="#app.api">app.api</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
  &#8226;   <a href="#app.db.models">app.db.models</a>
  &#8226;   <a href="#app.db.session">app.db.session</a>
@@ -9364,8 +9363,10 @@ imports:
  &#8226;   <a href="#fastapi">fastapi</a>
  &#8226;   <a href="#pydantic">pydantic</a>
  &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
+ &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sqlalchemy.ext.asyncio">sqlalchemy.ext.asyncio</a>
+ &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
  &#8226;   <a href="#typing">typing</a>
 
   </div>
@@ -9411,6 +9412,31 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.api.routes">app.api.routes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.api.cursors"></a>
+  <a target="code" href="///C:/Users/Alex/Documents/IDE/parser/backend/app/api/cursors.py" type="text/plain"><tt>app.api.cursors</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#app.api">app.api</a>
+ &#8226;   <a href="#app.api.errors">app.api.errors</a>
+ &#8226;   <a href="#base64">base64</a>
+ &#8226;   <a href="#binascii">binascii</a>
+ &#8226;   <a href="#collections.abc">collections.abc</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#hashlib">hashlib</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.api.analytics">app.api.analytics</a>
 
   </div>
 
@@ -9473,73 +9499,12 @@ imports:
 imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
  &#8226;   <a href="#app.main">app.main</a>
-
-  </div>
-
-</div>
-
-<div class="node">
-  <a name="app.api.identity"></a>
-  <a target="code" href="///C:/Users/Alex/Documents/IDE/parser/backend/app/api/identity.py" type="text/plain"><tt>app.api.identity</tt></a>
-<span class="moduletype">SourceModule</span>  <div class="import">
-imports:
-    <a href="#__future__">__future__</a>
- &#8226;   <a href="#app.api">app.api</a>
- &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.settings">app.api.settings</a>
- &#8226;   <a href="#app.core.config">app.core.config</a>
- &#8226;   <a href="#app.db.models">app.db.models</a>
- &#8226;   <a href="#app.db.session">app.db.session</a>
- &#8226;   <a href="#app.domain.listings">app.domain.listings</a>
- &#8226;   <a href="#app.services.identity">app.services.identity</a>
- &#8226;   <a href="#fastapi">fastapi</a>
- &#8226;   <a href="#pydantic">pydantic</a>
- &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
- &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
- &#8226;   <a href="#sqlalchemy.ext.asyncio">sqlalchemy.ext.asyncio</a>
- &#8226;   <a href="#typing">typing</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#app.api.routes">app.api.routes</a>
-
-  </div>
-
-</div>
-
-<div class="node">
-  <a name="app.api.model_rules"></a>
-  <a target="code" href="///C:/Users/Alex/Documents/IDE/parser/backend/app/api/model_rules.py" type="text/plain"><tt>app.api.model_rules</tt></a>
-<span class="moduletype">SourceModule</span>  <div class="import">
-imports:
-    <a href="#__future__">__future__</a>
- &#8226;   <a href="#app.api">app.api</a>
- &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.db.models">app.db.models</a>
- &#8226;   <a href="#app.db.session">app.db.session</a>
- &#8226;   <a href="#app.services.scoring.service">app.services.scoring.service</a>
- &#8226;   <a href="#datetime">datetime</a>
- &#8226;   <a href="#fastapi">fastapi</a>
- &#8226;   <a href="#pydantic">pydantic</a>
- &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
- &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
- &#8226;   <a href="#sqlalchemy.ext.asyncio">sqlalchemy.ext.asyncio</a>
- &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
- &#8226;   <a href="#typing">typing</a>
- &#8226;   <a href="#uuid">uuid</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#app.api.routes">app.api.routes</a>
 
   </div>
 
@@ -9599,8 +9564,6 @@ imports:
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
  &#8226;   <a href="#app.core.config">app.core.config</a>
@@ -9649,7 +9612,6 @@ imports:
 imported by:
     <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
 
@@ -9697,7 +9659,6 @@ imports:
 imported by:
     <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -9867,8 +9828,6 @@ imports:
 imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
  &#8226;   <a href="#app.main">app.main</a>
@@ -9913,8 +9872,6 @@ imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -9959,7 +9916,6 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
  &#8226;   <a href="#app.repositories.brands">app.repositories.brands</a>
  &#8226;   <a href="#app.repositories.fetching">app.repositories.fetching</a>
  &#8226;   <a href="#app.repositories.lifecycle">app.repositories.lifecycle</a>
@@ -10274,8 +10230,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.services.identity.images">app.services.identity.images</a>
+    <a href="#app.services.identity.images">app.services.identity.images</a>
  &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
  &#8226;   <a href="#app.services.parser.runtime">app.services.parser.runtime</a>
 
@@ -10321,12 +10276,13 @@ imports:
  &#8226;   <a href="#app.db.models">app.db.models</a>
  &#8226;   <a href="#app.services.identity">app.services.identity</a>
  &#8226;   <a href="#app.services.identity.images">app.services.identity.images</a>
- &#8226;   <a href="#app.services.scoring.service">app.services.scoring.service</a>
  &#8226;   <a href="#app.services.transport.protocols">app.services.transport.protocols</a>
  &#8226;   <a href="#app.services.transport.rate_limiter">app.services.transport.rate_limiter</a>
  &#8226;   <a href="#asyncio">asyncio</a>
+ &#8226;   <a href="#bisect">bisect</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#collections.abc">collections.abc</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#decimal">decimal</a>
  &#8226;   <a href="#hashlib">hashlib</a>
@@ -10343,6 +10299,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.services.identity">app.services.identity</a>
+ &#8226;   <a href="#app.services.scoring.service">app.services.scoring.service</a>
 
   </div>
 
@@ -10740,6 +10697,7 @@ imported by:
 imports:
     <a href="#__future__">__future__</a>
  &#8226;   <a href="#app.db.models">app.db.models</a>
+ &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
  &#8226;   <a href="#app.services.scoring">app.services.scoring</a>
  &#8226;   <a href="#app.services.scoring.calculator">app.services.scoring.calculator</a>
  &#8226;   <a href="#collections">collections</a>
@@ -10752,14 +10710,11 @@ imports:
  &#8226;   <a href="#sqlalchemy.ext.asyncio">sqlalchemy.ext.asyncio</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
  &#8226;   <a href="#typing">typing</a>
- &#8226;   <a href="#unicodedata">unicodedata</a>
 
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.model_rules">app.api.model_rules</a>
- &#8226;   <a href="#app.services.analytics.service">app.services.analytics.service</a>
- &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
+    <a href="#app.services.analytics.service">app.services.analytics.service</a>
  &#8226;   <a href="#app.services.scoring">app.services.scoring</a>
 
   </div>
@@ -13106,6 +13061,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#PIL.ImageFont">PIL.ImageFont</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#bottle">bottle</a>
  &#8226;   <a href="#curl_cffi.requests.cache">curl_cffi.requests.cache</a>
  &#8226;   <a href="#email._encoded_words">email._encoded_words</a>
@@ -13202,7 +13158,8 @@ imported by:
   <a name="binascii"></a>
   <tt>binascii</tt> <span class="moduletype"><i>(builtin module)</i></span>  <div class="import">
 imported by:
-    <a href="#base64">base64</a>
+    <a href="#app.api.cursors">app.api.cursors</a>
+ &#8226;   <a href="#base64">base64</a>
  &#8226;   <a href="#cffi.verifier">cffi.verifier</a>
  &#8226;   <a href="#email._encoded_words">email._encoded_words</a>
  &#8226;   <a href="#email.base64mime">email.base64mime</a>
@@ -13234,7 +13191,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#dateutil.tz.tz">dateutil.tz.tz</a>
+    <a href="#app.services.identity.service">app.services.identity.service</a>
+ &#8226;   <a href="#dateutil.tz.tz">dateutil.tz.tz</a>
  &#8226;   <a href="#idna.core">idna.core</a>
  &#8226;   <a href="#idna.intranges">idna.intranges</a>
  &#8226;   <a href="#multiprocessing.heap">multiprocessing.heap</a>
@@ -15853,6 +15811,7 @@ imported by:
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
  &#8226;   <a href="#anyio.to_thread">anyio.to_thread</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.core.logging">app.core.logging</a>
  &#8226;   <a href="#app.db.session">app.db.session</a>
@@ -17959,10 +17918,12 @@ imported by:
  &#8226;   <a href="#anyio.streams.stapled">anyio.streams.stapled</a>
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.repositories.listings">app.repositories.listings</a>
  &#8226;   <a href="#app.services.analytics.service">app.services.analytics.service</a>
  &#8226;   <a href="#app.services.identity.images">app.services.identity.images</a>
+ &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
  &#8226;   <a href="#app.services.normalization.brands">app.services.normalization.brands</a>
  &#8226;   <a href="#app.services.normalization.normalizer">app.services.normalization.normalizer</a>
  &#8226;   <a href="#app.services.parser.fetching">app.services.parser.fetching</a>
@@ -18109,7 +18070,6 @@ imported by:
  &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
  &#8226;   <a href="#app.db.models">app.db.models</a>
@@ -22464,8 +22424,6 @@ imported by:
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -24541,7 +24499,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.core.privacy">app.core.privacy</a>
+    <a href="#app.api.cursors">app.api.cursors</a>
+ &#8226;   <a href="#app.core.privacy">app.core.privacy</a>
  &#8226;   <a href="#app.services.identity.images">app.services.identity.images</a>
  &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
  &#8226;   <a href="#app.services.normalization.normalizer">app.services.normalization.normalizer</a>
@@ -30958,7 +30917,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.core.config">app.core.config</a>
+    <a href="#app.api.cursors">app.api.cursors</a>
+ &#8226;   <a href="#app.core.config">app.core.config</a>
  &#8226;   <a href="#app.core.runtime">app.core.runtime</a>
  &#8226;   <a href="#app.services.parser.planner">app.services.parser.planner</a>
  &#8226;   <a href="#app.services.sources.grailed.algolia.pagination">app.services.sources.grailed.algolia.pagination</a>
@@ -43902,8 +43862,6 @@ imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -43992,8 +43950,6 @@ imported by:
     <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -57683,6 +57639,7 @@ imported by:
  &#8226;   <a href="#alembic.util.pyfiles">alembic.util.pyfiles</a>
  &#8226;   <a href="#alembic.util.sqla_compat">alembic.util.sqla_compat</a>
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
+ &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.core.logging">app.core.logging</a>
  &#8226;   <a href="#app.core.privacy">app.core.privacy</a>
  &#8226;   <a href="#app.core.request_context">app.core.request_context</a>
@@ -66822,8 +66779,6 @@ imported by:
  &#8226;   <a href="#alembic.util.sqla_compat">alembic.util.sqla_compat</a>
  &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -70221,8 +70176,6 @@ imported by:
  &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -70657,7 +70610,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.model_rules">app.api.model_rules</a>
+    <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.db.models">app.db.models</a>
  &#8226;   <a href="#app.repositories.brands">app.repositories.brands</a>
@@ -79228,10 +79181,9 @@ imported by:
  &#8226;   <a href="#anyio.to_thread">anyio.to_thread</a>
  &#8226;   <a href="#app.api.analytics">app.api.analytics</a>
  &#8226;   <a href="#app.api.brands">app.api.brands</a>
+ &#8226;   <a href="#app.api.cursors">app.api.cursors</a>
  &#8226;   <a href="#app.api.discovery">app.api.discovery</a>
  &#8226;   <a href="#app.api.errors">app.api.errors</a>
- &#8226;   <a href="#app.api.identity">app.api.identity</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.api.parser">app.api.parser</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
  &#8226;   <a href="#app.api.settings">app.api.settings</a>
@@ -80898,7 +80850,6 @@ imported by:
     <a href="#app.domain.listings">app.domain.listings</a>
  &#8226;   <a href="#app.services.identity.service">app.services.identity.service</a>
  &#8226;   <a href="#app.services.normalization.brands">app.services.normalization.brands</a>
- &#8226;   <a href="#app.services.scoring.service">app.services.scoring.service</a>
  &#8226;   <a href="#bottle">bottle</a>
  &#8226;   <a href="#encodings.idna">encodings.idna</a>
  &#8226;   <a href="#hypothesis.internal.charmap">hypothesis.internal.charmap</a>
@@ -81605,7 +81556,6 @@ imports:
   <div class="import">
 imported by:
     <a href="#alembic.util.langhelpers">alembic.util.langhelpers</a>
- &#8226;   <a href="#app.api.model_rules">app.api.model_rules</a>
  &#8226;   <a href="#app.core.request_context">app.core.request_context</a>
  &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#fastapi.encoders">fastapi.encoders</a>
