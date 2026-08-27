@@ -23,6 +23,8 @@ from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
 from app.db.models import (
+    AiGroupingBatch,
+    AiGroupingRun,
     Brand,
     Listing,
     ModelGroup,
@@ -241,9 +243,7 @@ async def start_run(
         plan = await _probe_plan(session, settings, plan)
     except AlgoliaError as exc:
         raise ApiError(503, "run_probe_failed", "Live pre-run probes failed") from exc
-    settings = settings.model_copy(
-        update={"parser_max_requests_per_run": plan.budget["limit"]}
-    )
+    settings = settings.model_copy(update={"parser_max_requests_per_run": plan.budget["limit"]})
     run = await RunRepository(session).create(
         mode=mode,
         budget=plan.budget,
@@ -311,6 +311,7 @@ async def clear_collected_data(
     await _ensure_no_active_runs(session, runtime)
     listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
     runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
+    await session.execute(delete(AiGroupingRun))
     await session.execute(delete(Listing))
     await session.execute(delete(PhysicalItem))
     await session.execute(delete(ParserRun))
@@ -338,13 +339,40 @@ async def clear_run_history(
     return ClearHistoryResponse(runs_deleted=runs_deleted)
 
 
-async def _ensure_no_active_runs(
-    session: AsyncSession, runtime: ParserRuntime
-) -> None:
+async def _ensure_no_active_runs(session: AsyncSession, runtime: ParserRuntime) -> None:
     if runtime.active_run_ids() or await session.scalar(
         select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
     ):
         raise ApiError(409, "run_active", "Stop active parser runs before deleting data")
+    if await session.scalar(
+        select(AiGroupingRun.id)
+        .where(
+            AiGroupingRun.status.in_(
+                (
+                    "preparing",
+                    "submitted",
+                    "running",
+                    "validating",
+                    "waiting_for_market",
+                    "applying",
+                    "interrupted",
+                    "needs_attention",
+                )
+            )
+        )
+        .limit(1)
+    ):
+        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
+    if await session.scalar(
+        select(AiGroupingBatch.id)
+        .where(
+            AiGroupingBatch.status.in_(
+                ("preparing", "submitted", "running", "interrupted", "needs_attention")
+            )
+        )
+        .limit(1)
+    ):
+        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
 
 
 @router.get("/runs/{run_id}/progress", response_model=ProgressResponse)
@@ -456,9 +484,7 @@ async def resume_run(
     settings = settings.model_copy(
         update={
             "parser_max_requests_per_run": int(
-                (existing.budget_estimate or {}).get(
-                    "limit", settings.parser_max_requests_per_run
-                )
+                (existing.budget_estimate or {}).get("limit", settings.parser_max_requests_per_run)
             )
         }
     )

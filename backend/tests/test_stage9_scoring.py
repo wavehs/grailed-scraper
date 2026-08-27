@@ -378,6 +378,49 @@ async def test_scoring_persists_two_idempotent_windows_and_quality_policy(tmp_pa
     await engine.dispose()
 
 
+async def test_scoring_can_replace_snapshots_inside_callers_transaction(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    engine, factory = await _database(tmp_path)
+    run_id, brand_id, _ = await _seed(factory)
+    service = OpportunityScoringService(factory)
+    await service.score_run(run_id)
+    async with factory() as session:
+        original = {
+            row.id: row.input_digest
+            for row in await session.scalars(
+                select(ScoringSnapshot).where(ScoringSnapshot.parser_run_id == run_id)
+            )
+        }
+        listing = await session.scalar(
+            select(Listing).where(Listing.brand_id == brand_id).order_by(Listing.id).limit(1)
+        )
+        assert listing is not None
+        listing.likes_count += 1
+        result = await service.score_run_in_session(
+            session,
+            run_id,
+            brand_ids={brand_id},
+            replace=True,
+        )
+        changed = {
+            row.id: row.input_digest
+            for row in await session.scalars(
+                select(ScoringSnapshot).where(ScoringSnapshot.parser_run_id == run_id)
+            )
+        }
+        assert result["status"] == "completed"
+        assert changed != original
+        await session.rollback()
+    async with factory() as session:
+        persisted = {
+            row.id: row.input_digest
+            for row in await session.scalars(
+                select(ScoringSnapshot).where(ScoringSnapshot.parser_run_id == run_id)
+            )
+        }
+    assert persisted == original
+    await engine.dispose()
+
+
 def test_stage9_analytics_api_uses_exact_cents(tmp_path) -> None:  # type: ignore[no-untyped-def]
     async def scenario() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], int, int, int]:
         engine, factory = await _database(tmp_path)

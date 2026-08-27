@@ -40,9 +40,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
             yield session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        requests_per_minute=12
-    )
+    app.dependency_overrides[get_settings] = lambda: Settings(requests_per_minute=12)
     try:
         with TestClient(app) as client:
             before = client.get("/api/settings")
@@ -90,4 +88,32 @@ async def test_runtime_captures_settings_snapshot_for_each_started_run(
         await asyncio.sleep(0)
     await runtime.close()
     assert captured == [20]
+    await engine.dispose()
+
+
+async def test_runtime_holds_shared_market_lock_for_entire_execution(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    engine, factory = await _database(tmp_path)
+    market_lock = asyncio.Lock()
+    runtime = ParserRuntime(factory, Settings(), market_lock=market_lock)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def execute_locked(run_id: int, cancelled: asyncio.Event, settings: Settings) -> None:
+        del run_id, cancelled, settings
+        entered.set()
+        await release.wait()
+
+    monkeypatch.setattr(runtime, "_execute_locked", execute_locked)
+    runtime.start(1)
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    assert market_lock.locked()
+    release.set()
+    for _ in range(20):
+        if not runtime.active_run_ids():
+            break
+        await asyncio.sleep(0)
+    assert not market_lock.locked()
+    await runtime.close()
     await engine.dispose()

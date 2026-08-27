@@ -37,6 +37,10 @@ browser_restarts, proxy_failures, duration_s`.
 `GET /api/parser/runs/{id}/report` возвращает это же значение типизированным полем
 `metrics`, сохраняя исходный `stats` для обратной совместимости.
 
+AI-run отдельно показывает listings/unique inputs, progress, ambiguous и safe-unique,
+input/output tokens, прогноз/фактическую стоимость и санитизированный код ошибки.
+Provider payload и API key не сохраняются и не логируются.
+
 ### 15.3. Прогресс для UI
 
 `GET /api/parser/runs/{id}/progress` (polling 2с) + опционально SSE `GET /api/parser/runs/{id}/stream`:

@@ -136,6 +136,19 @@ schema_version: int
 Сохраняются только URL-independent asset key, SHA-256 и dHash — байты изображений не
 сохраняются.
 
+AI-группировка имеет отдельную версию `grouping-v1`. Ключ группы имеет вид
+`ai-v1:{brand_slug}-{brand_id}:{product_type}:{sha256(normalized_model)}`: неизменяемый
+ID бренда и физический тип
+товара являются жёсткой границей. `listing_model_assignments` хранит версию, хэш
+разрешённых входов и ID AI-run. До ручного запуска Gemini новые/изменённые объявления
+получают `rule_provisional`; неизменённые `gemini_*` назначения парсер сохраняет.
+
+`ai_grouping_runs`, `ai_grouping_batches` и `ai_grouping_items` хранят бюджет/usage,
+provider job для resume, проверенный результат и снимок назначения непосредственно
+перед atomic apply для отката. Валидированный результат неизменённого `input_hash`
+переиспользуется между canary, remaining и pending без нового Gemini job.
+Старые model groups не удаляются и не переиспользуются AI-алгоритмом.
+
 Реализация этапа 7 возвращает из нормализатора `NormalizationResult`: либо строгий
 `ListingData`, либо список безопасных причин отклонения. Невалидный hit не пишется
 в `listings`; остальные флаги сохраняются в `quality_flags`, чтобы последующие

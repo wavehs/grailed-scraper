@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Protocol
 
 import orjson
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import load_only
 
@@ -62,88 +62,108 @@ class OpportunityScoringService:
         self, run_id: int, *, brand_ids: set[int] | None = None
     ) -> dict[str, object]:
         async with self._sessions() as session:
-            run = await session.get(ParserRun, run_id)
-            if run is None:
-                raise LookupError(f"Parser run {run_id} does not exist")
-            as_of = _aware(run.started_at or run.created_at)
-            coverage, truncated = await _coverage(session, run_id, run.coverage_avg)
-            if brand_ids is not None:
-                coverage = {
-                    brand_id: coverage.get(brand_id, run.coverage_avg or Decimal(1))
-                    for brand_id in brand_ids
-                }
-                truncated &= brand_ids
-            degraded = run.degraded_mode
-            groups_total = snapshots_total = 0
-            cutoff = as_of - timedelta(days=max(WINDOWS))
-            for brand_id in sorted(coverage):
-                brand = await session.get(Brand, brand_id)
-                if brand is None:
-                    raise LookupError(f"Brand {brand_id} does not exist")
-                listings = list(
-                    await session.scalars(
-                        select(Listing)
-                        .options(
-                            load_only(
-                                Listing.id,
-                                Listing.grailed_id,
-                                Listing.brand_id,
-                                Listing.title,
-                                Listing.category,
-                                Listing.size_normalized,
-                                Listing.color,
-                                Listing.status,
-                                Listing.price,
-                                Listing.sold_price,
-                                Listing.created_at,
-                                Listing.first_seen_at,
-                                Listing.sold_at,
-                                Listing.sold_at_is_estimated,
-                                Listing.days_on_market,
-                                Listing.likes_count,
-                                Listing.quality_flags,
-                            )
-                        )
-                        .where(
-                            Listing.brand_id == brand_id,
-                            or_(
-                                and_(
-                                    Listing.status == "sold",
-                                    Listing.sold_at.between(cutoff, as_of),
-                                ),
-                                and_(
-                                    Listing.status == "active",
-                                    func.coalesce(Listing.created_at, Listing.first_seen_at)
-                                    <= as_of,
-                                ),
-                            ),
+            result = await self.score_run_in_session(session, run_id, brand_ids=brand_ids)
+            await session.commit()
+            return result
+
+    async def score_run_in_session(
+        self,
+        session: AsyncSession,
+        run_id: int,
+        *,
+        brand_ids: set[int] | None = None,
+        replace: bool = False,
+    ) -> dict[str, object]:
+        """Score through a caller-owned transaction, optionally replacing snapshots."""
+
+        run = await session.get(ParserRun, run_id)
+        if run is None:
+            raise LookupError(f"Parser run {run_id} does not exist")
+        as_of = _aware(run.started_at or run.created_at)
+        coverage, truncated = await _coverage(session, run_id, run.coverage_avg)
+        if brand_ids is not None:
+            coverage = {
+                brand_id: coverage.get(brand_id, run.coverage_avg or Decimal(1))
+                for brand_id in brand_ids
+            }
+            truncated &= brand_ids
+        degraded = run.degraded_mode
+        groups_total = snapshots_total = 0
+        cutoff = as_of - timedelta(days=max(WINDOWS))
+        if replace and coverage:
+            await session.execute(
+                delete(ScoringSnapshot).where(
+                    ScoringSnapshot.parser_run_id == run_id,
+                    ScoringSnapshot.brand_id.in_(coverage),
+                    ScoringSnapshot.model_version == MODEL_VERSION,
+                )
+            )
+            await session.flush()
+        for brand_id in sorted(coverage):
+            brand = await session.get(Brand, brand_id)
+            if brand is None:
+                raise LookupError(f"Brand {brand_id} does not exist")
+            listings = list(
+                await session.scalars(
+                    select(Listing)
+                    .options(
+                        load_only(
+                            Listing.id,
+                            Listing.grailed_id,
+                            Listing.brand_id,
+                            Listing.title,
+                            Listing.category,
+                            Listing.size_normalized,
+                            Listing.color,
+                            Listing.status,
+                            Listing.price,
+                            Listing.sold_price,
+                            Listing.created_at,
+                            Listing.first_seen_at,
+                            Listing.sold_at,
+                            Listing.sold_at_is_estimated,
+                            Listing.days_on_market,
+                            Listing.likes_count,
+                            Listing.quality_flags,
                         )
                     )
+                    .where(
+                        Listing.brand_id == brand_id,
+                        or_(
+                            and_(
+                                Listing.status == "sold",
+                                Listing.sold_at.between(cutoff, as_of),
+                            ),
+                            and_(
+                                Listing.status == "active",
+                                func.coalesce(Listing.created_at, Listing.first_seen_at) <= as_of,
+                            ),
+                        ),
+                    )
                 )
-                listings = await _canonical_relistings(session, listings)
-                assignments, groups = await self._resolved_groups(session, listings, brand_id)
-                drafts = _build_drafts(
-                    listings=listings,
-                    assignments=assignments,
-                    groups=groups,
-                    as_of=as_of,
-                    coverage_by_brand=coverage,
-                    truncated_brands=truncated,
-                    degraded=degraded,
-                )
-                rows = _finalize_rows(run, groups, drafts, as_of)
-                await self._persist(session, run_id, brand_id, rows)
-                await session.commit()
-                groups_total += len(groups)
-                snapshots_total += len(rows)
-                session.expunge_all()
-            return {
-                "status": "completed",
-                "model_version": MODEL_VERSION,
-                "windows": list(WINDOWS),
-                "groups": groups_total,
-                "snapshots": snapshots_total,
-            }
+            )
+            listings = await _canonical_relistings(session, listings)
+            assignments, groups = await self._resolved_groups(session, listings, brand_id)
+            drafts = _build_drafts(
+                listings=listings,
+                assignments=assignments,
+                groups=groups,
+                as_of=as_of,
+                coverage_by_brand=coverage,
+                truncated_brands=truncated,
+                degraded=degraded,
+            )
+            rows = _finalize_rows(run, groups, drafts, as_of)
+            await self._persist(session, run_id, brand_id, rows)
+            groups_total += len(groups)
+            snapshots_total += len(rows)
+        return {
+            "status": "completed",
+            "model_version": MODEL_VERSION,
+            "windows": list(WINDOWS),
+            "groups": groups_total,
+            "snapshots": snapshots_total,
+        }
 
     async def _resolved_groups(
         self,

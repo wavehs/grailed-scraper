@@ -152,6 +152,81 @@ export type FetchPlan = {
 export type RunStartResponse =
   { dry_run: true; plan: FetchPlan } | { dry_run: false; run: RunSummary };
 
+export type GroupingRunMode = 'canary' | 'remaining' | 'pending';
+export type GroupingRunStatus =
+  | 'preparing'
+  | 'submitted'
+  | 'running'
+  | 'validating'
+  | 'waiting_for_market'
+  | 'applying'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'needs_attention'
+  | 'rolled_back';
+
+export type AiGroupingPreflight = {
+  mode: GroupingRunMode;
+  gemini_configured: boolean;
+  listing_count: number;
+  unique_input_count: number;
+  estimated_input_tokens: number;
+  estimated_output_tokens: number;
+  estimated_cost_usd: string;
+  budget_cap_usd: string;
+  can_start: boolean;
+  blocked_reason?: string;
+  data_fields: string[];
+};
+
+export type AiGroupingExample = {
+  listing_id: number;
+  title: string;
+  old_group?: string;
+  new_group: string;
+  product_type: string;
+  confidence: string;
+};
+
+export type AiGroupingRun = {
+  id: number;
+  mode: GroupingRunMode;
+  status: GroupingRunStatus;
+  cheap_model: string;
+  strong_model: string;
+  prompt_version: string;
+  grouping_version: string;
+  budget_cap_usd: string;
+  estimated_cost_usd: string;
+  actual_cost_usd: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_items: number;
+  unique_inputs: number;
+  resolved_items: number;
+  ambiguous_items: number;
+  unique_fallback_items: number;
+  failed_items: number;
+  error_code?: string;
+  warnings: string[];
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  heartbeat_at?: string;
+  rollback_allowed: boolean;
+  progress_percent: number;
+  examples: AiGroupingExample[];
+};
+
+export type AiGroupingRunList = {
+  data: AiGroupingRun[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type Mapping = {
   id: number;
   source_designer_name: string;

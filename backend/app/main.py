@@ -25,6 +25,7 @@ from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
 from app.core.runtime import SingleInstanceLock, inspect_runtime, require_startup_ready
 from app.db.session import close_database, get_engine, get_session_factory
+from app.services.ai_grouping.runtime import AiGroupingRuntime
 from app.services.parser.runtime import ParserRuntime
 from app.services.transport.capabilities import probe_capabilities
 
@@ -40,6 +41,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     instance_lock.acquire()
     pid_file = settings.data_directory / "app.pid"
     runtime: ParserRuntime | None = None
+    ai_runtime: AiGroupingRuntime | None = None
     try:
         from app.db.models import Base
 
@@ -50,17 +52,29 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         runtime_report["single_instance_lock"] = instance_lock.status()
         require_startup_ready(settings, runtime_report)
         application.state.runtime_report = runtime_report
-        runtime = ParserRuntime(get_session_factory(), settings)
+        # ponytail: one mutation lock matches SQLite's single-writer ceiling.
+        market_lock = asyncio.Lock()
+        runtime = ParserRuntime(get_session_factory(), settings, market_lock=market_lock)
+        ai_runtime = AiGroupingRuntime(
+            get_session_factory(), settings, market_lock=market_lock
+        )
         pid_file.parent.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(str(os.getpid()), encoding="ascii")
         application.state.parser_runtime = runtime
+        application.state.ai_grouping_runtime = ai_runtime
         try:
             await runtime.reconcile()
         except SQLAlchemyError:
             structlog.get_logger(__name__).warning("parser_reconcile_skipped")
+        try:
+            await ai_runtime.reconcile()
+        except SQLAlchemyError:
+            structlog.get_logger(__name__).warning("ai_grouping_reconcile_skipped")
         yield
     finally:
         try:
+            if ai_runtime is not None:
+                await ai_runtime.close()
             if runtime is not None:
                 await runtime.close()
             await close_database()

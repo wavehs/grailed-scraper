@@ -22,6 +22,7 @@ from sqlalchemy.orm import load_only
 
 from app.core.config import Settings
 from app.db.models import (
+    Brand,
     IdentityMatch,
     Listing,
     ListingModelAssignment,
@@ -29,6 +30,12 @@ from app.db.models import (
     ParserRunTask,
     PhysicalItem,
     PhysicalItemMember,
+)
+from app.services.ai_grouping.domain import (
+    AI_KEY_PREFIX,
+    GROUPING_VERSION,
+    compute_input_hash,
+    deterministic_product_type,
 )
 from app.services.identity.images import fingerprint_url, hamming_distance
 from app.services.transport.protocols import HttpTransport
@@ -290,6 +297,7 @@ class IdentityResolver:
                         Listing.brand_name_raw,
                         Listing.brand_id,
                         Listing.category,
+                        Listing.subcategory,
                         Listing.size_raw,
                         Listing.color,
                         Listing.price,
@@ -463,6 +471,10 @@ class IdentityResolver:
 
     async def _assign_models(self, listings: Sequence[Listing]) -> None:
         brand_ids = {listing.brand_id for listing in listings if listing.brand_id is not None}
+        brand_names = {
+            brand.id: brand.name
+            for brand in await self._session.scalars(select(Brand).where(Brand.id.in_(brand_ids)))
+        }
         group_rows = list(
             await self._session.scalars(
                 select(ModelGroup).where(ModelGroup.brand_id.in_(brand_ids))
@@ -479,18 +491,41 @@ class IdentityResolver:
             )
         }
         now = datetime.now(UTC)
+        input_hashes = {
+            listing.id: compute_input_hash(
+                brand=brand_names.get(listing.brand_id, listing.brand_name_raw),
+                category=listing.category,
+                subcategory=listing.subcategory,
+                title=listing.title,
+            )
+            for listing in listings
+            if listing.brand_id is not None
+        }
+        preserved_ids = {
+            listing.id
+            for listing in listings
+            if (assignment := existing.get(listing.id)) is not None
+            and assignment.grouping_version == GROUPING_VERSION
+            and assignment.input_hash == input_hashes.get(listing.id)
+            and assignment.method.startswith("gemini_")
+            and (group := groups_by_id.get(assignment.model_group_id)) is not None
+            and group.stable_key.startswith(f"{AI_KEY_PREFIX}:")
+        }
         signatures: dict[int, LineSignature | None] = {}
         buckets: dict[tuple[int, str], list[Listing]] = defaultdict(list)
         for listing in listings:
-            if listing.brand_id is None:
+            if listing.brand_id is None or listing.id in preserved_ids:
                 continue
             signature = line_signature(
                 listing.title,
-                listing.brand_name_raw,
+                brand_names.get(listing.brand_id, listing.brand_name_raw),
                 listing.size_raw,
                 listing.color,
                 listing.category,
             )
+            product_type = deterministic_product_type(listing.subcategory)
+            if signature is not None and product_type is not None:
+                signature = LineSignature(product_type, signature.key, signature.name)
             signatures[listing.id] = signature
             if signature is not None:
                 buckets[(listing.brand_id, signature.family)].append(listing)
@@ -498,9 +533,7 @@ class IdentityResolver:
         decisions: list[tuple[Listing, ModelGroup, str, Decimal]] = []
         for (brand_id, family), bucket in sorted(buckets.items()):
             keys = Counter(
-                signature.key
-                for item in bucket
-                if (signature := signatures[item.id]) is not None
+                signature.key for item in bucket if (signature := signatures[item.id]) is not None
             )
             token_sets = {key: frozenset(key.split()) for key in keys}
             keys_by_token: dict[str, set[str]] = defaultdict(set)
@@ -612,11 +645,15 @@ class IdentityResolver:
                     group.updated_at = now
                 decisions.append((listing, group, method, confidence))
 
-        assigned_ids = {listing.id for listing, *_ in decisions}
+        assigned_ids = preserved_ids | {listing.id for listing, *_ in decisions}
         for listing in listings:
             if listing.brand_id is None or listing.id in assigned_ids:
                 continue
-            family = _product_family(model_text(listing.title), listing.category) or "unknown"
+            family = (
+                deterministic_product_type(listing.subcategory)
+                or _product_family(model_text(listing.title), listing.category)
+                or "unknown"
+            )
             stable_key = f"line-v5:{listing.brand_id}:{family}:listing:{listing.grailed_id}"
             group = groups.get(stable_key)
             if group is None:
@@ -631,10 +668,11 @@ class IdentityResolver:
                 )
                 self._session.add(group)
                 groups[stable_key] = group
-            decisions.append((listing, group, "unique_listing", Decimal(1)))
+            decisions.append((listing, group, "rule_provisional", Decimal(1)))
         await self._session.flush()
         merge_targets: dict[int, set[int]] = defaultdict(set)
         for listing, group, method, confidence in decisions:
+            method = "rule_provisional"
             assignment = existing.get(listing.id)
             if assignment is None:
                 assignment = ListingModelAssignment(
@@ -643,6 +681,9 @@ class IdentityResolver:
                     method=method,
                     confidence=confidence,
                     algorithm_version=IDENTITY_VERSION,
+                    grouping_version=GROUPING_VERSION,
+                    input_hash=input_hashes[listing.id],
+                    ai_grouping_run_id=None,
                     updated_at=now,
                 )
                 self._session.add(assignment)
@@ -652,6 +693,9 @@ class IdentityResolver:
                 or assignment.method != method
                 or assignment.confidence != confidence
                 or assignment.algorithm_version != IDENTITY_VERSION
+                or assignment.grouping_version != GROUPING_VERSION
+                or assignment.input_hash != input_hashes[listing.id]
+                or assignment.ai_grouping_run_id is not None
             ):
                 if assignment.model_group_id != group.id:
                     merge_targets[assignment.model_group_id].add(group.id)
@@ -659,11 +703,16 @@ class IdentityResolver:
                 assignment.method = method
                 assignment.confidence = confidence
                 assignment.algorithm_version = IDENTITY_VERSION
+                assignment.grouping_version = GROUPING_VERSION
+                assignment.input_hash = input_hashes[listing.id]
+                assignment.ai_grouping_run_id = None
                 assignment.updated_at = now
         for old_group_id, targets in merge_targets.items():
             if len(targets) == 1 and old_group_id not in targets:
                 old_group = groups_by_id.get(old_group_id)
-                if old_group is not None:
+                if old_group is not None and not old_group.stable_key.startswith(
+                    f"{AI_KEY_PREFIX}:"
+                ):
                     old_group.merged_into_id = next(iter(targets))
                     old_group.updated_at = now
 
@@ -691,9 +740,8 @@ class IdentityResolver:
                     if previous.brand_id != current.brand_id:
                         continue
                     sold_index = bisect_right(sale_times, _aware(_created(previous)))
-                    if (
-                        sold_index < len(sale_times)
-                        and sale_times[sold_index] <= _aware(_created(current))
+                    if sold_index < len(sale_times) and sale_times[sold_index] <= _aware(
+                        _created(current)
                     ):
                         continue
                     if (
@@ -919,6 +967,7 @@ class IdentityResolver:
             matches.append(match)
         return matches
 
+
 def model_text(
     title: str,
     brand: str | None = None,
@@ -929,8 +978,7 @@ def model_text(
     normalized = "".join(char for char in value if not unicodedata.combining(char))
     brand_tokens = {_singularize(token) for token in _TOKEN.findall((brand or "").casefold())}
     variant_tokens = {
-        _singularize(token)
-        for token in _TOKEN.findall(f"{size or ''} {color or ''}".casefold())
+        _singularize(token) for token in _TOKEN.findall(f"{size or ''} {color or ''}".casefold())
     }
     raw_tokens = _TOKEN.findall(normalized)
     tokens: list[str] = []
@@ -1029,14 +1077,11 @@ def model_name(signature: tuple[str, str]) -> str:
 
 
 def _product_family(canonical: str, category: str | None) -> str | None:
-    category_family = _CATEGORY_FAMILY.get((category or "").casefold())
-    if category_family is not None:
-        return category_family
     tokens = set(canonical.split())
     for family, aliases in _FAMILIES:
         if tokens & aliases:
             return family
-    return None
+    return _CATEGORY_FAMILY.get((category or "").casefold())
 
 
 def _singularize(token: str) -> str:
@@ -1059,12 +1104,10 @@ def _fuzzy_line_allowed(left: str, right: str) -> bool:
 
 
 def _deletions(token: str) -> set[str]:
-    return {token, *(f"{token[:index]}{token[index + 1:]}" for index in range(len(token)))}
+    return {token, *(f"{token[:index]}{token[index + 1 :]}" for index in range(len(token)))}
 
 
-def _superset_keys(
-    tokens: frozenset[str], keys_by_token: dict[str, set[str]]
-) -> set[str]:
+def _superset_keys(tokens: frozenset[str], keys_by_token: dict[str, set[str]]) -> set[str]:
     candidates = [keys_by_token[token] for token in tokens]
     return set.intersection(*candidates) if candidates else set()
 

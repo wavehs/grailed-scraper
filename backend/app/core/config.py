@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     log_directory: Path = PROJECT_ROOT / "data" / "logs"
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
+    gemini_api_key: SecretStr | None = None
     proxy_url: str | None = None
     proxy_list_browser: list[str] | str = []
     proxy_list_http: list[str] | str = []

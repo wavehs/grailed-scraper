@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
+from app.api.ai_grouping import router as ai_grouping_router
 from app.api.analytics import router as analytics_router
 from app.api.brands import router as brands_router
 from app.api.discovery import router as discovery_router
@@ -30,6 +31,7 @@ router.include_router(brands_router)
 router.include_router(parser_router)
 router.include_router(analytics_router)
 router.include_router(settings_router)
+router.include_router(ai_grouping_router)
 
 
 class HealthResponse(BaseModel):

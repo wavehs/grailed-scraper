@@ -53,6 +53,7 @@
 | `quality_filter_replicas` | true | |
 | `quality_lot_price_multiplier` | 1.5 | минимальное отношение к медиане для lot/bundle |
 | `identity_image_requests_per_run` | 100 | максимум cover-image запросов после текстового blocking; 0 отключает |
+| `gemini_api_key` | null | только `APP_GEMINI_API_KEY`; UI показывает лишь наличие ключа |
 | `parser_watermark_overlap_hours` | 2 | overlap delta-watermark |
 | `store_seller_identity` | `hashed` | `none` \| `hashed` \| `plain` |
 | `seller_identity_salt` | generated | секрет из env или `data/secrets/`; не доступен через API |

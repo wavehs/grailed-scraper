@@ -66,10 +66,12 @@ class ParserRuntime:
         settings: Settings,
         *,
         scoring: ScoringService | None = None,
+        market_lock: asyncio.Lock | None = None,
     ) -> None:
         self._sessions = sessions
         self._settings = settings
         self._scoring = scoring or OpportunityScoringService(sessions)
+        self._market_lock = market_lock or asyncio.Lock()
         self._jobs: dict[int, asyncio.Task[None]] = {}
         self._cancel: dict[int, asyncio.Event] = {}
         self._resources_by_run: dict[int, _Resources] = {}
@@ -143,6 +145,13 @@ class ParserRuntime:
             await asyncio.gather(*remaining, return_exceptions=True)
 
     async def _execute(self, run_id: int, cancelled: asyncio.Event, settings: Settings) -> None:
+        # ponytail: one market mutation lock matches SQLite's single-writer ceiling.
+        async with self._market_lock:
+            await self._execute_locked(run_id, cancelled, settings)
+
+    async def _execute_locked(
+        self, run_id: int, cancelled: asyncio.Event, settings: Settings
+    ) -> None:
         heartbeat: asyncio.Task[None] | None = None
         resources: _Resources | None = None
         logger = structlog.get_logger(__name__)
@@ -301,9 +310,7 @@ class ParserRuntime:
                 fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
                 resume_cursor=prior_cursor,
                 max_hits=(
-                    int(spec_data["max_hits"])
-                    if spec_data.get("max_hits") is not None
-                    else None
+                    int(spec_data["max_hits"]) if spec_data.get("max_hits") is not None else None
                 ),
             )
         )

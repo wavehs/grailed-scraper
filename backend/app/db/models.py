@@ -233,7 +233,12 @@ class ListingModelAssignment(Base):
     """Auditable exact-model assignment; fallback analytics groups are not stored here."""
 
     __tablename__ = "listing_model_assignments"
-    __table_args__ = (Index("ix_listing_model_assignments_group", "model_group_id"),)
+    __table_args__ = (
+        Index("ix_listing_model_assignments_group", "model_group_id"),
+        Index("ix_listing_model_assignments_grouping_version", "grouping_version"),
+        Index("ix_listing_model_assignments_input_hash", "input_hash"),
+        Index("ix_listing_model_assignments_ai_grouping_run", "ai_grouping_run_id"),
+    )
 
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
@@ -244,7 +249,158 @@ class ListingModelAssignment(Base):
     method: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    grouping_version: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="legacy", server_default="legacy"
+    )
+    input_hash: Mapped[str | None] = mapped_column(String(64))
+    ai_grouping_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "ai_grouping_runs.id",
+            name="fk_listing_model_assignments_ai_grouping_run_id",
+            ondelete="SET NULL",
+        )
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AiGroupingRun(Base):
+    """One manually budgeted, resumable AI grouping operation."""
+
+    __tablename__ = "ai_grouping_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('canary', 'remaining', 'pending')", name="ck_ai_grouping_runs_mode"
+        ),
+        CheckConstraint(
+            "status IN ('preparing', 'submitted', 'running', 'validating', "
+            "'waiting_for_market', 'applying', 'completed', 'failed', 'cancelled', "
+            "'interrupted', 'needs_attention', 'rolled_back')",
+            name="ck_ai_grouping_runs_status",
+        ),
+        CheckConstraint("budget_limit_usd >= 0", name="ck_ai_grouping_runs_budget"),
+        CheckConstraint("actual_cost_usd >= 0", name="ck_ai_grouping_runs_cost"),
+        Index("ix_ai_grouping_runs_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="preparing")
+    base_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    review_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    grouping_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    budget_limit_usd: Mapped[Decimal] = mapped_column(Numeric(12, 8), nullable=False)
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
+    actual_cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 8), nullable=False, default=Decimal(0)
+    )
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unique_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ambiguous_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stats: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    backup_path: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AiGroupingBatch(Base):
+    """Persisted Gemini Batch job identity and usage for safe resume."""
+
+    __tablename__ = "ai_grouping_batches"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('preparing', 'submitted', 'running', 'completed', 'failed', "
+            "'cancelled', 'interrupted', 'needs_attention')",
+            name="ck_ai_grouping_batches_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_ai_grouping_batches_attempts"),
+        CheckConstraint("actual_cost_usd >= 0", name="ck_ai_grouping_batches_cost"),
+        UniqueConstraint("provider_job_name", name="uq_ai_grouping_batches_provider_job"),
+        Index("ix_ai_grouping_batches_run_status", "run_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_grouping_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="preparing")
+    provider_job_name: Mapped[str | None] = mapped_column(String(255))
+    provider_display_name: Mapped[str | None] = mapped_column(String(255))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actual_cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 8), nullable=False, default=Decimal(0)
+    )
+    usage: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AiGroupingItem(Base):
+    """Validated staged result plus the complete assignment snapshot needed for rollback."""
+
+    __tablename__ = "ai_grouping_items"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'submitted', 'classified', 'ambiguous', 'failed', "
+            "'applied', 'rolled_back')",
+            name="ck_ai_grouping_items_status",
+        ),
+        UniqueConstraint("run_id", "listing_id", name="uq_ai_grouping_items_run_listing"),
+        Index("ix_ai_grouping_items_run_status", "run_id", "status"),
+        Index("ix_ai_grouping_items_request_key", "request_key"),
+        Index("ix_ai_grouping_items_batch", "batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_grouping_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ai_grouping_batches.id", ondelete="SET NULL")
+    )
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+    )
+    request_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    product_type: Mapped[str | None] = mapped_column(String(64))
+    model_span: Mapped[str | None] = mapped_column(String(255))
+    normalized_model: Mapped[str | None] = mapped_column(String(255))
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    is_ambiguous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    target_model_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="SET NULL")
+    )
+    target_stable_key: Mapped[str | None] = mapped_column(String(512))
+    target_name: Mapped[str | None] = mapped_column(String(255))
+    target_category: Mapped[str | None] = mapped_column(String(255))
+    previous_model_group_id: Mapped[int | None] = mapped_column(Integer)
+    previous_method: Mapped[str | None] = mapped_column(String(32))
+    previous_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    previous_algorithm_version: Mapped[str | None] = mapped_column(String(32))
+    previous_grouping_version: Mapped[str | None] = mapped_column(String(32))
+    previous_input_hash: Mapped[str | None] = mapped_column(String(64))
+    previous_ai_grouping_run_id: Mapped[int | None] = mapped_column(Integer)
+    previous_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PhysicalItem(Base):
