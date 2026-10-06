@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
+from alembic import command
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -22,7 +23,12 @@ from app.api.routes import router
 from app.core.config import PROJECT_ROOT, get_settings
 from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
-from app.core.runtime import SingleInstanceLock, inspect_runtime, require_startup_ready
+from app.core.runtime import (
+    SingleInstanceLock,
+    get_alembic_config,
+    inspect_runtime,
+    require_startup_ready,
+)
 from app.db.session import close_database, get_engine, get_session_factory
 from app.services.parser.runtime import ParserRuntime
 
@@ -38,10 +44,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     pid_file = settings.data_directory / "app.pid"
     runtime: ParserRuntime | None = None
     try:
-        from app.db.models import Base
-
-        async with get_engine().begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
+        # Alembic owns the schema: create_all would pre-create new tables and make the
+        # next migration fail, leaving old tables without their new columns.
+        await asyncio.to_thread(_upgrade_schema)
 
         runtime_report = await inspect_runtime(settings, get_engine())
         runtime_report["single_instance_lock"] = instance_lock.status()
@@ -66,6 +71,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await _remove_own_pid_file(pid_file, os.getpid())
         finally:
             instance_lock.release()
+
+
+def _upgrade_schema() -> None:
+    config = get_alembic_config()
+    config.attributes["configure_logger"] = False
+    command.upgrade(config, "head")
 
 
 async def _remove_own_pid_file(pid_file: Path, process_id: int) -> None:

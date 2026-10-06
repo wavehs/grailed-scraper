@@ -15,7 +15,8 @@ from app.db.session import get_database_url
 
 
 config = context.config
-if config.config_file_name is not None:
+# The app runs migrations at startup and keeps its own structured logging.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 config.set_main_option(

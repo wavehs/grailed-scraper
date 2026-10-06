@@ -38,7 +38,9 @@ LISTINGS_FTS_TRIGGERS = (
 def upgrade() -> None:
     # Snapshots reference the old groups; they are recalculated from listings.
     op.execute("DELETE FROM scoring_snapshots")
+    # A listing_overrides leftover of the old startup create_all points at the dropped groups.
     for table in (
+        "listing_overrides",
         "identity_matches",
         "physical_item_members",
         "physical_items",
@@ -115,16 +117,9 @@ def upgrade() -> None:
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_table(
-        "brand_stopwords",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "brand_id", sa.Integer(), sa.ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
-        ),
-        sa.Column("phrase", sa.String(length=255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("brand_id", "phrase", name="uq_brand_stopwords_phrase"),
-    )
+    # A create_all leftover has the same shape and may already hold user stopwords.
+    if not sa.inspect(op.get_bind()).has_table("brand_stopwords"):
+        _create_brand_stopwords()
 
     with op.batch_alter_table("brands") as batch:
         batch.add_column(sa.Column("grouping_hash", sa.String(length=64)))
@@ -155,6 +150,19 @@ def upgrade() -> None:
     op.execute(
         "UPDATE listings SET category_path = json_extract(raw_json, '$.category_path') "
         "WHERE category_path IS NULL AND json_type(raw_json, '$.category_path') = 'text'"
+    )
+
+
+def _create_brand_stopwords() -> None:
+    op.create_table(
+        "brand_stopwords",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column(
+            "brand_id", sa.Integer(), sa.ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column("phrase", sa.String(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.UniqueConstraint("brand_id", "phrase", name="uq_brand_stopwords_phrase"),
     )
 
 

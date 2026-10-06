@@ -208,3 +208,39 @@ def test_cursor_fts_migration_indexes_existing_and_changed_listings(tmp_path) ->
         assert not connection.execute(
             "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'jacket*'"
         ).fetchall()
+
+
+def test_grouping_migrations_tolerate_tables_left_by_startup_create_all(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    backend_root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    database_path = tmp_path / "create-all-leftovers.db"
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.attributes["database_url"] = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+    command.upgrade(config, "20261006_0017")
+
+    # The app used to run create_all at startup: it added the new tables but left old
+    # tables without their new columns, so the next upgrade failed on "already exists".
+    from app.db.models import Base
+
+    engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+    Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO brands (name, slug, aliases, include_subbrands, created_at, updated_at) "
+            "VALUES ('X', 'x', '[]', 0, '2026-10-06', '2026-10-06')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO brand_stopwords (brand_id, phrase, created_at) "
+            "VALUES (1, 'promo', '2026-10-06')"
+        )
+    engine.dispose()
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        brand_columns = {row[1] for row in connection.execute("PRAGMA table_info(brands)")}
+        group_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_groups)")}
+        stopwords = connection.execute("SELECT phrase FROM brand_stopwords").fetchall()
+    assert {"grouping_hash", "grouped_at"} <= brand_columns
+    assert "product_type" in group_columns
+    assert stopwords == [("promo",)]

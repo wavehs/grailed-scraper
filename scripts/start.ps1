@@ -66,6 +66,7 @@ if (-not (Test-Path $VenvPython)) {
 Write-Step "Миграции базы данных"
 Push-Location $BackendDir
 try { & $VenvPython -m alembic upgrade head } finally { Pop-Location }
+if ($LASTEXITCODE -ne 0) { Write-Warn "Миграции не применились, сервер не запущен."; exit 1 }
 
 Stop-PortProcesses 8000
 # Uvicorn must run without --reload/--workers on Windows (selector event loop).
