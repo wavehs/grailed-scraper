@@ -46,6 +46,15 @@ def test_reproducible_runtime_contract() -> None:
     assert ci.index("alembic upgrade head") < ci.index("- run: pytest")
 
 
+def test_non_ascii_powershell_scripts_have_a_utf8_bom() -> None:
+    # Windows PowerShell 5.1 reads BOM-less scripts as the ANSI code page, which turns
+    # Cyrillic UTF-8 bytes into smart quotes and breaks parsing.
+    for script in (ROOT / "scripts").glob("*.ps1"):
+        data = script.read_bytes()
+        if not data.isascii():
+            assert data.startswith(b"\xef\xbb\xbf"), script.name
+
+
 def test_fetching_settings_keep_safe_limits() -> None:
     settings = Settings()
     assert settings.algolia_hits_per_page == 1_000
