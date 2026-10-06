@@ -282,9 +282,13 @@ def test_fetch_tier_migration_recovers_from_legacy_tiers_and_failed_attempt(tmp_
             )
         )
         session.commit()
-    # A previous failed batch rebuild leaves its copy behind on SQLite.
+    # A previous failed batch rebuild leaves its copy behind on SQLite, and databases
+    # built by the old startup create_all have no search index.
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE _alembic_tmp_listings (id INTEGER)")
+        for trigger in ("listings_fts_ai", "listings_fts_ad", "listings_fts_au"):
+            connection.exec_driver_sql(f"DROP TRIGGER {trigger}")
+        connection.exec_driver_sql("DROP TABLE listings_fts")
     engine.dispose()
 
     command.upgrade(config, "head")
@@ -296,6 +300,10 @@ def test_fetch_tier_migration_recovers_from_legacy_tiers_and_failed_attempt(tmp_
         tier, flags = connection.execute(
             "SELECT fetch_tier, quality_flags FROM listings"
         ).fetchone()
+        matches = connection.execute(
+            "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'legacy*'"
+        ).fetchall()
     assert leftovers == []
+    assert matches == [(1,)]
     assert tier == "T1"
     assert json.loads(flags) == ["legacy_fetch_tier_T2"]
