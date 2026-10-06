@@ -385,15 +385,13 @@ describe('stage 10 screens', () => {
       vi.fn(() =>
         json({
           status: 'unavailable',
-          reasons: ['live_compliance_not_acknowledged'],
+          reasons: ['circuit_open'],
         }),
       ),
     );
     renderApp(<HealthBanner />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Parser unavailable');
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Live access is blocked until compliance is acknowledged',
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('A source circuit breaker is open.');
   });
 
   it('refreshes an expired source connection from the warning banner', async () => {
@@ -485,30 +483,6 @@ describe('stage 10 screens', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('confirmation_token')),
     ).toBe(false);
-  });
-
-  it('asks for the one-time compliance acknowledgement before collecting', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/parser/health'))
-        return json({ status: 'unavailable', reasons: ['live_compliance_not_acknowledged'] }, 503);
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
-      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
-      if (url.endsWith('/settings') && init?.method === 'PATCH') return json({ groups: {} });
-      return json({});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderApp(<CollectPage />);
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'I understand, enable collection' }),
-    );
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(
-        ([input, init]) => String(input).endsWith('/settings') && init?.method === 'PATCH',
-      );
-      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ live_compliance_acknowledged: true });
-    });
-    expect(screen.getByRole('button', { name: 'Update data' })).toBeDisabled();
   });
 
   it('clears collected data after confirmation', async () => {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Play, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Ban, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useBrandsQuery, useParserHealth, useRunsQuery } from '@/lib/queries';
+import { useBrandsQuery, useRunsQuery } from '@/lib/queries';
 import { formatDate, formatPercent } from '@/lib/utils';
 import type { RunDetail, RunProgress, RunStartResponse, RunSummary } from '@/lib/types';
 
@@ -24,7 +24,6 @@ const terminal = new Set(['completed', 'partial', 'failed', 'cancelled', 'interr
 export default function CollectPage() {
   const { t, locale } = useI18n();
   const client = useQueryClient();
-  const health = useParserHealth();
   const brands = useBrandsQuery();
   const [selected, setSelected] = useState<number[] | null>(null);
   const [openRun, setOpenRun] = useState<number | null>(null);
@@ -60,13 +59,6 @@ export default function CollectPage() {
     client.invalidateQueries({ queryKey: ['runs'] });
     client.invalidateQueries({ queryKey: ['parser-health'] });
   };
-  const acknowledge = useMutation({
-    mutationFn: () => api('/settings', 'PATCH', { live_compliance_acknowledged: true }),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ['settings'] });
-      refreshAll();
-    },
-  });
   const start = useMutation({
     mutationFn: () =>
       api<RunStartResponse>('/parser/run', 'POST', {
@@ -95,8 +87,7 @@ export default function CollectPage() {
     },
   });
 
-  const needsAck = health.data?.reasons.includes('live_compliance_not_acknowledged');
-  const error = start.error ?? control.error ?? removeRun.error ?? clearData.error ?? acknowledge.error;
+  const error = start.error ?? control.error ?? removeRun.error ?? clearData.error;
   const toggle = (id: number) =>
     setSelected((current) =>
       (current ?? []).includes(id)
@@ -125,20 +116,6 @@ export default function CollectPage() {
       />
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} />}
-
-      {needsAck && (
-        <Card className="space-y-3 border-[var(--warning-border)] p-5">
-          <h2 className="font-semibold text-[var(--text-primary)]">{t('complianceTitle')}</h2>
-          <p className="text-sm text-[var(--text-secondary)]">{t('complianceText')}</p>
-          <Button
-            icon={<ShieldCheck size={16} />}
-            disabled={acknowledge.isPending}
-            onClick={() => acknowledge.mutate()}
-          >
-            {t('complianceAccept')}
-          </Button>
-        </Card>
-      )}
 
       {activeRun ? (
         <Card className="space-y-4 p-5">
@@ -202,7 +179,7 @@ export default function CollectPage() {
           </div>
           <Button
             icon={<Play size={16} />}
-            disabled={needsAck || !(selected ?? []).length || start.isPending}
+            disabled={!(selected ?? []).length || start.isPending}
             onClick={() => start.mutate()}
           >
             {start.isPending ? t('starting') : t('updateData')}

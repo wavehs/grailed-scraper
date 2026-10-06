@@ -60,9 +60,9 @@ duration_s`.
 
 `GET /api/parser/health` отражает живое состояние credentials, доступных tiers и
 версий, schema alerts, circuit breakers по `(tier, host)`,
-активных и последнего run, compliance и последних метрик. `unavailable` означает
-отсутствие обязательного ресурса или env-compliance acknowledgement; `degraded` —
-stale credentials, schema drift, открытый circuit, plain seller mode
+активных и последнего run, compliance и последних метрик. Отсутствие credentials
+или схемы не считается проблемой: discovery запускается автоматически перед сбором.
+`degraded` — нет подтверждённых сопоставлений брендов, stale credentials, schema drift, открытый circuit, plain seller mode
 или деградировавший последний run. Поле `reasons` содержит машиночитаемые причины,
 а `schema.alerts` — подробности активных alerts. Секция `runtime` отдельно сообщает
 Alembic current/head, доступность data/log directories, production bind validation и

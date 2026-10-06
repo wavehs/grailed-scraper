@@ -14,7 +14,6 @@
 | `sold_history_days` | 365 | проданные объявления старше не собираются (фильтр `sold_at_i`); активные собираются все |
 | `collect_price_min_usd` / `collect_price_max_usd` | null | необязательный ценовой диапазон для обоих индексов |
 | `store_seller_identity` | `hashed` | `none` \| `hashed` \| `plain`; `plain` требует флага подтверждения в PATCH |
-| `live_compliance_acknowledged` | `false` | одноразовая галочка на странице «Сбор данных»; без неё live-запросы заблокированы |
 
 ### Только env (константы приложения)
 

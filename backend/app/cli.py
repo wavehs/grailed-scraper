@@ -14,7 +14,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
-from app.core.privacy import require_live_compliance
 from app.db.models import (
     Brand,
     Listing,
@@ -43,7 +42,6 @@ from app.services.transport.protocols import HttpTransport
 async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, object]:
     """Fetch and normalize a bounded compatibility sample without persistence."""
 
-    require_live_compliance(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
@@ -106,7 +104,6 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
 async def run_collection_canary(settings: Settings, brand: str) -> dict[str, object]:
     """Collect one live brand without persisting listing payloads."""
 
-    require_live_compliance(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
@@ -206,7 +203,6 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
 async def run_discovery(settings: Settings) -> dict[str, object]:
     """Read the public search key from Grailed's page config and probe indices and facets."""
 
-    require_live_compliance(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     transport: HttpTransport = create_http_transport(settings)
@@ -233,7 +229,6 @@ async def run_discovery(settings: Settings) -> dict[str, object]:
 async def run_taxonomy_check(settings: Settings) -> dict[str, object]:
     """One bounded request: real category_path values that config/taxonomy.yaml lacks."""
 
-    require_live_compliance(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:

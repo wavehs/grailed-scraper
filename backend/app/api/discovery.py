@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.errors import ApiError
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
-from app.core.privacy import require_live_compliance
 from app.db.session import get_db
 from app.services.sources.grailed.discovery.client import DiscoveryHttpError
 from app.services.sources.grailed.discovery.models import DiscoveryResult
@@ -98,14 +97,6 @@ async def get_discovery_service(
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
 ) -> AsyncIterator[DiscoveryService]:
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(
-            503,
-            str(exc),
-            "Live mode requires compliance acknowledgement",
-        ) from exc
     transport = create_http_transport(settings)
     try:
         yield DiscoveryService(session, settings, transport)
@@ -119,10 +110,6 @@ async def refresh_discovery(
     service: Annotated[DiscoveryService, Depends(get_discovery_service)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
 ) -> DiscoveryResponse:
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     try:
         return DiscoveryResponse.from_result(await service.refresh(force=payload.force))
     except DiscoveryUnavailableError as exc:

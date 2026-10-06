@@ -44,13 +44,6 @@ def _local_salt(root: Path) -> str:
 
 def compliance_reasons(settings: Settings) -> list[str]:
     reasons: list[str] = []
-    if settings.source_mode == "live" and not settings.live_compliance_acknowledged:
-        reasons.append("live_compliance_not_acknowledged")
     if settings.store_seller_identity == "plain":
         reasons.append("seller_identity_plaintext_enabled")
     return reasons
-
-
-def require_live_compliance(settings: Settings) -> None:
-    if settings.source_mode == "live" and not settings.live_compliance_acknowledged:
-        raise RuntimeError("live_compliance_not_acknowledged")

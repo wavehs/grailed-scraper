@@ -31,7 +31,6 @@ export type ParserHealth = {
   versions: { curl_cffi?: string };
   circuits: Array<{ tier: string; host: string; state: string }>;
   compliance: {
-    live_acknowledged: boolean;
     seller_identity_mode: 'none' | 'hashed' | 'plain';
     limits: { requests_per_minute: number; max_concurrency: number };
   };

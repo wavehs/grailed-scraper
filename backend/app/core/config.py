@@ -62,7 +62,6 @@ class Settings(BaseSettings):
     fx_provider: Literal["static"] = "static"
     store_seller_identity: Literal["none", "hashed", "plain"] = "hashed"
     seller_identity_salt: str | None = None
-    live_compliance_acknowledged: bool = False
     raw_data_retention_days: int = 90
     backup_retention_days: int = 30
 
