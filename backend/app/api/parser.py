@@ -26,6 +26,7 @@ from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
 from app.db.models import (
     Brand,
+    GroupMetric,
     Listing,
     ModelGroup,
     ParserRun,
@@ -265,6 +266,7 @@ async def clear_collected_data(
     await _ensure_no_active_runs(session, runtime)
     listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
     runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
+    await session.execute(delete(GroupMetric))
     await session.execute(delete(Listing))
     await session.execute(delete(ParserRun))
     await session.execute(delete(ParserWatermark))
