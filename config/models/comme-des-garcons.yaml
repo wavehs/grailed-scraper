@@ -1,0 +1,4 @@
+models:
+  - {name: Play, types: any}
+  - {name: Homme Plus, types: any}
+  - {name: Chuck Taylor, aliases: [chuck, chuck 70], types: [hitop_sneakers, lowtop_sneakers]}

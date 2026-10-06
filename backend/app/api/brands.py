@@ -8,19 +8,29 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.discovery import ensure_discovery
 from app.api.errors import ApiError
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
-from app.db.models import Brand, BrandSourceMap, SourceCredential
+from app.db.models import (
+    Brand,
+    BrandSourceMap,
+    GroupMetric,
+    Listing,
+    ModelGroup,
+    ParserRun,
+    SourceCredential,
+)
 from app.db.session import get_db
+from app.domain.listings import slugify
 from app.repositories.brands import BrandRepository
-from app.services.normalization.brands import BrandMappingService
+from app.services.normalization.brands import BrandMappingService, normalize_brand_name
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.transport.factory import create_http_transport
@@ -54,6 +64,22 @@ class BrandListResponse(BaseModel):
     data: list[BrandResponse]
 
 
+class BrandCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    aliases: list[str] = []
+    # Exact Grailed designer chosen from /brands/designers; auto-mapped when omitted.
+    designer: str | None = Field(default=None, max_length=255)
+
+
+class DesignerSuggestion(BaseModel):
+    name: str
+    listings_count: int
+
+
+class DesignerSearchResponse(BaseModel):
+    data: list[DesignerSuggestion]
+
+
 class AutoMapRequest(BaseModel):
     brand_ids: list[int] | None = None
 
@@ -79,6 +105,9 @@ class BrandServiceDependency:
     service: BrandMappingService
     repository: BrandRepository
     transport: HttpTransport
+    client: AlgoliaClient
+    active_index: str
+    brand_facet: str
 
 
 async def get_brand_service(
@@ -94,17 +123,14 @@ async def get_brand_service(
             str(exc),
             "Live mode requires compliance acknowledgement",
         ) from exc
+    await ensure_discovery(session, settings)
     transport = create_http_transport(settings)
     cached = await session.scalar(
         select(SourceCredential).where(SourceCredential.source == "grailed")
     )
     if cached is None or cached.active_index is None:
         await transport.close()
-        raise ApiError(
-            503,
-            "discovery_required",
-            "Refresh Grailed discovery before auto-mapping brands",
-        )
+        raise ApiError(503, "discovery_incomplete", "Grailed discovery found no listing index")
     credentials = AlgoliaCredentialsData(cached.app_id, cached.api_key, cached.algolia_agent)
     active_index = cached.active_index
     client = AlgoliaClient(
@@ -117,10 +143,16 @@ async def get_brand_service(
         timeout_s=settings.parser_request_timeout_s,
     )
     try:
+        brand_facet = cached.brand_facet or "designers.name"
         yield BrandServiceDependency(
-            BrandMappingService(repository, client, active_index=active_index),
+            BrandMappingService(
+                repository, client, active_index=active_index, brand_facet=brand_facet
+            ),
             repository,
             transport,
+            client,
+            active_index,
+            brand_facet,
         )
     finally:
         await transport.close()
@@ -132,6 +164,93 @@ async def list_brands(
 ) -> BrandListResponse:
     rows = await BrandRepository(session).list_with_counts()
     return BrandListResponse(data=[_brand_response(brand, count) for brand, count in rows])
+
+
+@router.get("/designers", response_model=DesignerSearchResponse)
+async def search_designers(
+    q: Annotated[str, Query(min_length=2, max_length=64)],
+    dependency: Annotated[BrandServiceDependency, Depends(get_brand_service)],
+) -> DesignerSearchResponse:
+    """Suggest exact Grailed designer names with their active listing counts."""
+
+    values = await dependency.client.search_facet_values(
+        dependency.active_index, dependency.brand_facet, q
+    )
+    return DesignerSearchResponse(
+        data=[DesignerSuggestion(name=item.value, listings_count=item.count) for item in values]
+    )
+
+
+@router.post("", response_model=BrandResponse, status_code=201)
+async def create_brand(
+    payload: BrandCreateRequest,
+    dependency: Annotated[BrandServiceDependency, Depends(get_brand_service)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> BrandResponse:
+    name = " ".join(payload.name.split())
+    existing = {normalize_brand_name(brand.name) for brand in await dependency.repository.all()}
+    if normalize_brand_name(name) in existing:
+        raise ApiError(409, "brand_exists", "This brand is already tracked")
+    now = datetime.now(UTC)
+    taken = set(await session.scalars(select(Brand.slug)))
+    slug = base = slugify(name) or "brand"
+    suffix = 2
+    while slug in taken:
+        slug, suffix = f"{base}-{suffix}", suffix + 1
+    brand = Brand(
+        name=name,
+        slug=slug,
+        aliases=list(dict.fromkeys(item.strip() for item in payload.aliases if item.strip())),
+        include_subbrands=False,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(brand)
+    await session.flush()
+    if payload.designer:
+        matches = await dependency.client.search_facet_values(
+            dependency.active_index, dependency.brand_facet, payload.designer
+        )
+        exact = next((item for item in matches if item.value == payload.designer), None)
+        if exact is None:
+            raise ApiError(404, "designer_not_found", "Grailed has no such designer")
+        await dependency.repository.upsert_candidate(
+            brand_id=brand.id,
+            source_name=exact.value,
+            listings_count=exact.count,
+            score=Decimal(1),
+            verified=True,
+            is_subbrand=False,
+            now=now,
+        )
+    else:
+        await dependency.service.auto_map([brand.id])
+    await session.commit()
+    created = await dependency.repository.get(brand.id)
+    assert created is not None
+    return _brand_response(created, 0)
+
+
+@router.delete("/{brand_id}", status_code=204)
+async def delete_brand(
+    brand_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Stop tracking a brand and delete its collected listings and analytics."""
+
+    brand = await session.get(Brand, brand_id)
+    if brand is None:
+        raise ApiError(404, "brand_not_found", "Brand does not exist")
+    if await session.scalar(
+        select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
+    ):
+        raise ApiError(409, "run_active", "Stop the active collection run first")
+    await session.execute(delete(GroupMetric).where(GroupMetric.brand_id == brand_id))
+    await session.execute(delete(Listing).where(Listing.brand_id == brand_id))
+    await session.execute(delete(ModelGroup).where(ModelGroup.brand_id == brand_id))
+    await session.delete(brand)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.post("/auto-map", response_model=AutoMapResponse)

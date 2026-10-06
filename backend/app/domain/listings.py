@@ -7,7 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ListingStatus = Literal["active", "sold", "removed_pending", "removed"]
-FetchTier = Literal["T1", "T2", "T3"]
+# Only direct Algolia over HTTP remains; the column keeps the contract explicit.
+FetchTier = Literal["T1"]
 
 
 class ListingData(BaseModel):
@@ -26,6 +27,7 @@ class ListingData(BaseModel):
     brand_id: int | None = Field(default=None, gt=0)
     category: str | None = None
     subcategory: str | None = None
+    category_path: str | None = None
     size_raw: str | None = None
     size_normalized: str | None = None
     condition_raw: str | None = None
@@ -49,10 +51,8 @@ class ListingData(BaseModel):
     removed_checked_at: datetime | None = None
     days_on_market: int | None = Field(default=None, ge=0)
     cover_photo_url: str | None = None
-    cover_asset_key: str | None = Field(default=None, min_length=64, max_length=64)
-    cover_content_sha256: str | None = Field(default=None, min_length=64, max_length=64)
-    cover_dhash: str | None = Field(default=None, min_length=16, max_length=16)
     photo_urls: list[str] = Field(default_factory=list)
+    designer_names: list[str] = Field(default_factory=list)
     photo_count: int = Field(default=0, ge=0)
     seller_identity: str | None = None
     seller_identity_mode: Literal["none", "hashed", "plain"] = "none"
@@ -63,7 +63,6 @@ class ListingData(BaseModel):
     raw_json: dict[str, Any]
     raw_json_purged_at: datetime | None = None
     schema_version: int = Field(ge=1)
-    identity_version: str | None = None
 
     @field_validator("price", "price_original", "fx_rate", "sold_price", mode="before")
     @classmethod

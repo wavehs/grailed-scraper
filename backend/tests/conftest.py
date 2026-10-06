@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import gc
+import os
+import tempfile
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture(autouse=True)
-def _isolate_grouping_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A user's local runtime selection must not redirect provider contract tests."""
-    monkeypatch.setenv("APP_AI_GROUPING_PROVIDER", "gemini")
+# Keep the app lifespan away from the developer's real database, lock and logs.
+_RUNTIME_DIR = Path(tempfile.mkdtemp(prefix="grailed-tests-"))
+os.environ["APP_DATA_DIRECTORY"] = str(_RUNTIME_DIR)
+os.environ["APP_LOG_DIRECTORY"] = str(_RUNTIME_DIR / "logs")
+os.environ["APP_DATABASE_URL"] = f"sqlite+aiosqlite:///{(_RUNTIME_DIR / 'test.db').as_posix()}"
+os.environ["APP_LIVE_COMPLIANCE_ACKNOWLEDGED"] = "true"
 
 
 @pytest.fixture(autouse=True)

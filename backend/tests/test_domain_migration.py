@@ -9,10 +9,8 @@ from decimal import Decimal
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import MetaData, Table, create_engine, insert, inspect
 from sqlalchemy.orm import Session
-
-from app.db.models import Listing
 
 
 def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -42,29 +40,27 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
         "unmatched_brands",
         "app_settings",
         "listing_model_assignments",
-        "physical_items",
-        "physical_item_members",
-        "identity_matches",
+        "listing_overrides",
+        "brand_stopwords",
+        "model_groups",
     }
     assert required_tables.issubset(set(inspector.get_table_names()))
     assert {"ix_listings_brand_status_sold_at", "ix_listings_status_last_seen_at"}.issubset(
         {index["name"] for index in inspector.get_indexes("listings")}
     )
-    assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
-        {column["name"] for column in inspector.get_columns("listings")}
+    listing_columns = {column["name"] for column in inspector.get_columns("listings")}
+    assert {"color", "source_product_id", "category_path", "product_type", "relist_of_id"}.issubset(
+        listing_columns
     )
-    assert {
-        "exact_sold_count",
-        "median_sold_likes",
-        "demand_score",
-        "scoring_status",
-        "variant_breakdown",
-    }.issubset(
-        {column["name"] for column in inspector.get_columns("scoring_snapshots")}
+    assert not {"cover_dhash", "identity_version"} & listing_columns
+    assert not {"identity_matches", "physical_items"} & set(inspector.get_table_names())
+    assert "scoring_snapshots" not in inspector.get_table_names()
+    assert {"trend_score", "weekly_sales", "sell_through_30d", "colors", "sizes"}.issubset(
+        {column["name"] for column in inspector.get_columns("group_metrics")}
     )
     assert "model_rules" not in inspector.get_table_names()
-    assert "ix_scoring_snapshots_brand_window_demand" in {
-        index["name"] for index in inspector.get_indexes("scoring_snapshots")
+    assert "ix_group_metrics_scope_trend" in {
+        index["name"] for index in inspector.get_indexes("group_metrics")
     }
     parser_run_column = next(
         column for column in inspector.get_columns("listings") if column["name"] == "parser_run_id"
@@ -149,9 +145,11 @@ def test_cursor_fts_migration_indexes_existing_and_changed_listings(tmp_path) ->
 
     engine = create_engine(f"sqlite:///{database_path.as_posix()}")
     observed = datetime(2026, 8, 24, tzinfo=UTC)
+    # Reflect the table at revision 0011: the ORM model has columns added later.
+    listings_0011 = Table("listings", MetaData(), autoload_with=engine)
     with Session(engine) as session:
-        session.add(
-            Listing(
+        session.execute(
+            insert(listings_0011).values(
                 source="grailed",
                 grailed_id=77,
                 status="active",

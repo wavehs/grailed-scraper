@@ -13,8 +13,17 @@ Object.defineProperty(window, 'ResizeObserver', {
   },
 });
 
+export const routerPush = vi.fn();
+/** Query string returned by the mocked useSearchParams; tests may change it. */
+export const navigation = { search: '' };
+
+afterEach(() => {
+  navigation.search = '';
+});
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard',
+  usePathname: () => '/trends',
   useParams: () => ({ id: '1' }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigation.search),
+  useRouter: () => ({ push: routerPush, replace: routerPush, back: vi.fn() }),
 }));

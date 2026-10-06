@@ -1,0 +1,10 @@
+models:
+  - {name: FBT, types: [shoes, boots, slip_ons, lowtop_sneakers, hitop_sneakers]}
+  - {name: Christo, types: [sandals]}
+  - {name: Virgil, types: [boots]}
+  - {name: Brigadier, types: [boots]}
+  - {name: 7 Hole, types: [boots]}
+  - {name: Serra, types: [shoes, boots, lowtop_sneakers]}
+  - {name: Hockney, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Lhamo, types: [shirt]}
+  - {name: ICT, types: any}

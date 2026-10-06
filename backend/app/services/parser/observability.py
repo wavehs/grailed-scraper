@@ -26,8 +26,6 @@ class RunMetrics:
     listings_invalid: int = 0
     quality_flags_counts: Counter[str] = field(default_factory=Counter)
     coverage_by_brand: dict[str, str | None] = field(default_factory=dict)
-    browser_restarts: int = 0
-    proxy_failures: int = 0
 
     @classmethod
     def resume(
@@ -50,8 +48,6 @@ class RunMetrics:
                 "listings_inserted",
                 "listings_updated",
                 "listings_invalid",
-                "browser_restarts",
-                "proxy_failures",
             ):
                 setattr(metrics, key, int(snapshot.get(key, 0)))
             metrics.quality_flags_counts.update(_dict(snapshot.get("quality_flags_counts")))
@@ -120,8 +116,6 @@ class RunMetrics:
             "listings_invalid": self.listings_invalid,
             "quality_flags_counts": dict(self.quality_flags_counts),
             "coverage_by_brand": dict(self.coverage_by_brand),
-            "browser_restarts": self.browser_restarts,
-            "proxy_failures": self.proxy_failures,
             "_latency_samples_ms": latencies,
             "duration_s": round(
                 duration_s

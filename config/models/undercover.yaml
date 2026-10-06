@@ -1,0 +1,8 @@
+models:
+  - {name: Scab, types: any}
+  - {name: But Beautiful, types: any}
+  - {name: Chaos Balance, types: any}
+  - {name: Languid, types: any}
+  - {name: Witches Cell Division, types: any}
+  - {name: Melting Pot, types: any}
+  - {name: Gilapple, types: [accessory_other, keychain]}

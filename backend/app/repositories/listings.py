@@ -93,6 +93,8 @@ class ListingRepository:
         }
         # A reappeared/sold listing must clear its previous removal probe marker.
         update_columns["removed_checked_at"] = statement.excluded.removed_checked_at
+        # A collaboration listing found under a second tracked brand keeps its first brand.
+        update_columns["brand_id"] = func.coalesce(Listing.brand_id, statement.excluded.brand_id)
         await self._session.execute(
             statement.on_conflict_do_update(
                 index_elements=[Listing.grailed_id], set_=update_columns
@@ -118,6 +120,7 @@ class ListingRepository:
             "brand_id",
             "category",
             "subcategory",
+            "category_path",
             "size_raw",
             "size_normalized",
             "condition_raw",
@@ -140,10 +143,8 @@ class ListingRepository:
             "removed_checked_at",
             "days_on_market",
             "cover_photo_url",
-            "cover_asset_key",
-            "cover_content_sha256",
-            "cover_dhash",
             "photo_urls",
+            "designer_names",
             "photo_count",
             "seller_identity",
             "seller_identity_mode",
@@ -154,7 +155,6 @@ class ListingRepository:
             "raw_json",
             "raw_json_purged_at",
             "schema_version",
-            "identity_version",
         )
 
     @staticmethod

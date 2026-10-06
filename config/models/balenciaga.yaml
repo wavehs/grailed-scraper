@@ -1,0 +1,19 @@
+models:
+  - {name: Track, types: [lowtop_sneakers, hitop_sneakers, sandals]}
+  - {name: Track 2, aliases: [track2], types: [lowtop_sneakers], parent: Track}
+  - {name: Track Runner, types: [lowtop_sneakers], parent: Track}
+  - {name: Triple S, aliases: [triples], types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Speed, aliases: [speed trainer], types: [lowtop_sneakers, hitop_sneakers, slip_ons, boots]}
+  - {name: Runner, types: [lowtop_sneakers]}
+  - {name: 3XL, types: [lowtop_sneakers]}
+  - {name: 10XL, types: [lowtop_sneakers]}
+  - {name: Defender, types: [lowtop_sneakers]}
+  - {name: Arena, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Bulldozer, types: [boots]}
+  - {name: Tractor, types: [boots, shoes]}
+  - {name: Knife, types: [boots, heels]}
+  - {name: Le Cagole, aliases: [cagole], types: [bag]}
+  - {name: Hourglass, types: [bag]}
+  - {name: City, types: [bag]}
+  - {name: Political Campaign, types: any}
+  - {name: Speedhunters, types: any}

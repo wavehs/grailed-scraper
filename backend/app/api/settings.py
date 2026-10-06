@@ -18,62 +18,31 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 SettingOrigin = Literal["default", "env", "database"]
 
 SETTING_GROUPS: dict[str, tuple[str, ...]] = {
-    "source": (
-        "fetch_tier_preferred",
-        "fetch_tier_allow_browser",
-        "fetch_tier_allow_dom",
-        "algolia_hits_per_page",
-        "algolia_multiquery_batch_size",
-        "algolia_pagination_strategy",
-        "algolia_attributes_mode",
-    ),
-    "parser": (
-        "parser_mode",
+    "collection": (
         "requests_per_minute",
         "max_concurrent_requests",
-        "parser_request_delay_ms",
-        "parser_request_timeout_s",
-        "parser_max_retries",
-        "parser_max_concurrency",
-        "parser_max_items_per_brand",
-        "identity_image_requests_per_run",
+        "sold_history_days",
+        "collect_price_min_usd",
+        "collect_price_max_usd",
     ),
-    "proxy": (
-        "proxy_enabled",
-        "proxy_rotation_mode",
-        "proxy_allow_direct_fallback",
-    ),
-    "discovery": ("discovery_ttl_hours", "discovery_sample_size"),
     "privacy": ("store_seller_identity",),
+    "compliance": ("live_compliance_acknowledged",),
 }
 EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in keys)
+# Null clears an optional bound instead of being ignored.
+NULLABLE_SETTINGS = frozenset({"collect_price_min_usd", "collect_price_max_usd"})
 
 
 class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    fetch_tier_preferred: Literal["T1", "T2", "T3"] | None = None
-    fetch_tier_allow_browser: bool | None = None
-    fetch_tier_allow_dom: bool | None = None
-    algolia_hits_per_page: int | None = Field(default=None, ge=1)
-    algolia_multiquery_batch_size: int | None = Field(default=None, ge=1, le=8)
-    algolia_pagination_strategy: Literal["auto", "browse", "keyset", "range_split"] | None = None
-    algolia_attributes_mode: Literal["full", "lean"] | None = None
-    parser_mode: Literal["delta", "full"] | None = None
     requests_per_minute: int | None = Field(default=None, ge=1, le=90)
     max_concurrent_requests: int | None = Field(default=None, ge=1, le=3)
-    parser_request_delay_ms: int | None = Field(default=None, ge=1)
-    parser_request_timeout_s: float | None = Field(default=None, ge=1)
-    parser_max_retries: int | None = Field(default=None, ge=1)
-    parser_max_concurrency: int | None = Field(default=None, ge=1, le=3)
-    parser_max_items_per_brand: int | None = Field(default=None, ge=1)
-    identity_image_requests_per_run: int | None = Field(default=None, ge=0, le=100)
-    proxy_enabled: bool | None = None
-    proxy_rotation_mode: Literal["round_robin", "random", "weighted"] | None = None
-    proxy_allow_direct_fallback: bool | None = None
-    discovery_ttl_hours: int | None = Field(default=None, ge=1)
-    discovery_sample_size: int | None = Field(default=None, ge=1)
+    sold_history_days: int | None = Field(default=None, ge=30, le=3650)
+    collect_price_min_usd: int | None = Field(default=None, ge=0)
+    collect_price_max_usd: int | None = Field(default=None, ge=1)
     store_seller_identity: Literal["none", "hashed", "plain"] | None = None
+    live_compliance_acknowledged: bool | None = None
     confirm_plain_seller_identity: bool = False
 
 
@@ -139,11 +108,13 @@ async def update_settings(
     session: Annotated[AsyncSession, Depends(get_db)],
     base: Annotated[Settings, Depends(get_settings)],
 ) -> SettingsResponse:
-    updates = payload.model_dump(
-        exclude_unset=True,
-        exclude_none=True,
-        exclude={"confirm_plain_seller_identity"},
-    )
+    updates = {
+        key: value
+        for key, value in payload.model_dump(
+            exclude_unset=True, exclude={"confirm_plain_seller_identity"}
+        ).items()
+        if value is not None or key in NULLABLE_SETTINGS
+    }
     current = await effective_settings(session, base)
     if (
         updates.get("store_seller_identity") == "plain"

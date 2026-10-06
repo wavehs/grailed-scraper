@@ -419,7 +419,7 @@ if (-not (Test-Path $VenvPython) -or $Force) {
     Write-Success "Виртуальное окружение уже существует."
 }
 
-# --- 5. Install Backend Dependencies & Scrapling Browser ---
+# --- 5. Install Backend Dependencies ---
 Write-Step "5/8" "Установка зависимостей Backend и движков браузера..."
 Write-Host "Обновление pip..."
 & $VenvPython -m pip install --upgrade pip setuptools wheel --quiet
@@ -435,20 +435,6 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Success "Python зависимости успешно установлены."
-
-# Scrapling browser install (Camoufox engine)
-$ScraplingExe = Join-Path $VenvDir "Scripts\scrapling.exe"
-if (Test-Path $ScraplingExe) {
-    Write-Host "Запуск scrapling install для загрузки stealth-браузера..."
-    try {
-        & $ScraplingExe install
-        Write-Success "Браузерные движки Scrapling / Camoufox готовы."
-    } catch {
-        Write-Warn "Предупреждение при установке scrapling: $_"
-    }
-} else {
-    & $VenvPython -m scrapling install 2>$null
-}
 
 # --- 6. Database Migrations (Alembic) ---
 Write-Step "6/8" "Применение миграций базы данных SQLite..."

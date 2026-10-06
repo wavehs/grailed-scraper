@@ -2,30 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def _resolve_project_root() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parents[3]
-
-
-def _resolve_resource_root() -> Path:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parents[3]
-
-
-PROJECT_ROOT = _resolve_project_root()
-RESOURCE_ROOT = _resolve_resource_root()
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'data' / 'grailed.db').as_posix()}"
 
 
@@ -53,43 +37,22 @@ class Settings(BaseSettings):
     log_directory: Path = PROJECT_ROOT / "data" / "logs"
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
-    gemini_api_key: SecretStr | None = None
-    ai_grouping_provider: Literal["gemini", "ollama"] = "gemini"
-    ollama_model: str = Field(default="qwen3:8b", min_length=1, max_length=64)
-    ollama_context: int = Field(default=4096, ge=2048, le=8192)
-    ollama_timeout_s: float = Field(default=300, ge=30, le=1800)
-    proxy_url: str | None = None
-    proxy_list_browser: list[str] | str = []
-    proxy_list_http: list[str] | str = []
-    fetch_tier_preferred: Literal["T1", "T2", "T3"] = "T1"
-    fetch_tier_allow_browser: bool = True
-    fetch_tier_allow_dom: bool = True
-    algolia_hits_per_page: int = 200
+    algolia_hits_per_page: int = 1_000
     algolia_multiquery_batch_size: int = 8
     algolia_pagination_strategy: Literal["auto", "browse", "keyset", "range_split"] = "auto"
     algolia_attributes_mode: Literal["full", "lean"] = "full"
     parser_request_timeout_s: float = 15.0
     parser_max_retries: int = 3
-    parser_request_delay_ms: int = 400
     parser_max_concurrency: int = 1
-    parser_max_requests_per_run: int = 800
-    parser_max_items_per_brand: int = 500
-    identity_image_requests_per_run: int = Field(default=100, ge=0, le=100)
+    # Safety net against runaway pagination, not a collection budget (~9 h at 90 rpm).
+    parser_max_requests_per_run: int = 50_000
+    sold_history_days: int = Field(default=365, ge=30, le=3650)
+    collect_price_min_usd: int | None = Field(default=None, ge=0)
+    collect_price_max_usd: int | None = Field(default=None, ge=1)
     parser_progress_interval_s: float = 2.0
-    browser_max_pages: int = 2
-    browser_restart_every_requests: int = 300
-    browser_restart_every_minutes: int = 20
-    browser_use_raw_fallback: bool = False
     discovery_ttl_hours: int = 12
     discovery_sample_size: int = 200
-    discovery_page_timeout_s: float = 45.0
-    proxy_enabled: bool = False
-    proxy_allow_direct_fallback: bool = True
-    proxy_rotation_mode: Literal["round_robin", "random", "weighted"] = "weighted"
     cors_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
-    parser_mode: Literal["delta", "full"] = "delta"
-    parser_full_refresh_days: int = 7
-    parser_refresh_active_enabled: bool = True
     parser_refresh_active_limit: int | None = Field(default=None, ge=1)
     parser_removed_confirm_hours: int = 48
     parser_watermark_overlap_hours: int = 2
@@ -99,9 +62,16 @@ class Settings(BaseSettings):
     fx_provider: Literal["static"] = "static"
     store_seller_identity: Literal["none", "hashed", "plain"] = "hashed"
     seller_identity_salt: str | None = None
-    live_compliance_acknowledged: bool = True
+    live_compliance_acknowledged: bool = False
     raw_data_retention_days: int = 90
     backup_retention_days: int = 30
+
+    @model_validator(mode="after")
+    def check_price_band(self) -> Settings:
+        low, high = self.collect_price_min_usd, self.collect_price_max_usd
+        if low is not None and high is not None and low > high:
+            raise ValueError("collect_price_min_usd must not exceed collect_price_max_usd")
+        return self
 
     @field_validator("log_level")
     @classmethod
@@ -117,20 +87,13 @@ class Settings(BaseSettings):
         "requests_per_minute",
         "max_concurrent_requests",
         "parser_request_timeout_s",
-        "parser_request_delay_ms",
         "parser_max_concurrency",
         "parser_max_requests_per_run",
-        "parser_max_items_per_brand",
         "parser_progress_interval_s",
-        "browser_max_pages",
         "algolia_hits_per_page",
         "algolia_multiquery_batch_size",
-        "browser_restart_every_requests",
-        "browser_restart_every_minutes",
         "discovery_ttl_hours",
         "discovery_sample_size",
-        "discovery_page_timeout_s",
-        "parser_full_refresh_days",
         "parser_removed_confirm_hours",
         "parser_watermark_overlap_hours",
         "quality_price_outlier_mad_k",
@@ -153,6 +116,13 @@ class Settings(BaseSettings):
             raise ValueError("Algolia multi-query supports at most 8 sub-queries")
         return value
 
+    @field_validator("algolia_hits_per_page")
+    @classmethod
+    def cap_hits_per_page(cls, value: int) -> int:
+        if value > 1_000:
+            raise ValueError("Algolia returns at most 1000 hits per page")
+        return value
+
     @field_validator("requests_per_minute")
     @classmethod
     def cap_requests_per_minute(cls, value: int) -> int:
@@ -173,42 +143,6 @@ class Settings(BaseSettings):
         if value > 2:
             raise ValueError("Parser progress must be persisted at least every 2 seconds")
         return value
-
-    @field_validator("proxy_list_browser", "proxy_list_http", mode="before")
-    @classmethod
-    def parse_proxy_list(cls, value: Any) -> list[str]:
-        """Accept JSON arrays and the convenient comma-separated env form."""
-
-        if value is None or value == "":
-            return []
-        if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()]
-        if isinstance(value, str):
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                decoded = value.split(",")
-            if not isinstance(decoded, list):
-                raise ValueError("Proxy list must be a JSON array or comma-separated URLs")
-            return [str(item).strip() for item in decoded if str(item).strip()]
-        raise ValueError("Proxy list must contain proxy URLs")
-
-    def proxy_pool(self, kind: Literal["http", "browser"]) -> list[str]:
-        """Return the configured pool, retaining the legacy single-proxy setting."""
-
-        configured = self.proxy_list_http if kind == "http" else self.proxy_list_browser
-        if configured:
-            return _proxy_values(configured)
-        if self.proxy_url:
-            return [self.proxy_url]
-        other_pool = self.proxy_list_browser if kind == "http" else self.proxy_list_http
-        return _proxy_values(other_pool)
-
-
-def _proxy_values(value: list[str] | str) -> list[str]:
-    """Narrow validator-normalized proxy settings for static type checking."""
-
-    return value if isinstance(value, list) else [value]
 
 
 @lru_cache

@@ -26,7 +26,7 @@ jobs:
       - run: alembic current
       - run: ruff check app tests
       - run: mypy
-      - run: pytest
+      - run: pytest --cov
 
   frontend:
     runs-on: ubuntu-latest

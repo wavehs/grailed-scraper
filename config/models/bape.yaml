@@ -1,0 +1,11 @@
+models:
+  - {name: Shark, types: any}
+  - {name: Tiger, types: any}
+  - {name: ABC Camo, aliases: [abc], types: any}
+  - {name: 1st Camo, aliases: [1st], types: any}
+  - {name: Ape Head, types: any}
+  - {name: Baby Milo, aliases: [milo], types: any}
+  - {name: Bapesta, aliases: [bape sta, sta], types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Road Sta, types: [lowtop_sneakers]}
+  - {name: Court Sta, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Skull Sta, types: [lowtop_sneakers, hitop_sneakers]}

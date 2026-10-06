@@ -1,0 +1,10 @@
+models:
+  - {name: Orb, types: [pendant, chain, earring, ring, bracelet, keychain, wallet, bag, belt], infer: pendant}
+  - {name: Bas Relief, types: [pendant, chain, earring, bracelet], infer: pendant}
+  - {name: Pearl, types: [chain, pendant, bracelet, earring], infer: chain}
+  - {name: Mayfair, types: [pendant, chain, bracelet, earring], infer: pendant}
+  - {name: Armour, aliases: [armor], types: [ring]}
+  - {name: Pina, types: [earring, pendant, chain], infer: earring}
+  - {name: Rocking Horse, types: [shoes, boots, heels, platforms]}
+  - {name: Pirate, types: [boots]}
+  - {name: Animal Toe, types: [shoes, boots, heels]}

@@ -51,7 +51,7 @@ class IncrementalPlanner:
         query: AlgoliaQuery,
         mode: str | None = None,
     ) -> IncrementalPlan:
-        selected_mode = mode or self._settings.parser_mode
+        selected_mode = mode or "delta"
         watermark = await self._repository.watermark("grailed", brand_id, index_type)
         if selected_mode == "full" or watermark is None or watermark.last_key_value is None:
             return IncrementalPlan(selected_mode, query, None)
@@ -124,10 +124,13 @@ class RefreshActiveService:
         parser_run_id: int,
         brand_id: int | None = None,
         now: datetime | None = None,
+        not_seen_since: datetime | None = None,
     ) -> RefreshActiveResult:
         observed = now or datetime.now(UTC)
         candidates = await self._lifecycle.refresh_candidates(
-            brand_id, limit=self._settings.parser_refresh_active_limit
+            brand_id,
+            limit=self._settings.parser_refresh_active_limit,
+            not_seen_since=not_seen_since,
         )
         active_count = sold_count = pending_count = removed_count = 0
         inserted_count = updated_count = 0
@@ -188,7 +191,7 @@ class RefreshActiveService:
         existing: Mapping[int, Listing],
     ) -> UpsertResult:
         normalized = []
-        tier = _tier(self._fetcher)
+        tier: FetchTier = "T1"
         for payload in hits:
             identifier = _hit_id(payload)
             prior = existing.get(identifier or -1)
@@ -230,7 +233,3 @@ def _hit_id(payload: Mapping[str, Any]) -> int | None:
     except (TypeError, ValueError):
         return None
 
-
-def _tier(fetcher: FetchApi) -> FetchTier:
-    value = getattr(fetcher, "current_tier", "T1")
-    return cast(FetchTier, value) if value in {"T1", "T2", "T3"} else "T1"

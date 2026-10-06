@@ -32,14 +32,11 @@ Snapshot хранится в `parser_runs.stats.observability` минимум р
 http_errors_by_code, retries, rate_limit_hits, avg_latency_ms, p95_latency_ms,
 cache_hits, cache_misses, cache_hit_rate, hits_fetched, listings_inserted,
 listings_updated, listings_invalid, quality_flags_counts, coverage_by_brand,
-browser_restarts, proxy_failures, duration_s`.
+duration_s`.
 
 `GET /api/parser/runs/{id}/report` возвращает это же значение типизированным полем
 `metrics`, сохраняя исходный `stats` для обратной совместимости.
 
-AI-run отдельно показывает listings/unique inputs, progress, ambiguous и safe-unique,
-input/output tokens, прогноз/фактическую стоимость и санитизированный код ошибки.
-Provider payload и API key не сохраняются и не логируются.
 
 ### 15.3. Прогресс для UI
 
@@ -62,10 +59,10 @@ Provider payload и API key не сохраняются и не логируют
 `revision` и `environment` запущенного release.
 
 `GET /api/parser/health` отражает живое состояние credentials, доступных tiers и
-версий, schema alerts, circuit breakers по `(tier, host, proxy)`, proxy health,
+версий, schema alerts, circuit breakers по `(tier, host)`,
 активных и последнего run, compliance и последних метрик. `unavailable` означает
 отсутствие обязательного ресурса или env-compliance acknowledgement; `degraded` —
-stale credentials, schema drift, fallback tier, открытый circuit, plain seller mode
+stale credentials, schema drift, открытый circuit, plain seller mode
 или деградировавший последний run. Поле `reasons` содержит машиночитаемые причины,
 а `schema.alerts` — подробности активных alerts. Секция `runtime` отдельно сообщает
 Alembic current/head, доступность data/log directories, production bind validation и

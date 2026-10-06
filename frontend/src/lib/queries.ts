@@ -1,16 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { getApi, getHealthApi } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type {
   ApiHealth,
-  BrandAnalyticsList,
   BrandList,
-  DashboardRow,
-  CursorPage,
-  ModelGroupDetail,
   ParserHealth,
   RunList,
   SettingsResponse,
-  DashboardProductType,
+  GroupDetail,
+  GroupList,
+  Taxonomy,
+  TrendCard,
+  TrendFilters,
+  TrendList,
 } from '@/lib/types';
 
 export function useApiHealth() {
@@ -56,96 +58,99 @@ export function useRunsQuery(
   });
 }
 
-export function useDashboardQuery(
-  windowDays: number = 90,
-  search: string = '',
-  scoredOnly: boolean = true,
-  cursor: string | null = null,
-  sortBy: string = 'demand_score',
-  sortDesc: boolean = true,
-  brandId?: number,
-  productType?: DashboardProductType,
-  enabled: boolean = true,
-) {
+export function useSettingsQuery() {
   return useQuery({
-    queryKey: [
-      'dashboard',
-      windowDays,
-      search,
-      scoredOnly,
-      cursor,
-      sortBy,
-      sortDesc,
-      brandId,
-      productType,
-    ],
+    queryKey: ['settings'],
+    queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
+  });
+}
+
+export function useTaxonomyQuery() {
+  return useQuery({
+    queryKey: ['taxonomy'],
+    queryFn: ({ signal }) => getApi<Taxonomy>('/grouping/taxonomy', signal),
+    staleTime: Infinity,
+  });
+}
+
+export function useGroupQuery(id: number | null) {
+  return useQuery({
+    queryKey: ['group', id],
+    queryFn: ({ signal }) => getApi<GroupDetail>(`/groups/${id}`, signal),
+    enabled: id !== null,
+  });
+}
+
+export function useGroupsQuery(brandId?: number, productType?: string, linesOnly = false) {
+  return useQuery({
+    queryKey: ['groups', brandId, productType, linesOnly],
     queryFn: ({ signal }) =>
-      getApi<CursorPage<DashboardRow>>(
-        `/analytics/dashboard?${new URLSearchParams({
-          window_days: String(windowDays),
-          limit: '50',
-          scored_only: String(scoredOnly),
-          sort_by: sortBy,
-          sort_desc: String(sortDesc),
-          search,
-          ...(cursor ? { cursor } : {}),
+      getApi<GroupList>(
+        `/groups?${new URLSearchParams({
+          limit: '500',
+          lines_only: String(linesOnly),
           ...(brandId ? { brand_id: String(brandId) } : {}),
           ...(productType ? { product_type: productType } : {}),
         })}`,
         signal,
       ),
-    placeholderData: (previousData) => previousData,
-    enabled,
+    enabled: brandId !== undefined,
   });
 }
 
-export function useBrandDashboardQuery(
-  windowDays: number = 90,
-  search: string = '',
-  scoredOnly: boolean = true,
-  sortBy: string = 'demand_score',
-  sortDesc: boolean = true,
-  productType?: DashboardProductType,
-  enabled: boolean = true,
-) {
+/** Localized product-type and section names from the taxonomy. */
+export function useTypeNames() {
+  const { locale } = useI18n();
+  const taxonomy = useTaxonomyQuery();
+  const types = new Map((taxonomy.data?.types ?? []).map((item) => [item.id, item]));
+  const sections = new Map((taxonomy.data?.sections ?? []).map((item) => [item.id, item]));
+  return {
+    taxonomy: taxonomy.data,
+    typeName: (id?: string | null) => {
+      const item = id ? types.get(id) : undefined;
+      return item ? item[locale] : (id ?? '—');
+    },
+    sectionName: (id?: string | null) => {
+      const item = id ? sections.get(id) : undefined;
+      return item ? item[locale] : (id ?? '—');
+    },
+  };
+}
+
+export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams {
+  const params = new URLSearchParams({
+    level: filters.level,
+    window: String(filters.window),
+    sort: filters.sort,
+    desc: String(filters.desc),
+    limit: '50',
+    offset: String(offset),
+  });
+  if (filters.brandIds.length) params.set('brand_ids', filters.brandIds.join(','));
+  if (filters.section) params.set('section', filters.section);
+  if (filters.productType) params.set('product_type', filters.productType);
+  if (filters.priceMin) params.set('price_min', filters.priceMin);
+  if (filters.priceMax) params.set('price_max', filters.priceMax);
+  if (filters.newOnly) params.set('new_only', 'true');
+  if (filters.minSales) params.set('min_sales', String(filters.minSales));
+  if (filters.search.trim()) params.set('search', filters.search.trim());
+  return params;
+}
+
+export function useTrendsQuery(filters: TrendFilters, offset = 0) {
   return useQuery({
-    queryKey: ['brand-dashboard', windowDays, search, scoredOnly, sortBy, sortDesc, productType],
+    queryKey: ['trends', filters, offset],
     queryFn: ({ signal }) =>
-      getApi<BrandAnalyticsList>(
-        `/analytics/brands?${new URLSearchParams({
-          window_days: String(windowDays),
-          limit: '200',
-          scored_only: String(scoredOnly),
-          sort_by: sortBy,
-          sort_desc: String(sortDesc),
-          search,
-          ...(productType ? { product_type: productType } : {}),
-        })}`,
-        signal,
-      ),
-    placeholderData: (previousData) => previousData,
-    enabled,
+      getApi<TrendList>(`/trends?${trendParams(filters, offset)}`, signal),
+    placeholderData: (previous) => previous,
   });
 }
 
-export function useModelGroupDetailQuery(
-  id: string | number,
-  windowDays: number = 90,
-  runId?: number,
-) {
+export function useTrendCardQuery(groupId: number | null, window: number) {
   return useQuery({
-    queryKey: ['model', String(id), windowDays, runId],
+    queryKey: ['trend-card', groupId, window],
     queryFn: ({ signal }) =>
-      getApi<ModelGroupDetail>(
-        `/analytics/model-groups/${id}?window_days=${windowDays}${runId ? `&run_id=${runId}` : ''}`,
-        signal,
-      ),
-  });
-}
-
-export function useSettingsQuery() {
-  return useQuery({
-    queryKey: ['settings'],
-    queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
+      getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}`, signal),
+    enabled: groupId !== null,
   });
 }

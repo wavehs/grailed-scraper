@@ -80,7 +80,7 @@ export const getHealthApi = <T>(path: string, signal?: AbortSignal) =>
 
 export const api = <T>(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown,
   signal?: AbortSignal,
 ) =>

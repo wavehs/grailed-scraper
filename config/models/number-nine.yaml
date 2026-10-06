@@ -1,0 +1,7 @@
+models:
+  - {name: Marlboro, types: any}
+  - {name: Touch Me I'm Sick, aliases: [touch me im sick], types: any}
+  - {name: Kurt Cobain, types: any}
+  - {name: Give Peace a Chance, types: any}
+  - {name: The High Streets, aliases: [high streets], types: any}
+  - {name: A Closed Feeling, aliases: [closed feeling], types: any}

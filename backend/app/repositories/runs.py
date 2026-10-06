@@ -190,6 +190,9 @@ class RunRepository:
             return "partial"
         return "completed"
 
+    async def brand_ids(self, run_id: int) -> tuple[int, ...]:
+        return tuple(sorted({item.brand_id for item in await self.tasks(run_id) if item.brand_id}))
+
     async def coverage_by_brand(self, run_id: int) -> dict[int, Decimal | None]:
         tasks = await self.tasks(run_id)
         grouped: dict[int, list[Decimal]] = {}

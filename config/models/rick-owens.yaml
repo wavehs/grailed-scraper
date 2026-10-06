@@ -1,0 +1,21 @@
+models:
+  - {name: Geobasket, aliases: [geo basket], types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Ramones, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Dunks, types: [hitop_sneakers]}
+  - {name: Abstract, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Turbo Cyclops, types: [hitop_sneakers]}
+  - {name: Kiss, types: [boots]}
+  - {name: Bauhaus, types: [boots, pants]}
+  - {name: Tractor, types: [boots]}
+  - {name: Army, types: [boots]}
+  - {name: Creatch, types: [pants]}
+  - {name: Detroit, types: [jeans, pants]}
+  - {name: Berlin, types: [jeans]}
+  - {name: Torrance, types: [jeans]}
+  - {name: Tyrone, types: [jeans, pants]}
+  - {name: Bolan, types: [jeans, pants]}
+  - {name: Geth, types: [jeans, pants, light_jacket, denim_jacket]}
+  - {name: Pods, types: [shorts]}
+  - {name: Stooges, types: [leather_jacket]}
+  - {name: Level, aliases: [level t], types: [tshirt, longsleeve]}
+  - {name: Gimp, types: [hoodie, sweatshirt]}

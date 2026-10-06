@@ -1,0 +1,8 @@
+models:
+  - {name: Tabi, types: [boots, shoes, lowtop_sneakers, hitop_sneakers, sandals, heels, flats, mules, socks_underwear]}
+  - {name: GAT, aliases: [german army trainer], types: [lowtop_sneakers]}
+  - {name: Replica, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Future, types: [hitop_sneakers]}
+  - {name: Glam Slam, types: [bag]}
+  - {name: 5AC, types: [bag]}
+  - {name: Paint Splatter, types: any}

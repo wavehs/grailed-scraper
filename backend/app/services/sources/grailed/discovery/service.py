@@ -15,10 +15,8 @@ from app.services.sources.grailed.discovery.client import (
     DiscoveryAlgoliaClient,
     DiscoveryHttpError,
 )
-from app.services.sources.grailed.discovery.credential_discovery import capture_browser_seed
 from app.services.sources.grailed.discovery.facet_prober import probe_facets
 from app.services.sources.grailed.discovery.index_prober import probe_indices
-from app.services.sources.grailed.discovery.js_bundle_fallback import discover_from_bundles
 from app.services.sources.grailed.discovery.key_introspection import introspect_key
 from app.services.sources.grailed.discovery.models import (
     DiscoveryResult,
@@ -27,11 +25,12 @@ from app.services.sources.grailed.discovery.models import (
     KeyCapabilities,
     SchemaChange,
 )
+from app.services.sources.grailed.discovery.page_config import discover_from_page_config
 from app.services.sources.grailed.discovery.schema_sampler import (
     compare_schemas,
     sample_schema,
 )
-from app.services.transport.protocols import BrowserSession, HttpTransport
+from app.services.transport.protocols import HttpTransport
 
 KNOWN_LISTING_INDICES = (
     "Listing_production",
@@ -56,12 +55,10 @@ class DiscoveryService:
         session: AsyncSession,
         settings: Settings,
         transport: HttpTransport,
-        browser: BrowserSession | None = None,
     ) -> None:
         self._repository = DiscoveryRepository(session)
         self._settings = settings
         self._transport = transport
-        self._browser = browser
 
     async def refresh(self, *, force: bool = True) -> DiscoveryResult:
         return await self._singleflight(force=force, invalidate=False)
@@ -194,24 +191,10 @@ class DiscoveryService:
         )
 
     async def _discover_seed(self) -> DiscoverySeed:
-        if self._browser is not None:
-            seed = await capture_browser_seed(
-                self._browser, timeout_s=self._settings.discovery_page_timeout_s
-            )
-            if seed is not None:
-                return seed
-        for candidate in await discover_from_bundles(self._transport):
-            if await self._validate_candidate(candidate):
-                return candidate
-        raise DiscoveryUnavailableError("Grailed discovery produced no validated candidate")
-
-    async def _validate_candidate(self, seed: DiscoverySeed) -> bool:
-        index = seed.indices[0] if seed.indices else KNOWN_LISTING_INDICES[0]
-        client = DiscoveryAlgoliaClient(self._transport, seed)
-        response = await client.request(
-            "POST", client.index_path(index), json_body={"params": "hitsPerPage=1"}
-        )
-        return response.status_code == 200
+        seed = await discover_from_page_config(self._transport)
+        if seed is None:
+            raise DiscoveryUnavailableError("Grailed page config has no Algolia search key")
+        return seed
 
     def _expiry(self, discovered_at: datetime, valid_until: datetime | None) -> datetime:
         discovered_utc = to_utc_datetime(discovered_at) or datetime.now(UTC)
@@ -223,8 +206,9 @@ class DiscoveryService:
 
     @staticmethod
     def _allowed_indices(seed: DiscoverySeed, capabilities: KeyCapabilities) -> tuple[str, ...]:
-        names = [name for name in seed.indices if _is_listing_index(name)]
-        names.extend(KNOWN_LISTING_INDICES)
+        # Primary indices first: sorted replicas hold the same data but are not canonical.
+        names = list(KNOWN_LISTING_INDICES)
+        names.extend(name for name in seed.indices if _is_listing_index(name))
         if capabilities.indexes:
             names = [
                 name

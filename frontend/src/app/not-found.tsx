@@ -10,11 +10,11 @@ export default function NotFound() {
       <h1 className="text-4xl font-semibold text-[var(--text-primary)]">404</h1>
       <p className="text-sm text-[var(--text-secondary)]">Page not found</p>
       <Link
-        href="/dashboard"
+        href="/trends"
         className="inline-flex items-center gap-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--accent-contrast)] transition-colors hover:bg-[var(--accent-hover)]"
       >
         <Home size={16} />
-        Go to Dashboard
+        Go to Trends
       </Link>
     </div>
   );

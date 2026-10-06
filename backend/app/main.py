@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,14 +19,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import __version__
 from app.api.errors import install_exception_handlers
 from app.api.routes import router
-from app.core.config import PROJECT_ROOT, RESOURCE_ROOT, get_settings
+from app.core.config import PROJECT_ROOT, get_settings
 from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
 from app.core.runtime import SingleInstanceLock, inspect_runtime, require_startup_ready
 from app.db.session import close_database, get_engine, get_session_factory
-from app.services.ai_grouping.runtime import AiGroupingRuntime
 from app.services.parser.runtime import ParserRuntime
-from app.services.transport.capabilities import probe_capabilities
 
 
 @asynccontextmanager
@@ -36,12 +33,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
     configure_logging(settings)
-    structlog.get_logger(__name__).info("parser_capabilities", **probe_capabilities().as_dict())
     instance_lock = SingleInstanceLock(settings.data_directory / "app.lock")
     instance_lock.acquire()
     pid_file = settings.data_directory / "app.pid"
     runtime: ParserRuntime | None = None
-    ai_runtime: AiGroupingRuntime | None = None
     try:
         from app.db.models import Base
 
@@ -55,26 +50,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         # ponytail: one mutation lock matches SQLite's single-writer ceiling.
         market_lock = asyncio.Lock()
         runtime = ParserRuntime(get_session_factory(), settings, market_lock=market_lock)
-        ai_runtime = AiGroupingRuntime(
-            get_session_factory(), settings, market_lock=market_lock
-        )
         pid_file.parent.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(str(os.getpid()), encoding="ascii")
         application.state.parser_runtime = runtime
-        application.state.ai_grouping_runtime = ai_runtime
         try:
             await runtime.reconcile()
         except SQLAlchemyError:
             structlog.get_logger(__name__).warning("parser_reconcile_skipped")
-        try:
-            await ai_runtime.reconcile()
-        except SQLAlchemyError:
-            structlog.get_logger(__name__).warning("ai_grouping_reconcile_skipped")
         yield
     finally:
         try:
-            if ai_runtime is not None:
-                await ai_runtime.close()
             if runtime is not None:
                 await runtime.close()
             await close_database()
@@ -105,23 +90,10 @@ async def _remove_own_pid_file(pid_file: Path, process_id: int) -> None:
             await asyncio.sleep(0.05 * (attempt + 1))
 
 
-
-
 def _find_static_directory() -> Path | None:
     """Locate the exported Next.js static assets directory if present."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    candidates = [
-        Path(meipass) / "static" if meipass else None,
-        RESOURCE_ROOT / "static",
-        RESOURCE_ROOT / "frontend" / "out",
-        PROJECT_ROOT / "frontend" / "out",
-        PROJECT_ROOT / "static",
-        Path(__file__).resolve().parent / "static",
-    ]
-    for candidate in candidates:
-        if candidate and candidate.is_dir() and (candidate / "index.html").is_file():
-            return candidate
-    return None
+    candidate = PROJECT_ROOT / "frontend" / "out"
+    return candidate if (candidate / "index.html").is_file() else None
 
 
 def mount_static_frontend(application: FastAPI) -> None:
@@ -153,14 +125,6 @@ def mount_static_frontend(application: FastAPI) -> None:
         if target.is_dir() and dir_index.is_file():
             return FileResponse(dir_index)
 
-        if full_path.startswith("model-groups"):
-            model_group_page = static_dir / "model-groups.html"
-            if model_group_page.is_file():
-                return FileResponse(model_group_page)
-            model_group_1_page = static_dir / "model-groups" / "1.html"
-            if model_group_1_page.is_file():
-                return FileResponse(model_group_1_page)
-
         index_file = static_dir / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)
@@ -179,7 +143,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=application_settings.cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Request-ID"],
 )
 app.add_middleware(RequestIdMiddleware)

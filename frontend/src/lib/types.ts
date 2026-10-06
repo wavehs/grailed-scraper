@@ -26,11 +26,10 @@ export type ParserHealth = {
       created_at: string;
     }>;
   };
-  proxies: ProxyStatus[];
   active_runs: number[];
   reasons: string[];
-  versions: { scrapling?: string; camoufox?: string };
-  circuits: Array<{ tier: string; host: string; proxy: string; state: string }>;
+  versions: { curl_cffi?: string };
+  circuits: Array<{ tier: string; host: string; state: string }>;
   compliance: {
     live_acknowledged: boolean;
     seller_identity_mode: 'none' | 'hashed' | 'plain';
@@ -45,25 +44,14 @@ export type ParserHealth = {
   };
 };
 
-export type ProxyStatus = {
-  proxy: string;
-  success_rate: number;
-  successes: number;
-  failures: number;
-  consecutive_failures: number;
-  cooling_down: boolean;
-  cooldown_remaining_s?: number;
-};
-
 export type RunSummary = {
   id: number;
   mode: string;
   status: RunStatus;
   phase: string;
-  dry_run: boolean;
   degraded: boolean;
   tier?: string;
-  budget?: Record<string, number | boolean>;
+  budget?: { brands?: number; tasks?: number; full_brands?: string[] };
   coverage?: string;
   requests_made: number;
   warnings: string[];
@@ -134,101 +122,10 @@ export type RunMetrics = {
   listings_invalid: number;
   duration_s: number;
 };
-export type FetchPlan = {
-  mode: string;
-  confirmation_token: string;
-  budget: Record<string, number | boolean>;
-  warnings: string[];
-  tasks: Array<{
-    brand_id: number;
-    brand: string;
-    index_type: string;
-    index: string;
-    status: string;
-    strategy: string;
-    max_hits: number | null;
-  }>;
-};
-export type RunStartResponse =
-  { dry_run: true; plan: FetchPlan } | { dry_run: false; run: RunSummary };
+export type RunStartResponse = { run: RunSummary };
+export type RunDetail = { run: RunSummary; tasks: RunTask[] };
 
-export type GroupingRunMode = 'canary' | 'remaining' | 'pending';
-export type GroupingRunStatus =
-  | 'preparing'
-  | 'submitted'
-  | 'running'
-  | 'validating'
-  | 'waiting_for_market'
-  | 'applying'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'interrupted'
-  | 'needs_attention'
-  | 'rolled_back';
-
-export type AiGroupingPreflight = {
-  provider?: 'gemini' | 'ollama';
-  provider_configured?: boolean | null;
-  mode: GroupingRunMode;
-  gemini_configured: boolean;
-  listing_count: number;
-  unique_input_count: number;
-  estimated_input_tokens: number;
-  estimated_output_tokens: number;
-  estimated_cost_usd: string;
-  budget_cap_usd: string;
-  can_start: boolean;
-  blocked_reason?: string;
-  data_fields: string[];
-};
-
-export type AiGroupingExample = {
-  evidence_checked?: boolean;
-  listing_id: number;
-  title: string;
-  old_group?: string;
-  new_group: string;
-  product_type: string;
-  confidence: string;
-};
-
-export type AiGroupingRun = {
-  id: number;
-  mode: GroupingRunMode;
-  status: GroupingRunStatus;
-  cheap_model: string;
-  strong_model: string;
-  prompt_version: string;
-  grouping_version: string;
-  budget_cap_usd: string;
-  estimated_cost_usd: string;
-  actual_cost_usd: string;
-  input_tokens: number;
-  output_tokens: number;
-  total_items: number;
-  unique_inputs: number;
-  resolved_items: number;
-  ambiguous_items: number;
-  unique_fallback_items: number;
-  failed_items: number;
-  error_code?: string;
-  warnings: string[];
-  created_at: string;
-  started_at?: string;
-  finished_at?: string;
-  heartbeat_at?: string;
-  rollback_allowed: boolean;
-  progress_percent: number;
-  examples: AiGroupingExample[];
-};
-
-export type AiGroupingRunList = {
-  data: AiGroupingRun[];
-  total: number;
-  limit: number;
-  offset: number;
-};
+export type DesignerSuggestion = { name: string; listings_count: number };
 
 export type Mapping = {
   id: number;
@@ -251,123 +148,15 @@ export type Brand = {
 };
 export type BrandList = { data: Brand[] };
 
-export type DashboardProductType = 'footwear' | 'clothing' | 'accessories';
-
-export type DashboardRow = {
-  id: number;
-  name: string;
-  brand_name: string;
-  category?: string;
-  available_sizes: string[];
-  available_conditions: string[];
-  sold_count: number;
-  exact_sold_count: number;
-  active_count: number;
-  median_sold_price: number | null;
-  median_days_to_sell: string | null;
-  median_sold_likes: string | null;
-  liquidity_score: string | null;
-  demand_score: string | null;
-  price_score: string;
-  confidence_score: string;
-  market_opportunity_score: string | null;
-  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-  model_version: string;
-  window_days: number;
-  run_id: number;
-};
-
 export type CursorPage<T> = {
   data: T[];
   limit: number;
   next_cursor: string | null;
 };
 
-export type BrandAnalyticsRow = {
-  id: number;
-  name: string;
-  groups_count: number;
-  sold_count: number;
-  exact_sold_count: number;
-  active_count: number;
-  median_sold_price: number | null;
-  median_days_to_sell: string | null;
-  median_sold_likes: string | null;
-  sell_through?: string | null;
-  demand_score: string | null;
-  liquidity_score: string | null;
-  confidence_score: string;
-  market_opportunity_score: string | null;
-  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-  average_liquidity_score?: string | null;
-  average_demand_score?: string | null;
-  average_confidence_score?: string;
-  average_market_opportunity_score?: string | null;
-};
-
-export type BrandAnalyticsList = CursorPage<BrandAnalyticsRow>;
-
-export type ScoreComponent = {
-  score: string;
-  weight?: string;
-  liquidity_weight?: string;
-  demand_weight?: string;
-};
-export type ListingExample = {
-  id: number;
-  grailed_id: number;
-  title: string;
-  price: number;
-  likes: number;
-  sold_at?: string;
-  created_at?: string;
-  days_on_market?: number | null;
-};
-export type VariantPerformance = {
-  value: string | null;
-  sold_count: number;
-  active_count: number;
-  sell_through: string;
-};
-export type ModelGroupDetail = {
-  id: number;
-  name: string;
-  brand: string;
-  category?: string;
-  group_type: string;
-  model_version: string;
-  window_days: number;
-  run_id: number;
-  input_digest: string;
-  variant_breakdown: {
-    colors: VariantPerformance[];
-    sizes: VariantPerformance[];
-  };
-  metrics: {
-    sold_count: number;
-    exact_sold_count: number;
-    active_count: number;
-    sell_through: string;
-    median_sold_price?: number;
-    median_days_to_sell?: string;
-    median_sold_likes?: string;
-    liquidity_score: string | null;
-    demand_score: string | null;
-    price_score: string;
-    confidence_score: string;
-    market_opportunity_score: string | null;
-    scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-    components: Record<string, ScoreComponent>;
-    confidence_factors: Record<string, unknown>;
-    quality_summary: Record<string, unknown>;
-    warnings: string[];
-  };
-  sold_examples: ListingExample[];
-  active_examples: ListingExample[];
-};
-
 export type SettingOrigin = 'default' | 'env' | 'database';
-export type SettingEntry = { value: string | number | boolean; origin: SettingOrigin };
+export type SettingValue = string | number | boolean | null;
+export type SettingEntry = { value: SettingValue; origin: SettingOrigin };
 export type SettingsResponse = { groups: Record<string, Record<string, SettingEntry>> };
 export type DiscoveryResponse = {
   source: 'grailed';
@@ -390,8 +179,11 @@ export type DiscoveryResponse = {
 export type CatalogListing = {
   id: number;
   grailed_id: number;
+  url: string;
   title: string;
   brand: string;
+  brand_id: number | null;
+  product_type: string | null;
   status: string;
   size?: string;
   color?: string;
@@ -402,7 +194,122 @@ export type CatalogListing = {
   days_on_market?: number | null;
   model_group_id?: number;
   model_name?: string;
+  is_fallback: boolean;
   model_sold_count: number;
   model_active_count: number;
 };
 export type CatalogListingList = CursorPage<CatalogListing>;
+
+export type TaxonomySection = { id: string; ru: string; en: string };
+export type TaxonomyType = { id: string; section: string; ru: string; en: string };
+export type Taxonomy = { version: string; sections: TaxonomySection[]; types: TaxonomyType[] };
+
+export type GroupStatus = 'confirmed' | 'auto' | 'ignored';
+
+export type GroupSummary = {
+  id: number;
+  brand_id: number;
+  brand: string;
+  product_type: string;
+  slug: string;
+  name: string;
+  aliases: string[];
+  parent_id: number | null;
+  status: GroupStatus;
+  source: string;
+  is_fallback: boolean;
+  listings: number;
+  sold: number;
+  active: number;
+};
+
+export type GroupDetail = GroupSummary & {
+  parent: GroupSummary | null;
+  versions: GroupSummary[];
+};
+
+export type GroupList = { data: GroupSummary[]; total: number };
+
+export type TrendLevel = 'model' | 'type' | 'brand';
+export type TrendSort = 'trend' | 'growth' | 'speed' | 'sales' | 'price' | 'supply' | 'new';
+
+export type TrendRow = {
+  scope: TrendLevel;
+  scope_key: string;
+  group_id: number | null;
+  brand_id: number;
+  brand: string;
+  product_type: string | null;
+  section: string | null;
+  name: string | null;
+  status: GroupStatus | null;
+  is_fallback: boolean;
+  versions: number;
+  listings: number;
+  sold: number;
+  sold_7d: number;
+  sold_30d: number;
+  sold_prev_30d: number;
+  sold_90d: number;
+  growth: string;
+  speed: string | null;
+  trend_score: string | null;
+  median_days_to_sell: string | null;
+  sell_through_30d: string;
+  median_price: number | null;
+  price_change: string | null;
+  active_now: number;
+  new_listings_14d: number;
+  is_new: boolean;
+  first_seen_at: string | null;
+  weekly_sales: number[];
+};
+
+export type TrendList = { data: TrendRow[]; total: number; computed_at: string | null };
+
+export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
+
+export type TrendListing = {
+  id: number;
+  grailed_id: number;
+  url: string;
+  title: string;
+  price: number;
+  status: string;
+  sold_at: string | null;
+  created_at: string | null;
+  days_to_sell: number | null;
+  size: string | null;
+  color: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  relisted: boolean;
+};
+
+export type TrendCard = {
+  group: GroupDetail;
+  metrics: TrendRow | null;
+  computed_at: string | null;
+  weekly_median_price: Array<number | null>;
+  colors: TrendVariant[];
+  sizes: TrendVariant[];
+  versions: TrendRow[];
+  type_metrics: TrendRow | null;
+  recent_sales: TrendListing[];
+  active_listings: TrendListing[];
+};
+
+export type TrendFilters = {
+  level: TrendLevel;
+  brandIds: number[];
+  section: string;
+  productType: string;
+  window: 7 | 30 | 90;
+  priceMin: string;
+  priceMax: string;
+  newOnly: boolean;
+  minSales: number;
+  search: string;
+  sort: TrendSort;
+  desc: boolean;
+};

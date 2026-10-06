@@ -2,13 +2,16 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
-import ParserRunsPage from '@/app/parser-runs/page';
+import CollectPage from '@/app/collect/page';
 import SettingsPage from '@/app/settings/page';
-import ModelDetailClient from '@/app/model-groups/[id]/model-detail-client';
-import { Dashboard } from '@/components/dashboard';
+import GroupPage from '@/app/group/page';
+import ListingsPage from '@/app/listings/page';
+import TrendsPage from '@/app/trends/page';
+import { GroupEditor } from '@/components/group-editor';
 import { HealthBanner } from '@/components/health-banner';
 import { HelpTip } from '@/components/ui/help-tip';
 import { renderApp } from '@/test/render';
+import { navigation } from '@/test/setup';
 
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -36,138 +39,336 @@ const brand = {
 beforeEach(() => window.localStorage.clear());
 
 describe('stage 10 screens', () => {
-  it('renders Decimal scores from the live analytics API', async () => {
+  it('shows trends of every brand and filters by type, window and price', async () => {
+    const row = {
+      scope: 'model',
+      scope_key: 'model:5',
+      group_id: 5,
+      brand_id: 1,
+      brand: 'Balenciaga',
+      product_type: 'lowtop_sneakers',
+      section: 'footwear',
+      name: 'Track',
+      status: 'auto',
+      is_fallback: false,
+      versions: 2,
+      listings: 40,
+      sold: 12,
+      sold_7d: 4,
+      sold_30d: 12,
+      sold_prev_30d: 3,
+      sold_90d: 20,
+      growth: '3.2500',
+      speed: '0.7500',
+      trend_score: '146.25',
+      median_days_to_sell: '10.00',
+      sell_through_30d: '0.600000',
+      median_price: 52000,
+      price_change: '0.1000',
+      active_now: 8,
+      new_listings_14d: 3,
+      is_new: true,
+      first_seen_at: '2026-09-01T00:00:00Z',
+      weekly_sales: [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
+    };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/parser/health'))
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, id: 1, name: 'Balenciaga' }] });
+      if (url.endsWith('/grouping/taxonomy'))
         return json({
-          status: 'ready',
-          reasons: [],
-          transports: { T1: true },
-          discovery: { status: 'valid' },
-          schema: { active_alerts: 0, alerts: [] },
-        });
-      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
-      if (url.includes('/analytics/dashboard?'))
-        return json({
-          data: [
-            {
-              id: 1,
-              name: 'Dagger Necklace',
-              brand_name: 'Chrome Hearts',
-              available_sizes: [],
-              available_conditions: [],
-              sold_count: 24,
-              exact_sold_count: 24,
-              active_count: 111,
-              median_sold_price: 45000,
-              liquidity_score: '72.72',
-              demand_score: '66.84',
-              price_score: '0.00',
-              confidence_score: '58.10',
-              market_opportunity_score: '66.84',
-              scoring_status: 'scored',
-              model_version: 'market-v5',
-              window_days: 30,
-              run_id: 3,
-            },
+          version: 'taxonomy-v1',
+          sections: [{ id: 'footwear', ru: 'Обувь', en: 'Footwear' }],
+          types: [
+            { id: 'lowtop_sneakers', section: 'footwear', ru: 'Кроссовки', en: 'Low-top sneakers' },
           ],
-          total: 1,
-          limit: 200,
-          offset: 0,
         });
+      if (url.includes('/trends?'))
+        return json({ data: [row], total: 1, computed_at: '2026-10-01T12:00:00Z' });
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderApp(<Dashboard />);
-    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
-    expect(screen.getAllByText('66.8').length).toBeGreaterThan(0);
-    await userEvent.selectOptions(screen.getByLabelText('Brand'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'accessories');
+    renderApp(<TrendsPage />);
+    const link = await screen.findByRole('link', {
+      name: 'Balenciaga · Track · Low-top sneakers',
+    });
+    expect(link).toHaveAttribute('href', '/group?id=5');
+    expect(screen.getByText('146')).toBeInTheDocument();
+    expect(screen.getByText('×3.25')).toBeInTheDocument();
+    expect(screen.getByText('new')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Sales by week/ })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'lowtop_sneakers');
+    await userEvent.click(screen.getByRole('button', { name: '90 d' }));
+    await userEvent.type(screen.getByLabelText('Price to, $'), '600');
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) => {
           const url = String(input);
-          return url.includes('brand_id=1') && url.includes('product_type=accessories');
+          return (
+            url.includes('product_type=lowtop_sneakers') &&
+            url.includes('window=90') &&
+            url.includes('price_max=600')
+          );
         }),
       ).toBe(true),
     );
+    await userEvent.click(screen.getByRole('button', { name: 'Brands' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes('level=brand'))).toBe(
+        true,
+      ),
+    );
   });
 
-  it('switches to brand analytics view and drills down on click', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+  it('shows the group card with versions, variants, sales links and edits', async () => {
+    const group = {
+      id: 1,
+      brand_id: 1,
+      brand: 'Rick Owens',
+      product_type: 'hitop_sneakers',
+      slug: 'geobasket',
+      name: 'Geobasket',
+      aliases: [],
+      parent_id: null,
+      status: 'confirmed',
+      source: 'seed',
+      is_fallback: false,
+      listings: 20,
+      sold: 12,
+      active: 8,
+      parent: null,
+      versions: [],
+    };
+    const metric = {
+      scope: 'model',
+      scope_key: 'model:1',
+      group_id: 1,
+      brand_id: 1,
+      brand: 'Rick Owens',
+      product_type: 'hitop_sneakers',
+      section: 'footwear',
+      name: 'Geobasket',
+      status: 'confirmed',
+      is_fallback: false,
+      versions: 1,
+      listings: 20,
+      sold: 12,
+      sold_7d: 2,
+      sold_30d: 12,
+      sold_prev_30d: 6,
+      sold_90d: 30,
+      growth: '1.8571',
+      speed: '0.6000',
+      trend_score: '66.86',
+      median_days_to_sell: '20.00',
+      sell_through_30d: '0.600000',
+      median_price: 90000,
+      price_change: null,
+      active_now: 8,
+      new_listings_14d: 1,
+      is_new: false,
+      first_seen_at: null,
+      weekly_sales: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/trends/groups/1'))
+          return json({
+            group,
+            metrics: metric,
+            computed_at: '2026-10-01T12:00:00Z',
+            weekly_median_price: Array(12).fill(90000),
+            colors: [{ value: 'milk', sold: 9, active: 2, sell_through: '0.818182' }],
+            sizes: [{ value: 'us 10', sold: 5, active: 1, sell_through: '0.833333' }],
+            versions: [
+              { ...metric, scope_key: 'model:2', group_id: 2, name: 'Mega Geobasket', sold: 3 },
+            ],
+            type_metrics: null,
+            recent_sales: [
+              {
+                id: 9,
+                grailed_id: 999,
+                url: 'https://www.grailed.com/listings/999',
+                title: 'Rick Owens Geobasket Milk',
+                price: 88000,
+                status: 'sold',
+                sold_at: '2026-09-30T00:00:00Z',
+                created_at: '2026-09-10T00:00:00Z',
+                days_to_sell: 20,
+                size: 'us 10',
+                color: 'milk',
+                group_id: 1,
+                group_name: 'Geobasket',
+                relisted: true,
+              },
+            ],
+            active_listings: [],
+          });
+        if (url.endsWith('/groups/1')) return json(group);
+        if (url.includes('/groups?')) return json({ data: [group], total: 1 });
+        if (url.endsWith('/grouping/taxonomy'))
+          return json({
+            version: 'taxonomy-v1',
+            sections: [],
+            types: [
+              { id: 'hitop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' },
+            ],
+          });
+        return json({});
+      }),
+    );
+    navigation.search = 'id=1';
+    renderApp(<GroupPage />);
+    expect(
+      await screen.findByRole('heading', { name: 'Rick Owens · Geobasket · High-top sneakers' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Mega Geobasket' })).toHaveAttribute(
+      'href',
+      '/group?id=2',
+    );
+    expect(screen.getByText('milk')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Rick Owens Geobasket Milk/ })).toHaveAttribute(
+      'href',
+      'https://www.grailed.com/listings/999',
+    );
+    expect(screen.getByText(/relisted/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move' })).toBeInTheDocument();
+    expect(await screen.findByText('Edit group')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(12);
+  });
+
+  it('confirms, merges and rejects groups through durable edit rules', async () => {
+    const group = {
+      id: 7,
+      brand_id: 1,
+      brand: 'Chrome Hearts',
+      product_type: 'tshirt',
+      slug: 'neck-logo',
+      name: 'Neck Logo',
+      aliases: ['neck logo'],
+      parent_id: null,
+      status: 'auto',
+      source: 'mined',
+      is_fallback: false,
+      listings: 12,
+      sold: 5,
+      active: 7,
+      parent: null,
+      versions: [],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/parser/health'))
+      if (url.endsWith('/grouping/taxonomy'))
         return json({
-          status: 'ready',
-          reasons: [],
-          transports: { T1: true },
-          discovery: { status: 'valid' },
-          schema: { active_alerts: 0, alerts: [] },
+          version: 'taxonomy-v1',
+          sections: [{ id: 'tops', ru: 'Верх', en: 'Tops' }],
+          types: [{ id: 'tshirt', section: 'tops', ru: 'Футболка', en: 'T-shirt' }],
         });
-      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
-      if (url.includes('/analytics/brands?'))
+      if (url.includes('/groups?'))
         return json({
-          data: [
-            {
-              id: 1,
-              name: 'Chrome Hearts',
-              groups_count: 5,
-              sold_count: 50,
-              exact_sold_count: 50,
-              active_count: 100,
-              median_sold_price: 60000,
-              median_days_to_sell: '14.0',
-              median_sold_likes: '25.0',
-              demand_score: '82.50',
-              liquidity_score: '78.00',
-              confidence_score: '80.00',
-              scoring_status: 'scored',
-            },
-          ],
-          total: 1,
-          limit: 200,
-          offset: 0,
+          data: [group, { ...group, id: 8, name: 'Neck Logo Tee', status: 'confirmed' }],
+          total: 2,
         });
-      if (url.includes('/analytics/dashboard?'))
-        return json({
-          data: [
-            {
-              id: 1,
-              name: 'Dagger Necklace',
-              brand_name: 'Chrome Hearts',
-              available_sizes: [],
-              available_conditions: [],
-              sold_count: 24,
-              exact_sold_count: 24,
-              active_count: 111,
-              median_sold_price: 45000,
-              liquidity_score: '72.72',
-              demand_score: '66.84',
-              price_score: '0.00',
-              confidence_score: '58.10',
-              scoring_status: 'scored',
-              model_version: 'market-v5',
-              window_days: 90,
-              run_id: 3,
-            },
-          ],
-          total: 1,
-          limit: 200,
-          offset: 0,
-        });
+      if (url.endsWith('/groups/7') && init?.method === 'PATCH')
+        return json({ ...group, status: 'confirmed' });
+      if (url.endsWith('/groups/7/merge')) return json({ ...group, id: 8 });
+      if (url.endsWith('/groups/7')) return json(group);
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderApp(<Dashboard />);
-    expect(await screen.findByRole('button', { name: 'By brands' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'By brands' }));
-    expect(await screen.findByRole('button', { name: 'Chrome Hearts' })).toBeInTheDocument();
-    expect(screen.getByText('82.5')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Chrome Hearts' }));
-    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
+    const changed = vi.fn();
+    renderApp(<GroupEditor groupId={7} onChanged={changed} />);
+    expect(await screen.findByText('Chrome Hearts · Neck Logo · T-shirt')).toBeInTheDocument();
+    expect(screen.getByText('auto')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/groups/7') && init?.method === 'PATCH',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ status: 'confirmed' });
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Merge into…' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Merge into…'), '8');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ id: 8 })));
+    const merge = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/merge'));
+    expect(JSON.parse(String(merge?.[1]?.body))).toEqual({ target_id: 8 });
+  });
+
+  it('lists catalog listings with model links, filters and cursor pages', async () => {
+    const listing = {
+      id: 7,
+      grailed_id: 9001,
+      url: 'https://www.grailed.com/listings/9001',
+      title: 'Geobasket Milk',
+      brand: 'Rick Owens',
+      brand_id: 1,
+      product_type: 'hightop_sneakers',
+      status: 'sold',
+      size: '42',
+      color: 'Milk',
+      price: 650,
+      last_seen_at: '2026-10-01T12:00:00Z',
+      days_on_market: 12,
+      model_group_id: 5,
+      model_name: 'Geobasket',
+      is_fallback: false,
+      model_sold_count: 14,
+      model_active_count: 3,
+    };
+    const fallback = {
+      ...listing,
+      id: 8,
+      grailed_id: 9002,
+      title: 'Leather jacket',
+      status: 'active',
+      model_group_id: 6,
+      is_fallback: true,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/grouping/taxonomy'))
+        return json({
+          version: 'taxonomy-v1',
+          sections: [{ id: 'footwear', ru: 'Обувь', en: 'Footwear' }],
+          types: [
+            { id: 'hightop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' },
+          ],
+        });
+      if (url.includes('cursor=page-2'))
+        return json({ data: [fallback], limit: 50, next_cursor: null });
+      if (url.includes('/listings?'))
+        return json({ data: [listing], limit: 50, next_cursor: 'page-2' });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<ListingsPage />);
+    const title = await screen.findByRole('link', { name: 'Geobasket Milk' });
+    expect(title).toHaveAttribute('href', listing.url);
+    const row = title.closest('tr') as HTMLElement;
+    expect(within(row).getByRole('link', { name: 'Geobasket' })).toHaveAttribute(
+      'href',
+      '/group?id=5',
+    );
+    expect(within(row).getByText('Sold')).toBeInTheDocument();
+    expect(
+      await within(row).findByText(/Rick Owens · High-top sneakers · 42 · Milk · #9001/),
+    ).toBeInTheDocument();
+    const fetched = (part: string) =>
+      fetchMock.mock.calls.some(([input]) => String(input).includes(part));
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'sold');
+    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'hightop_sneakers');
+    await waitFor(() => expect(fetched('status=sold&product_type=hightop_sneakers')).toBe(true));
+    await userEvent.type(screen.getByPlaceholderText('Search by product or brand'), 'geobasket');
+    await waitFor(() => expect(fetched('search=geobasket')).toBe(true));
+    await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    const second = await screen.findByRole('link', { name: 'No model' });
+    expect(second).toHaveAttribute('href', '/group?id=6');
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Geobasket Milk' })).toBeInTheDocument();
   });
 
   it('opens setting help on click', async () => {
@@ -176,56 +377,6 @@ describe('stage 10 screens', () => {
     await userEvent.click(help);
     expect(screen.getByRole('tooltip')).toHaveTextContent('Maximum requests for this run.');
     expect(help).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('shows the best-selling colors and sizes for a model group', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        json({
-          id: 1,
-          name: 'Geobasket',
-          brand: 'Rick Owens',
-          category: 'footwear',
-          group_type: 'resolved',
-          model_version: 'market-v5',
-          window_days: 90,
-          run_id: 3,
-          input_digest: 'abc123',
-          variant_breakdown: {
-            colors: [
-              { value: 'black', sold_count: 4, active_count: 2, sell_through: '0.666667' },
-            ],
-            sizes: [{ value: '42', sold_count: 3, active_count: 1, sell_through: '0.750000' }],
-          },
-          metrics: {
-            sold_count: 4,
-            exact_sold_count: 4,
-            active_count: 2,
-            sell_through: '0.666667',
-            median_sold_price: 50000,
-            median_days_to_sell: '12',
-            median_sold_likes: '20',
-            liquidity_score: '50',
-            demand_score: '50',
-            price_score: '0',
-            confidence_score: '90',
-            market_opportunity_score: '50',
-            scoring_status: 'scored',
-            components: {},
-            confidence_factors: {},
-            quality_summary: {},
-            warnings: [],
-          },
-          sold_examples: [],
-          active_examples: [],
-        }),
-      ),
-    );
-    renderApp(<ModelDetailClient />);
-    expect(await screen.findByText('Best-selling variants')).toBeInTheDocument();
-    expect(screen.getByText('black')).toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
   });
 
   it('announces parser degradation and its actionable reason', async () => {
@@ -290,170 +441,91 @@ describe('stage 10 screens', () => {
     );
   });
 
-  it('performs dry-run planning before starting a parser run', async () => {
-    let runCalls = 0;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith('/health')) return json(health);
-        if (url.endsWith('/brands'))
-          return json({
-            data: [
-              {
-                ...brand,
-                status: 'verified',
-                mappings: [{ ...brand.mappings[0], state: 'verified' }],
-              },
-            ],
-          });
-        if (url.includes('/parser/runs?'))
-          return json({ data: [], total: 0, limit: 50, offset: 0 });
-        if (url.endsWith('/parser/run') && init?.method === 'POST') {
-          runCalls += 1;
-          if (runCalls === 1)
-            return json({
-              dry_run: true,
-              plan: {
-                mode: 'delta',
-                confirmation_token: 'confirmed-plan',
-                budget: {
-                  estimated_requests: 4,
-                  estimated_hits: 400,
-                  limit: 5000,
-                  over_limit: false,
-                },
-                warnings: [],
-                tasks: [],
-              },
-            });
-          return json({
-            dry_run: false,
-            run: {
-              id: 11,
-              mode: 'delta',
-              status: 'pending',
-              phase: 'planning',
-              dry_run: false,
-              degraded: false,
-              requests_made: 0,
-              warnings: [],
-              created_at: new Date().toISOString(),
-            },
-          });
-        }
-        if (url.endsWith('/parser/runs/11/progress'))
-          return json({
+  it('collects the selected brands with one click', async () => {
+    const verified = {
+      ...brand,
+      status: 'verified',
+      mappings: [{ ...brand.mappings[0], state: 'verified' }],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
+      if (url.endsWith('/brands'))
+        return json({ data: [verified, { ...verified, id: 2, name: 'Chrome Hearts' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/parser/run') && init?.method === 'POST')
+        return json({
+          run: {
+            id: 11,
+            mode: 'full',
             status: 'pending',
             phase: 'planning',
             degraded: false,
-            brands_total: 1,
-            brands_completed: 0,
-            tasks_total: 2,
-            tasks_done: 0,
-            hits_fetched: 0,
             requests_made: 0,
             warnings: [],
-          });
-        return json({});
-      }),
-    );
-    renderApp(<ParserRunsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Max' }));
-    expect(screen.getByText('All available listings will be collected.')).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: 'Check volume and continue' }));
-    expect(await screen.findByText('Collection plan')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Request budget')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Start run' }));
-    expect(await screen.findByText('Run #11')).toBeInTheDocument();
-    expect(runCalls).toBe(2);
-    const confirmed = vi
-      .mocked(fetch)
-      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[1];
-    const planned = vi
-      .mocked(fetch)
-      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[0];
-    expect(JSON.parse(String(planned[1]?.body))).toMatchObject({ collect_all: true });
-    expect(JSON.parse(String(planned[1]?.body))).not.toHaveProperty('max_items_per_brand');
-    const confirmedPayload = JSON.parse(String(confirmed[1]?.body));
-    expect(confirmedPayload).toMatchObject({
-      dry_run: false,
-      confirmation_token: 'confirmed-plan',
-    });
-    expect(confirmedPayload).not.toHaveProperty('max_requests');
-  });
-
-  it('confirms run deletion and collected-data cleanup', async () => {
-    let finishClear: (() => void) | undefined;
-    const clearResponse = new Promise<Response>((resolve) => {
-      finishClear = () =>
-        resolve(new Response(JSON.stringify({ listings_deleted: 12, runs_deleted: 1 })));
-    });
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/health')) return json(health);
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
-      if (url.includes('/parser/runs?'))
-        return json({
-          data: [
-            {
-              id: 7,
-              mode: 'full',
-              status: 'completed',
-              phase: 'done',
-              dry_run: false,
-              degraded: false,
-              coverage: 1,
-              requests_made: 10,
-              warnings: [],
-              created_at: new Date().toISOString(),
-            },
-          ],
-          total: 1,
-          limit: 50,
-          offset: 0,
+            created_at: new Date().toISOString(),
+          },
         });
-      if (url.endsWith('/parser/runs/7') && init?.method === 'DELETE')
-        return Promise.resolve(new Response(null, { status: 204 }));
-      if (url.endsWith('/parser/history/clear') && init?.method === 'POST')
-        return json({ runs_deleted: 1 });
-      if (url.endsWith('/parser/data/clear') && init?.method === 'POST') return clearResponse;
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderApp(<ParserRunsPage />);
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-    const deleteDialog = screen.getByRole('dialog', { name: 'Delete parser run?' });
-    await userEvent.click(within(deleteDialog).getByRole('button', { name: 'Delete' }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/parser/runs/7'),
-        expect.objectContaining({ method: 'DELETE' }),
-      ),
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: 'Delete all run history' }));
-    const historyDialog = screen.getByRole('dialog', {
-      name: 'Delete all parser run history?',
+    renderApp(<CollectPage />);
+    const all = await screen.findByRole('button', { name: 'Update data' });
+    await userEvent.click(all);
+    await userEvent.click(screen.getByRole('button', { name: /Chrome Hearts/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Update data' }));
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/parser/run') && init?.method === 'POST',
+      );
+      expect(calls).toHaveLength(2);
+      expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ brand_ids: null });
+      expect(JSON.parse(String(calls[1][1]?.body))).toEqual({ brand_ids: [1] });
     });
-    await userEvent.click(
-      within(historyDialog).getByRole('button', { name: 'Delete all run history' }),
-    );
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/parser/history/clear'),
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    );
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('confirmation_token')),
+    ).toBe(false);
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Clear collected data' }));
-    const clearDialog = screen.getByRole('dialog', { name: 'Clear collected data?' });
+  it('asks for the one-time compliance acknowledgement before collecting', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health'))
+        return json({ status: 'unavailable', reasons: ['live_compliance_not_acknowledged'] }, 503);
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/settings') && init?.method === 'PATCH') return json({ groups: {} });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<CollectPage />);
     await userEvent.click(
-      within(clearDialog).getByRole('button', { name: 'Clear collected data' }),
+      await screen.findByRole('button', { name: 'I understand, enable collection' }),
     );
-    expect(within(clearDialog).getByRole('progressbar')).toHaveAccessibleName('Clearing database…');
-    finishClear?.();
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/settings') && init?.method === 'PATCH',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ live_compliance_acknowledged: true });
+    });
+    expect(screen.getByRole('button', { name: 'Update data' })).toBeDisabled();
+  });
+
+  it('clears collected data after confirmation', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/parser/data/clear') && init?.method === 'POST')
+        return json({ listings_deleted: 12, runs_deleted: 1 });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<CollectPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Clear collected data' }));
+    const dialog = screen.getByRole('dialog', { name: 'Clear collected data' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining('/parser/data/clear'),
@@ -462,12 +534,43 @@ describe('stage 10 screens', () => {
     );
   });
 
+  it('adds a brand from a Grailed designer suggestion', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.includes('/brands/designers?'))
+        return json({ data: [{ name: 'Enfants Riches Déprimés', listings_count: 812 }] });
+      if (url.endsWith('/brands') && init?.method === 'POST')
+        return json({ ...brand, id: 5, name: 'Enfants Riches Déprimés' }, 201);
+      if (url.endsWith('/brands')) return json({ data: [brand] });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<BrandsPage />);
+    await userEvent.type(
+      await screen.findByPlaceholderText('Start typing a designer, e.g. Chrome Hearts'),
+      'enfants',
+    );
+    expect(await screen.findByText(/812/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/brands') && init?.method === 'POST',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        name: 'Enfants Riches Déprimés',
+        designer: 'Enfants Riches Déprimés',
+      });
+    });
+  });
+
   it('edits safe settings and sends a flat validated patch', async () => {
     const groups = {
-      source: { fetch_tier_preferred: { value: 'T1', origin: 'default' } },
-      parser: { requests_per_minute: { value: 90, origin: 'default' } },
-      proxy: { proxy_enabled: { value: false, origin: 'default' } },
-      discovery: { discovery_ttl_hours: { value: 12, origin: 'default' } },
+      collection: {
+        requests_per_minute: { value: 90, origin: 'default' },
+        sold_history_days: { value: 365, origin: 'default' },
+      },
+      privacy: { store_seller_identity: { value: 'hashed', origin: 'default' } },
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

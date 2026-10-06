@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 from dateutil.parser import isoparse  # type: ignore[import-untyped]
@@ -152,9 +150,6 @@ class ListingNormalizer:
         condition_raw = _text(self._mapping.value(payload, "condition"))
         photo_urls = _string_list(self._mapping.value(payload, "photo_urls"))
         cover = _text(self._mapping.value(payload, "cover_photo_url"))
-        cover_asset_key = _asset_key(
-            _text(self._mapping.value(payload, "cover_asset_url")) or cover
-        )
         if cover and cover not in photo_urls:
             photo_urls.insert(0, cover)
         first_seen = to_utc_datetime(context.observed_at) or context.observed_at
@@ -178,6 +173,11 @@ class ListingNormalizer:
                 brand_id=context.brand_id,
                 category=_category(self._mapping.value(payload, "category")),
                 subcategory=_category(self._mapping.value(payload, "subcategory")),
+                category_path=_category_path(
+                    self._mapping.value(payload, "category_path"),
+                    _category(self._mapping.value(payload, "category")),
+                    _category(self._mapping.value(payload, "subcategory")),
+                ),
                 size_raw=size_raw,
                 size_normalized=normalize_size(
                     size_raw, _category(self._mapping.value(payload, "category"))
@@ -204,8 +204,8 @@ class ListingNormalizer:
                 last_seen_at=first_seen,
                 days_on_market=days_on_market,
                 cover_photo_url=cover,
-                cover_asset_key=cover_asset_key,
                 photo_urls=photo_urls,
+                designer_names=_string_list(self._mapping.value(payload, "designer_names")),
                 photo_count=max(
                     _nonnegative_int(self._mapping.value(payload, "photo_count")),
                     len(photo_urls),
@@ -320,22 +320,23 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in (_text(part) for part in value) if item is not None]
 
 
-def _asset_key(value: str | None) -> str | None:
-    if value is None:
-        return None
-    parts = urlsplit(value)
-    if parts.scheme.casefold() not in {"http", "https"} or not parts.hostname:
-        return None
-    canonical = urlunsplit(
-        (parts.scheme.casefold(), parts.hostname.casefold(), parts.path, "", "")
-    )
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
 def _category(value: Any) -> str | None:
     if isinstance(value, list):
         return _text(value[-1]) if value else None
     return _text(value)
+
+
+def _category_path(raw: Any, category: str | None, subcategory: str | None) -> str | None:
+    """Grailed's ``department.subcategory`` key, e.g. ``tops.short_sleeve_shirts``."""
+
+    path = _category(raw)
+    if path and "." in path:
+        return path.casefold()
+    if subcategory and "." in subcategory:
+        return subcategory.casefold()
+    if category and subcategory and " " not in subcategory:
+        return f"{category}.{subcategory}".casefold()
+    return (path or category or "").casefold() or None
 
 
 def _country(value: Any) -> str | None:

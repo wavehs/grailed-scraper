@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from importlib import metadata
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.discovery import (
     DiscoveryRefreshRequest,
     DiscoveryResponse,
+    ensure_discovery,
     get_discovery_service,
     refresh_discovery,
 )
@@ -23,15 +25,13 @@ from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
 from app.db.models import (
-    AiGroupingBatch,
-    AiGroupingRun,
     Brand,
+    GroupMetric,
     Listing,
     ModelGroup,
     ParserRun,
     ParserRunTask,
     ParserWatermark,
-    PhysicalItem,
     SchemaAlert,
     SourceCredential,
     SourceSchema,
@@ -39,14 +39,9 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.repositories.runs import RunRepository
-from app.services.parser.planner import FetchPlan, ParserPlanner
+from app.services.parser.planner import ParserPlanner
 from app.services.parser.runtime import ParserRuntime
-from app.services.sources.grailed.algolia.client import AlgoliaClient
-from app.services.sources.grailed.algolia.exceptions import AlgoliaError
-from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.sources.grailed.discovery.service import DiscoveryService
-from app.services.transport.capabilities import probe_capabilities
-from app.services.transport.factory import create_http_transport, create_proxy_manager
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 RunStatus = Literal[
@@ -55,14 +50,9 @@ RunStatus = Literal[
 
 
 class RunRequest(BaseModel):
-    mode: Literal["delta", "full", "refresh_active"] | None = None
+    """Collect selected brands (all when omitted): full on first run, delta afterwards."""
+
     brand_ids: list[int] | None = None
-    dry_run: bool = False
-    confirmation_token: str | None = None
-    max_items_per_brand: int | None = Field(default=None, ge=1)
-    collect_all: bool = False
-    requests_per_minute: int | None = Field(default=None, ge=1, le=90)
-    concurrent_requests: int | None = Field(default=None, ge=1, le=3)
 
 
 class ClearDataRequest(BaseModel):
@@ -83,7 +73,6 @@ class RunSummary(BaseModel):
     mode: str
     status: str
     phase: str
-    dry_run: bool
     degraded: bool
     tier: str | None
     budget: dict[str, Any] | None
@@ -151,7 +140,6 @@ class ParserHealthResponse(BaseModel):
     transports: dict[str, bool]
     discovery: dict[str, Any]
     schema_status: dict[str, Any] = Field(serialization_alias="schema")
-    proxies: list[dict[str, Any]]
     active_runs: list[int]
     reasons: list[str] = []
     versions: dict[str, str | None] = {}
@@ -178,8 +166,6 @@ class RunMetricsResponse(BaseModel):
     listings_invalid: int = 0
     quality_flags_counts: dict[str, int] = {}
     coverage_by_brand: dict[str, str | None] = {}
-    browser_restarts: int = 0
-    proxy_failures: int = 0
     duration_s: float = 0
 
 
@@ -190,10 +176,9 @@ def get_parser_runtime(request: Request) -> ParserRuntime:
     return runtime
 
 
-@router.post("/run")
+@router.post("/run", status_code=202)
 async def start_run(
     payload: RunRequest,
-    response: Response,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
@@ -202,50 +187,21 @@ async def start_run(
         require_live_compliance(settings)
     except RuntimeError as exc:
         raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
-    settings = settings.model_copy(
-        update={
-            key: value
-            for key, value in {
-                "parser_max_items_per_brand": payload.max_items_per_brand,
-                "requests_per_minute": payload.requests_per_minute,
-                "max_concurrent_requests": payload.concurrent_requests,
-                "parser_max_concurrency": payload.concurrent_requests,
-            }.items()
-            if value is not None
-        }
-    )
-    mode = payload.mode or settings.parser_mode
+    if runtime.active_run_ids() or await session.scalar(
+        select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
+    ):
+        raise ApiError(409, "run_active", "A collection run is already in progress")
+    await ensure_discovery(session, settings)
     try:
-        plan = await ParserPlanner(session, settings, collect_all=payload.collect_all).build(
-            mode=mode, brand_ids=payload.brand_ids
-        )
+        plan = await ParserPlanner(session, settings).build(brand_ids=payload.brand_ids)
     except LookupError as exc:
         raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
     except RuntimeError as exc:
         code = str(exc)
-        status = 409 if code == "brand_mapping_required" else 503
+        status = 409 if code in {"brand_mapping_required", "brands_required"} else 503
         raise ApiError(status, code, "Parser prerequisites are incomplete") from exc
-    if payload.dry_run:
-        try:
-            plan = await _probe_plan(session, settings, plan)
-        except AlgoliaError as exc:
-            raise ApiError(503, "dry_run_probe_failed", "Live dry-run probes failed") from exc
-        await session.rollback()
-        response.status_code = 200
-        return {"dry_run": True, "plan": plan.public()}
-    if payload.confirmation_token != plan.digest():
-        raise ApiError(
-            409,
-            "dry_run_required",
-            "Run the live dry-run again before confirming this parser run",
-        )
-    try:
-        plan = await _probe_plan(session, settings, plan)
-    except AlgoliaError as exc:
-        raise ApiError(503, "run_probe_failed", "Live pre-run probes failed") from exc
-    settings = settings.model_copy(update={"parser_max_requests_per_run": plan.budget["limit"]})
     run = await RunRepository(session).create(
-        mode=mode,
+        mode=plan.mode,
         budget=plan.budget,
         tasks=[item.persisted() for item in plan.tasks],
         warnings=plan.warnings,
@@ -255,8 +211,7 @@ async def start_run(
         runtime.start(run.id, settings=settings)
     else:
         runtime.start(run.id)
-    response.status_code = 202
-    return {"dry_run": False, "run": _summary(run).model_dump(mode="json")}
+    return {"run": _summary(run).model_dump(mode="json")}
 
 
 @router.get("/runs", response_model=RunListResponse)
@@ -311,13 +266,14 @@ async def clear_collected_data(
     await _ensure_no_active_runs(session, runtime)
     listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
     runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
-    await session.execute(delete(AiGroupingRun))
+    await session.execute(delete(GroupMetric))
     await session.execute(delete(Listing))
-    await session.execute(delete(PhysicalItem))
     await session.execute(delete(ParserRun))
     await session.execute(delete(ParserWatermark))
     await session.execute(delete(UnmatchedBrand))
-    await session.execute(delete(ModelGroup).where(ModelGroup.group_type != "rule"))
+    # Seeds, user groups and "not a model" rules are kept; derived groups are rebuilt.
+    await session.execute(delete(ModelGroup).where(ModelGroup.source.in_(("mined", "system"))))
+    await session.execute(update(Brand).values(grouping_hash=None, grouped_at=None))
     await session.commit()
     return ClearDataResponse(
         listings_deleted=listings_deleted,
@@ -344,35 +300,6 @@ async def _ensure_no_active_runs(session: AsyncSession, runtime: ParserRuntime) 
         select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
     ):
         raise ApiError(409, "run_active", "Stop active parser runs before deleting data")
-    if await session.scalar(
-        select(AiGroupingRun.id)
-        .where(
-            AiGroupingRun.status.in_(
-                (
-                    "preparing",
-                    "submitted",
-                    "running",
-                    "validating",
-                    "waiting_for_market",
-                    "applying",
-                    "interrupted",
-                    "needs_attention",
-                )
-            )
-        )
-        .limit(1)
-    ):
-        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
-    if await session.scalar(
-        select(AiGroupingBatch.id)
-        .where(
-            AiGroupingBatch.status.in_(
-                ("preparing", "submitted", "running", "interrupted", "needs_attention")
-            )
-        )
-        .limit(1)
-    ):
-        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
 
 
 @router.get("/runs/{run_id}/progress", response_model=ProgressResponse)
@@ -481,20 +408,7 @@ async def resume_run(
     existing = await repository.get(run_id)
     if existing is None:
         raise ApiError(404, "run_not_found", "Parser run does not exist")
-    settings = settings.model_copy(
-        update={
-            "parser_max_requests_per_run": int(
-                (existing.budget_estimate or {}).get("limit", settings.parser_max_requests_per_run)
-            )
-        }
-    )
-    task_brand_ids = sorted(
-        {task.brand_id for task in await repository.tasks(run_id) if task.brand_id is not None}
-    )
-    try:
-        await ParserPlanner(session, settings).build(mode=existing.mode, brand_ids=task_brand_ids)
-    except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Parser prerequisites are incomplete") from exc
+    await ensure_discovery(session, settings)
     try:
         run = await repository.prepare_resume(run_id)
     except LookupError as exc:
@@ -542,12 +456,11 @@ async def parser_health(
     )
     last_run = await session.scalar(select(ParserRun).order_by(ParserRun.id.desc()).limit(1))
     brands = list(await session.scalars(select(Brand).options(selectinload(Brand.source_mappings))))
-    capabilities = probe_capabilities()
     health_snapshot = getattr(runtime, "health_snapshot", None)
     runtime_health = (
         health_snapshot()
         if callable(health_snapshot)
-        else {"circuits": [], "proxies": [], "metrics": {}, "tier": None}
+        else {"circuits": [], "metrics": {}, "tier": None}
     )
     reasons = compliance_reasons(settings)
     unavailable_reasons = {
@@ -594,11 +507,7 @@ async def parser_health(
     return ParserHealthResponse(
         status=health_status,
         source_mode=settings.source_mode,
-        transports={
-            "T1": capabilities.t1_available,
-            "T2": bool(settings.fetch_tier_allow_browser and capabilities.t2_available),
-            "T3": bool(settings.fetch_tier_allow_dom and capabilities.t2_available),
-        },
+        transports={"T1": True},
         discovery={
             "available": credential is not None,
             "status": credential.verification_status if credential else "missing",
@@ -624,14 +533,9 @@ async def parser_health(
                 for item in alert_rows
             ],
         },
-        proxies=list(runtime_health.get("proxies", []))
-        or create_proxy_manager(settings).statuses(),
         active_runs=runtime.active_run_ids(),
         reasons=reasons,
-        versions={
-            "scrapling": capabilities.scrapling_version,
-            "camoufox": capabilities.camoufox_version,
-        },
+        versions={"curl_cffi": _package_version("curl_cffi")},
         circuits=list(runtime_health.get("circuits", [])),
         compliance={
             "live_acknowledged": settings.live_compliance_acknowledged,
@@ -675,7 +579,6 @@ def _summary(run: ParserRun) -> RunSummary:
         mode=run.mode,
         status=run.status,
         phase=run.phase,
-        dry_run=run.dry_run,
         degraded=run.degraded_mode,
         tier=run.tier_used,
         budget=run.budget_estimate,
@@ -704,36 +607,6 @@ def _task(task: ParserRunTask) -> TaskResponse:
     )
 
 
-async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan) -> FetchPlan:
-    credential = await session.scalar(
-        select(SourceCredential).where(SourceCredential.source == "grailed")
-    )
-    if credential is None:
-        raise RuntimeError("discovery_required")
-    proxy_manager = create_proxy_manager(settings)
-    proxy = proxy_manager.select("grailed-dry-run", pool="http") if settings.proxy_enabled else None
-    transport = create_http_transport(settings, proxy=proxy)
-    client = AlgoliaClient(
-        transport,
-        AlgoliaCredentialsData(credential.app_id, credential.api_key, credential.algolia_agent),
-        requests_per_minute=settings.requests_per_minute,
-        max_concurrency=settings.max_concurrent_requests,
-        max_retries=settings.parser_max_retries,
-        max_requests=settings.parser_max_requests_per_run,
-        multiquery_batch_size=settings.algolia_multiquery_batch_size,
-        timeout_s=settings.parser_request_timeout_s,
-        proxy_key=proxy or "direct",
-        proxy_manager=proxy_manager,
-        proxy_url=proxy,
-    )
-    try:
-        return await ParserPlanner(
-            session, settings, collect_all=bool(plan.budget.get("collect_all"))
-        ).probe(plan, client)
-    finally:
-        await transport.close()
-
-
 def _verified_mapping(brand: Brand) -> bool:
     return any(
         item.verified
@@ -741,3 +614,10 @@ def _verified_mapping(brand: Brand) -> bool:
         and (brand.include_subbrands or not item.is_subbrand)
         for item in brand.source_mappings
     )
+
+
+def _package_version(package: str) -> str | None:
+    try:
+        return metadata.version(package)
+    except metadata.PackageNotFoundError:
+        return None

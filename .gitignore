@@ -34,6 +34,7 @@ htmlcov/
 *.sqlite3
 data/app.lock
 data/app.pid
+data/release.json
 data/cache/*
 !data/cache/.gitkeep
 data/logs/*
@@ -56,3 +57,13 @@ frontend/coverage/
 Thumbs.db
 .idea/
 .vscode/
+
+# Claude Code personal notes
+CLAUDE.local.md
+
+# Build outputs, logs and local indexes
+dist/
+build/
+*.log
+.codebase-memory/
+.test-runtime-*/

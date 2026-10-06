@@ -1,18 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Save, Search, Wand2, X } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, Plus, Save, Search, Trash2, Wand2, X } from 'lucide-react';
+import { api, getApi } from '@/lib/api';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
+import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useApiHealth, useBrandsQuery } from '@/lib/queries';
-import type { Brand, BrandList, Mapping } from '@/lib/types';
+import type { Brand, DesignerSuggestion, Mapping } from '@/lib/types';
 
 export default function BrandsPage() {
   const { t } = useI18n();
@@ -22,8 +23,41 @@ export default function BrandsPage() {
   const [status, setStatus] = useState('all');
   const [aliases, setAliases] = useState<Record<number, string>>({});
   const [notice, setNotice] = useState('');
+  const [designerQuery, setDesignerQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [deleting, setDeleting] = useState<Brand | null>(null);
   const query = useBrandsQuery();
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['brands'] });
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(designerQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [designerQuery]);
+  const designers = useQuery({
+    queryKey: ['designers', debounced],
+    queryFn: ({ signal }) =>
+      getApi<{ data: DesignerSuggestion[] }>(
+        `/brands/designers?${new URLSearchParams({ q: debounced })}`,
+        signal,
+      ),
+    enabled: debounced.length >= 2,
+  });
+  const addBrand = useMutation({
+    mutationFn: (designer: DesignerSuggestion) =>
+      api<Brand>('/brands', 'POST', { name: designer.name, designer: designer.name }),
+    onSuccess: (brand) => {
+      setDesignerQuery('');
+      setNotice(`${t('brandAdded')}: ${brand.name}`);
+      refresh();
+    },
+  });
+  const removeBrand = useMutation({
+    mutationFn: (id: number) => api<void>(`/brands/${id}`, 'DELETE'),
+    onSuccess: () => {
+      setDeleting(null);
+      setNotice(t('brandDeleted'));
+      queryClient.invalidateQueries();
+    },
+  });
   const autoMap = useMutation({
     mutationFn: () => api('/brands/auto-map', 'POST', {}),
     onSuccess: () => {
@@ -54,7 +88,8 @@ export default function BrandsPage() {
       refresh();
     },
   });
-  const error = query.error ?? autoMap.error ?? updateBrand.error ?? decide.error;
+  const error =
+    query.error ?? autoMap.error ?? updateBrand.error ?? decide.error ?? addBrand.error ?? removeBrand.error;
   const brands = useMemo(
     () =>
       (query.data?.data ?? []).filter(
@@ -82,6 +117,49 @@ export default function BrandsPage() {
       />
       <Notice>{notice}</Notice>
       {error && <ErrorState error={error} retry={() => query.refetch()} />}
+
+      {/* Add brand */}
+      <Card className="space-y-3 p-4">
+        <h2 className="text-sm font-semibold text-[var(--text-primary)]">{t('addBrand')}</h2>
+        <label className="relative block">
+          <Plus
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+          />
+          <input
+            className="w-full rounded-lg pl-9"
+            placeholder={t('addBrandPlaceholder')}
+            value={designerQuery}
+            disabled={!health.writable}
+            onChange={(event) => setDesignerQuery(event.target.value)}
+          />
+        </label>
+        {designers.data && debounced.length >= 2 && (
+          <ul className="divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-subtle)]">
+            {designers.data.data.map((designer) => (
+              <li key={designer.name} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="text-[var(--text-primary)]">
+                  {designer.name}{' '}
+                  <span className="text-xs text-[var(--text-muted)]">
+                    · {designer.listings_count} {t('activeListings')}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  icon={<Plus size={14} />}
+                  disabled={addBrand.isPending}
+                  onClick={() => addBrand.mutate(designer)}
+                >
+                  {t('add')}
+                </Button>
+              </li>
+            ))}
+            {!designers.data.data.length && (
+              <li className="px-3 py-2 text-sm text-[var(--text-muted)]">{t('noDesigners')}</li>
+            )}
+          </ul>
+        )}
+      </Card>
 
       {/* Filters */}
       <Card className="p-4">
@@ -132,6 +210,7 @@ export default function BrandsPage() {
                       {brand.listings_count} {t('listings')}
                     </p>
                   </div>
+                  <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
@@ -146,6 +225,16 @@ export default function BrandsPage() {
                     />
                     {t('includeSubbrands')}
                   </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Trash2 size={14} />}
+                    disabled={!health.writable}
+                    onClick={() => setDeleting(brand)}
+                  >
+                    {t('delete')}
+                  </Button>
+                  </div>
                 </div>
 
                 {/* Aliases form */}
@@ -275,6 +364,21 @@ export default function BrandsPage() {
           })}
         </div>
       )}
+      <Modal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={`${t('deleteBrand')}: ${deleting?.name ?? ''}`}
+        maxWidth="max-w-md"
+      >
+        <p className="mb-4 text-sm text-[var(--text-secondary)]">{t('deleteBrandHelp')}</p>
+        <Button
+          variant="danger"
+          disabled={removeBrand.isPending}
+          onClick={() => deleting && removeBrand.mutate(deleting.id)}
+        >
+          {t('delete')}
+        </Button>
+      </Modal>
     </section>
   );
 }

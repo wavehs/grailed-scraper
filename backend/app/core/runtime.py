@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import msvcrt
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.parse import urlsplit
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -21,8 +21,30 @@ from app.core.config import PROJECT_ROOT, Settings
 from app.db.session import get_database_url
 
 
+def _lock_byte(file: BinaryIO) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_byte(file: BinaryIO) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+
+
 class SingleInstanceLock:
-    """Hold one byte of a Windows lock file for the backend process lifetime."""
+    """Hold an exclusive lock on a lock file for the backend process lifetime."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -36,7 +58,7 @@ class SingleInstanceLock:
             lock_file.flush()
         lock_file.seek(0)
         try:
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            _lock_byte(lock_file)
         except OSError as exc:
             lock_file.close()
             raise RuntimeError("another_backend_instance_is_running") from exc
@@ -52,7 +74,7 @@ class SingleInstanceLock:
         if self._file is None:
             return
         self._file.seek(0)
-        msvcrt.locking(self._file.fileno(), msvcrt.LK_UNLCK, 1)
+        _unlock_byte(self._file)
         self._file.close()
         self._file = None
 
@@ -109,7 +131,9 @@ def validate_production(settings: Settings, revision: str) -> list[str]:
         reasons.append("backend_bind_not_loopback")
     if settings.frontend_bind_host not in loopback_hosts:
         reasons.append("frontend_bind_not_loopback")
-    if settings.cors_origins != ["http://127.0.0.1:3000"]:
+    if not settings.cors_origins or any(
+        urlsplit(origin).hostname not in loopback_hosts for origin in settings.cors_origins
+    ):
         reasons.append("frontend_origin_not_local")
     return reasons
 
@@ -156,25 +180,9 @@ def require_startup_ready(settings: Settings, report: dict[str, Any]) -> None:
 
 
 def get_alembic_config() -> Config:
-    """Resolve alembic.ini and script location across source and frozen modes."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    ini_candidates = [
-        Path(meipass) / "alembic.ini" if meipass else None,
-        PROJECT_ROOT / "backend" / "alembic.ini",
-        PROJECT_ROOT / "alembic.ini",
-        Path(__file__).resolve().parents[2] / "alembic.ini",
-    ]
-    dir_candidates = [
-        Path(meipass) / "alembic" if meipass else None,
-        PROJECT_ROOT / "backend" / "alembic",
-        PROJECT_ROOT / "alembic",
-        Path(__file__).resolve().parents[2] / "alembic",
-    ]
-    ini_path = next((p for p in ini_candidates if p and p.is_file()), PROJECT_ROOT / "alembic.ini")
-    dir_path = next((p for p in dir_candidates if p and p.is_dir()), PROJECT_ROOT / "alembic")
-
-    config = Config(str(ini_path))
-    config.set_main_option("script_location", str(dir_path))
+    backend_dir = Path(__file__).resolve().parents[2]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
     return config
 
 

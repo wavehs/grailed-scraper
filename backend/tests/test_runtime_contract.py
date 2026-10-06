@@ -36,7 +36,6 @@ def test_production_rejects_database_without_alembic_revision(tmp_path) -> None:
         database_url=f"sqlite+aiosqlite:///{database.as_posix()}",
         data_directory=tmp_path / "data",
         log_directory=tmp_path / "logs",
-        proxy_url="http://user:runtime-secret@proxy.test:8080",
         seller_identity_salt="runtime-secret",
     )
     engine = create_async_engine(settings.database_url)

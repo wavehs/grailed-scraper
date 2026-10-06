@@ -8,9 +8,9 @@ describe('locale provider', () => {
   it('starts in English and persists a Russian selection', async () => {
     window.localStorage.clear();
     renderApp(<AppSidebar />);
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Trends')).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'ru');
-    expect(screen.getByText('Панель')).toBeInTheDocument();
+    expect(screen.getByText('Тренды')).toBeInTheDocument();
     expect(window.localStorage.getItem('gla-locale')).toBe('ru');
     expect(document.documentElement.lang).toBe('ru');
   });

@@ -1,0 +1,6 @@
+models:
+  - {name: Monitor, types: [coat, light_jacket, parka]}
+  - {name: Partition, types: [light_jacket, coat]}
+  - {name: Mionn, types: [light_jacket, parka, vest]}
+  - {name: Secant, types: [sweater, hoodie, light_jacket]}
+  - {name: Spere, types: [light_jacket, blazer]}

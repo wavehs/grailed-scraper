@@ -46,7 +46,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
             before = client.get("/api/settings")
             updated = client.patch(
                 "/api/settings",
-                json={"requests_per_minute": 24, "proxy_rotation_mode": "round_robin"},
+                json={"requests_per_minute": 24, "collect_price_min_usd": 100},
             )
             after = client.get("/api/settings")
             invalid = client.patch("/api/settings", json={"requests_per_minute": 91})
@@ -56,12 +56,12 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
         asyncio.run(engine.dispose())
 
     assert before.status_code == 200
-    assert before.json()["groups"]["parser"]["requests_per_minute"] == {
+    assert before.json()["groups"]["collection"]["requests_per_minute"] == {
         "value": 12,
         "origin": "env",
     }
     assert updated.status_code == 200
-    assert after.json()["groups"]["parser"]["requests_per_minute"] == {
+    assert after.json()["groups"]["collection"]["requests_per_minute"] == {
         "value": 24,
         "origin": "database",
     }

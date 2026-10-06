@@ -1,0 +1,5 @@
+models:
+  - {name: Cyber, types: any}
+  - {name: Tattoo, types: any}
+  - {name: Trompe l'Oeil, aliases: [trompe loeil], types: any}
+  - {name: Fuzzi, types: any}

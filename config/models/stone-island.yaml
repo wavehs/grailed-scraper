@@ -1,0 +1,10 @@
+models:
+  - {name: Shadow Project, types: any}
+  - {name: Ghost, aliases: [ghost piece], types: any}
+  - {name: Marina, types: any}
+  - {name: Membrana, types: [light_jacket, parka, raincoat, vest]}
+  - {name: Crinkle Reps, types: [light_jacket, parka, vest, bomber]}
+  - {name: Nylon Metal, types: [light_jacket, shirt, shorts, vest, pants]}
+  - {name: Ice Jacket, aliases: [ice], types: [light_jacket, parka]}
+  - {name: Soft Shell, types: [light_jacket, vest, parka]}
+  - {name: Heat Reactive, types: [light_jacket, parka]}

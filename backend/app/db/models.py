@@ -24,8 +24,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    desc,
-    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -52,6 +50,9 @@ class Brand(Base):
     slug: Mapped[str | None] = mapped_column(String(255), unique=True)
     aliases: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     include_subbrands: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Hash of the grouping rules used by the last regroup; unchanged rules allow a delta pass.
+    grouping_hash: Mapped[str | None] = mapped_column(String(64))
+    grouped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -97,9 +98,6 @@ class ParserRun(Base):
     tasks: Mapped[list[ParserRunTask]] = relationship(
         back_populates="parser_run", passive_deletes=True
     )
-    scoring_snapshots: Mapped[list[ScoringSnapshot]] = relationship(
-        back_populates="parser_run", cascade="all, delete-orphan"
-    )
 
 
 class Listing(Base):
@@ -109,7 +107,7 @@ class Listing(Base):
             "status IN ('active', 'sold', 'removed_pending', 'removed')",
             name="ck_listings_status",
         ),
-        CheckConstraint("fetch_tier IN ('T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
+        CheckConstraint("fetch_tier = 'T1'", name="ck_listings_fetch_tier"),
         CheckConstraint(
             "seller_identity_mode IN ('none', 'hashed', 'plain')",
             name="ck_listings_seller_identity_mode",
@@ -120,6 +118,7 @@ class Listing(Base):
         Index("ix_listings_status_id", "status", "id"),
         Index("ix_listings_source_product", "source", "source_product_id"),
         Index("ix_listings_seller_created", "seller_identity", "created_at"),
+        Index("ix_listings_brand_type_status", "brand_id", "product_type", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -134,6 +133,9 @@ class Listing(Base):
     brand_id: Mapped[int | None] = mapped_column(ForeignKey("brands.id", ondelete="SET NULL"))
     category: Mapped[str | None] = mapped_column(String(255))
     subcategory: Mapped[str | None] = mapped_column(String(255))
+    category_path: Mapped[str | None] = mapped_column(String(255))
+    # Taxonomy type set by grouping (config/taxonomy.yaml), never by the parser.
+    product_type: Mapped[str | None] = mapped_column(String(32))
     size_raw: Mapped[str | None] = mapped_column(String(128))
     size_normalized: Mapped[str | None] = mapped_column(String(128))
     condition_raw: Mapped[str | None] = mapped_column(String(128))
@@ -157,10 +159,10 @@ class Listing(Base):
     removed_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     days_on_market: Mapped[int | None] = mapped_column(Integer)
     cover_photo_url: Mapped[str | None] = mapped_column(Text)
-    cover_asset_key: Mapped[str | None] = mapped_column(String(64), index=True)
-    cover_content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
-    cover_dhash: Mapped[str | None] = mapped_column(String(16), index=True)
     photo_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    designer_names: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     seller_identity: Mapped[str | None] = mapped_column(Text)
     seller_identity_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="none")
@@ -173,7 +175,10 @@ class Listing(Base):
     raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_json_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    identity_version: Mapped[str | None] = mapped_column(String(32))
+    # Same-seller relist: points at the first listing of the item (time to sell starts there).
+    relist_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("listings.id", name="fk_listings_relist_of", ondelete="SET NULL")
+    )
 
     brand: Mapped[Brand | None] = relationship(back_populates="listings")
     parser_run: Mapped[ParserRun | None] = relationship(back_populates="listings")
@@ -200,368 +205,142 @@ class ListingPriceHistory(Base):
 
 
 class ModelGroup(Base):
-    """Stable automatically resolved product-line analytics segment."""
+    """One model of a brand and product type: a line (no parent) or a version inside it."""
 
     __tablename__ = "model_groups"
     __table_args__ = (
+        UniqueConstraint("brand_id", "product_type", "slug", name="uq_model_groups_identity"),
         CheckConstraint(
-            "group_type IN ('rule', 'fallback', 'source_product', 'resolved')",
-            name="ck_model_groups_type",
+            "status IN ('confirmed', 'auto', 'ignored')", name="ck_model_groups_status"
         ),
-        Index("ix_model_groups_brand_type", "brand_id", "group_type"),
+        CheckConstraint(
+            "source IN ('seed', 'mined', 'user', 'system')", name="ck_model_groups_source"
+        ),
+        Index("ix_model_groups_brand_type", "brand_id", "product_type"),
+        Index("ix_model_groups_parent", "parent_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    stable_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     brand_id: Mapped[int] = mapped_column(
         ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
     )
+    product_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    # "_none" is the per-type "No model" bucket; other slugs are normalized model phrases.
+    slug: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str | None] = mapped_column(String(255))
-    group_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    merged_into_id: Mapped[int | None] = mapped_column(
-        ForeignKey("model_groups.id", name="fk_model_groups_merged_into", ondelete="SET NULL")
+    aliases: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", name="fk_model_groups_parent", ondelete="SET NULL")
     )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="auto")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="mined")
+    # Seeded hint: an ambiguous category without type words takes this model's type.
+    infer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    support: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     brand: Mapped[Brand] = relationship(back_populates="model_groups")
-    snapshots: Mapped[list[ScoringSnapshot]] = relationship(back_populates="model_group")
 
 
 class ListingModelAssignment(Base):
-    """Auditable exact-model assignment; fallback analytics groups are not stored here."""
+    """Current group of every grouped listing; recomputed by grouping, never edited directly."""
 
     __tablename__ = "listing_model_assignments"
-    __table_args__ = (
-        Index("ix_listing_model_assignments_group", "model_group_id"),
-        Index("ix_listing_model_assignments_grouping_version", "grouping_version"),
-        Index("ix_listing_model_assignments_input_hash", "input_hash"),
-        Index("ix_listing_model_assignments_ai_grouping_run", "ai_grouping_run_id"),
-    )
+    __table_args__ = (Index("ix_listing_model_assignments_group", "model_group_id"),)
 
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
     )
     model_group_id: Mapped[int] = mapped_column(
-        ForeignKey("model_groups.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False
     )
-    method: Mapped[str] = mapped_column(String(32), nullable=False)
-    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    grouping_version: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="legacy", server_default="legacy"
-    )
-    input_hash: Mapped[str | None] = mapped_column(String(64))
-    ai_grouping_run_id: Mapped[int | None] = mapped_column(
-        ForeignKey(
-            "ai_grouping_runs.id",
-            name="fk_listing_model_assignments_ai_grouping_run_id",
-            ondelete="SET NULL",
-        )
-    )
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class AiGroupingRun(Base):
-    """One manually budgeted, resumable AI grouping operation."""
-
-    __tablename__ = "ai_grouping_runs"
-    __table_args__ = (
-        CheckConstraint(
-            "mode IN ('canary', 'remaining', 'pending')", name="ck_ai_grouping_runs_mode"
-        ),
-        CheckConstraint(
-            "status IN ('preparing', 'submitted', 'running', 'validating', "
-            "'waiting_for_market', 'applying', 'completed', 'failed', 'cancelled', "
-            "'interrupted', 'needs_attention', 'rolled_back')",
-            name="ck_ai_grouping_runs_status",
-        ),
-        CheckConstraint("budget_limit_usd >= 0", name="ck_ai_grouping_runs_budget"),
-        CheckConstraint("actual_cost_usd >= 0", name="ck_ai_grouping_runs_cost"),
-        Index("ix_ai_grouping_runs_status_created", "status", "created_at"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    mode: Mapped[str] = mapped_column(String(16), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="preparing")
-    base_model: Mapped[str] = mapped_column(String(64), nullable=False)
-    review_model: Mapped[str] = mapped_column(String(64), nullable=False)
-    grouping_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    budget_limit_usd: Mapped[Decimal] = mapped_column(Numeric(12, 8), nullable=False)
-    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
-    actual_cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(12, 8), nullable=False, default=Decimal(0)
-    )
-    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    unique_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    completed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    ambiguous_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    stats: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    backup_path: Mapped[str | None] = mapped_column(Text)
-    error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class AiGroupingBatch(Base):
-    """Persisted Gemini Batch job identity and usage for safe resume."""
-
-    __tablename__ = "ai_grouping_batches"
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('preparing', 'submitted', 'running', 'completed', 'failed', "
-            "'cancelled', 'interrupted', 'needs_attention')",
-            name="ck_ai_grouping_batches_status",
-        ),
-        CheckConstraint("attempts >= 0", name="ck_ai_grouping_batches_attempts"),
-        CheckConstraint("actual_cost_usd >= 0", name="ck_ai_grouping_batches_cost"),
-        UniqueConstraint("provider_job_name", name="uq_ai_grouping_batches_provider_job"),
-        Index("ix_ai_grouping_batches_run_status", "run_id", "status"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    run_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_grouping_runs.id", ondelete="CASCADE"), nullable=False
-    )
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="preparing")
-    provider_job_name: Mapped[str | None] = mapped_column(String(255))
-    provider_display_name: Mapped[str | None] = mapped_column(String(255))
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failed_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    actual_cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(12, 8), nullable=False, default=Decimal(0)
-    )
-    usage: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class AiGroupingItem(Base):
-    """Validated staged result plus the complete assignment snapshot needed for rollback."""
-
-    __tablename__ = "ai_grouping_items"
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('pending', 'submitted', 'classified', 'ambiguous', 'failed', "
-            "'applied', 'rolled_back')",
-            name="ck_ai_grouping_items_status",
-        ),
-        UniqueConstraint("run_id", "listing_id", name="uq_ai_grouping_items_run_listing"),
-        Index("ix_ai_grouping_items_run_status", "run_id", "status"),
-        Index("ix_ai_grouping_items_request_key", "request_key"),
-        Index("ix_ai_grouping_items_batch", "batch_id"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    run_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_grouping_runs.id", ondelete="CASCADE"), nullable=False
-    )
-    batch_id: Mapped[int | None] = mapped_column(
-        ForeignKey("ai_grouping_batches.id", ondelete="SET NULL")
-    )
-    listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
-    )
-    request_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
-    product_type: Mapped[str | None] = mapped_column(String(64))
-    model_span: Mapped[str | None] = mapped_column(String(255))
-    normalized_model: Mapped[str | None] = mapped_column(String(255))
-    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
-    is_ambiguous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    target_model_group_id: Mapped[int | None] = mapped_column(
-        ForeignKey("model_groups.id", ondelete="SET NULL")
-    )
-    target_stable_key: Mapped[str | None] = mapped_column(String(512))
-    target_name: Mapped[str | None] = mapped_column(String(255))
-    target_category: Mapped[str | None] = mapped_column(String(255))
-    previous_model_group_id: Mapped[int | None] = mapped_column(Integer)
-    previous_method: Mapped[str | None] = mapped_column(String(32))
-    previous_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
-    previous_algorithm_version: Mapped[str | None] = mapped_column(String(32))
-    previous_grouping_version: Mapped[str | None] = mapped_column(String(32))
-    previous_input_hash: Mapped[str | None] = mapped_column(String(64))
-    previous_ai_grouping_run_id: Mapped[int | None] = mapped_column(Integer)
-    previous_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class PhysicalItem(Base):
-    """One physical item across same-seller relists before its sale."""
-
-    __tablename__ = "physical_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class PhysicalItemMember(Base):
-    __tablename__ = "physical_item_members"
-    __table_args__ = (Index("ix_physical_item_members_item", "physical_item_id"),)
+class ListingOverride(Base):
+    """A manual "move this listing to that group" rule that survives regrouping."""
+
+    __tablename__ = "listing_overrides"
 
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
     )
-    physical_item_id: Mapped[int] = mapped_column(
-        ForeignKey("physical_items.id", ondelete="CASCADE"), nullable=False
-    )
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class IdentityMatch(Base):
-    """Explainable model/relist pair and its automatic or manual decision."""
-
-    __tablename__ = "identity_matches"
-    __table_args__ = (
-        CheckConstraint("level IN ('model', 'physical')", name="ck_identity_matches_level"),
-        CheckConstraint(
-            "status IN ('pending', 'auto_confirmed', 'confirmed', 'rejected')",
-            name="ck_identity_matches_status",
-        ),
-        CheckConstraint(
-            "relation_type IS NULL OR relation_type = 'relist'",
-            name="ck_identity_matches_relation",
-        ),
-        CheckConstraint("left_listing_id < right_listing_id", name="ck_identity_matches_order"),
-        UniqueConstraint(
-            "level", "left_listing_id", "right_listing_id", name="uq_identity_matches_pair"
-        ),
-        Index(
-            "ix_identity_matches_queue",
-            "status",
-            "level",
-            desc("confidence"),
-            "id",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    level: Mapped[str] = mapped_column(String(16), nullable=False)
-    left_listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
-    )
-    right_listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
-    )
-    relation_type: Mapped[str | None] = mapped_column(String(16))
-    status: Mapped[str] = mapped_column(String(24), nullable=False)
-    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class ScoringSnapshot(Base):
-    """Immutable, versioned score produced for one group, run, and data window."""
-
-    __tablename__ = "scoring_snapshots"
-    __table_args__ = (
-        UniqueConstraint(
-            "parser_run_id",
-            "model_group_id",
-            "model_version",
-            "window_days",
-            name="uq_scoring_snapshots_identity",
-        ),
-        CheckConstraint("window_days IN (30, 90)", name="ck_scoring_snapshots_window"),
-        Index(
-            "ix_scoring_snapshots_group_window_run",
-            "model_group_id",
-            "window_days",
-            "parser_run_id",
-        ),
-        Index(
-            "ix_scoring_snapshots_brand_window_opportunity",
-            "brand_id",
-            "window_days",
-            "market_opportunity_score",
-        ),
-        Index(
-            "ix_scoring_snapshots_brand_window_demand",
-            "brand_id",
-            "window_days",
-            "demand_score",
-        ),
-        Index(
-            "ix_scoring_snapshots_run_demand",
-            "model_version",
-            "parser_run_id",
-            "window_days",
-            desc("demand_score"),
-            "id",
-        ),
-        Index(
-            "ix_scoring_snapshots_run_demand_scored",
-            "model_version",
-            "parser_run_id",
-            "window_days",
-            desc("demand_score"),
-            "id",
-            sqlite_where=text("scoring_status = 'scored'"),
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    parser_run_id: Mapped[int] = mapped_column(
-        ForeignKey("parser_runs.id", ondelete="CASCADE"), nullable=False
-    )
     model_group_id: Mapped[int] = mapped_column(
-        ForeignKey("model_groups.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False
     )
-    brand_id: Mapped[int] = mapped_column(
-        ForeignKey("brands.id", ondelete="RESTRICT"), nullable=False
-    )
-    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    window_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    active_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    sold_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    exact_sold_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    median_sold_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
-    median_days_to_sell: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    median_sold_likes: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
-    median_sold_likes_per_day: Mapped[Decimal | None] = mapped_column(Numeric(14, 4))
-    sell_through: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
-    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-    demand_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-    price_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    confidence_score: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    market_opportunity_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-    scoring_status: Mapped[str] = mapped_column(String(32), nullable=False, default="scored")
-    component_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    confidence_factors: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    quality_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    variant_breakdown: Mapped[dict[str, Any]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=lambda: {"colors": [], "sizes": []},
-    )
-    warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    parser_run: Mapped[ParserRun] = relationship(back_populates="scoring_snapshots")
-    model_group: Mapped[ModelGroup] = relationship(back_populates="snapshots")
+
+class BrandStopword(Base):
+    """A phrase the user marked as "not a model" for one brand."""
+
+    __tablename__ = "brand_stopwords"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "phrase", name="uq_brand_stopwords_phrase"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
+    )
+    phrase: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GroupMetric(Base):
+    """Current market metrics of one model line/version, product type or brand.
+
+    Recomputed from all listings after every collection and regroup (docs/METRICS.md);
+    no per-run snapshots, so every brand is always visible.
+    """
+
+    __tablename__ = "group_metrics"
+    __table_args__ = (
+        CheckConstraint("scope IN ('model', 'type', 'brand')", name="ck_group_metrics_scope"),
+        Index("ix_group_metrics_scope_trend", "scope", "trend_score"),
+        Index("ix_group_metrics_brand_scope", "brand_id", "scope"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # "model:<group id>", "type:<brand id>:<type>" or "brand:<brand id>".
+    scope_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    scope: Mapped[str] = mapped_column(String(8), nullable=False)
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
+    )
+    product_type: Mapped[str | None] = mapped_column(String(32))
+    section: Mapped[str | None] = mapped_column(String(32))
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE")
+    )
+    is_line: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_fallback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    listings: Mapped[int] = mapped_column(Integer, nullable=False)
+    sold_7d: Mapped[int] = mapped_column(Integer, nullable=False)
+    sold_30d: Mapped[int] = mapped_column(Integer, nullable=False)
+    sold_prev_30d: Mapped[int] = mapped_column(Integer, nullable=False)
+    sold_90d: Mapped[int] = mapped_column(Integer, nullable=False)
+    weekly_sales: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    weekly_median_price: Mapped[list[str | None]] = mapped_column(JSON, nullable=False)
+    median_price_7d: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    median_price_30d: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    median_price_90d: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    price_change: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    median_days_to_sell: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    active_now: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_listings_14d: Mapped[int] = mapped_column(Integer, nullable=False)
+    sell_through_30d: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
+    growth: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    trend_score: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_new: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    colors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    sizes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class FxRate(Base):
@@ -688,7 +467,7 @@ class ParserRunTask(Base):
             name="ck_parser_run_tasks_status",
         ),
         CheckConstraint(
-            "fetch_tier IS NULL OR fetch_tier IN ('T1', 'T2', 'T3')",
+            "fetch_tier IS NULL OR fetch_tier = 'T1'",
             name="ck_tasks_fetch_tier",
         ),
         Index("ix_parser_run_tasks_run_status", "run_id", "status"),

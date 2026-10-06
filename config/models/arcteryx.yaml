@@ -1,0 +1,24 @@
+models:
+  - {name: Beta, types: [light_jacket, raincoat, parka, pants]}
+  - {name: Beta AR, types: [light_jacket, raincoat, parka, pants], parent: Beta}
+  - {name: Beta LT, types: [light_jacket, raincoat, parka, pants], parent: Beta}
+  - {name: Beta SL, types: [light_jacket, raincoat, parka], parent: Beta}
+  - {name: Alpha, types: [light_jacket, raincoat, parka, pants]}
+  - {name: Alpha SV, types: [light_jacket, raincoat, parka, pants], parent: Alpha}
+  - {name: Alpha SL, types: [light_jacket, raincoat, parka], parent: Alpha}
+  - {name: Atom, types: [light_jacket, hoodie, vest, parka]}
+  - {name: Atom LT, types: [light_jacket, hoodie, vest, parka], parent: Atom}
+  - {name: Atom AR, types: [light_jacket, hoodie, vest, parka], parent: Atom}
+  - {name: Cerium, types: [parka, vest, light_jacket, hoodie]}
+  - {name: Gamma, types: [light_jacket, pants, hoodie]}
+  - {name: Zeta, types: [raincoat, light_jacket]}
+  - {name: Theta, types: [raincoat, light_jacket]}
+  - {name: Squamish, types: [light_jacket, hoodie]}
+  - {name: Covert, types: [hoodie, sweater, vest, light_jacket]}
+  - {name: Proton, types: [light_jacket, hoodie]}
+  - {name: Solano, types: [light_jacket, hoodie]}
+  - {name: Fission, types: [parka, light_jacket]}
+  - {name: Thorium, types: [parka, vest, light_jacket]}
+  - {name: Mantis, types: [backpack, bag]}
+  - {name: Arro, types: [backpack]}
+  - {name: Norvan, types: [lowtop_sneakers, shoes]}

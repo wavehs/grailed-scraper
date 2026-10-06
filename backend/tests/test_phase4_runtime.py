@@ -2,36 +2,37 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
 import pytest
-from fastapi import Response
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.errors import ApiError
 from app.api.parser import (
     ClearDataRequest,
-    RunRequest,
     clear_collected_data,
     clear_run_history,
     delete_run,
-    start_run,
 )
 from app.core.config import Settings
 from app.db.models import (
     Base,
     Brand,
     BrandSourceMap,
+    GroupMetric,
     Listing,
     SourceCredential,
     SourceSchema,
 )
 from app.db.session import create_database_engine
 from app.repositories.runs import RunRepository
-from app.services.parser.planner import ParserPlanner, _balanced_limits
+from app.services.grouping import GroupingService
+from app.services.metrics import MetricsService
+from app.services.parser.planner import ParserPlanner
 from app.services.parser.runtime import ParserRuntime
 
 
@@ -43,10 +44,6 @@ class IdleRuntime:
 def test_progress_interval_cannot_exceed_ui_polling_contract() -> None:
     with pytest.raises(ValueError, match="at least every 2 seconds"):
         Settings(parser_progress_interval_s=3)
-
-
-def test_collection_limit_uses_available_capacity() -> None:
-    assert _balanced_limits([107_000, 2_900], 10_000) == [7_100, 2_900]
 
 
 @pytest.mark.asyncio
@@ -112,6 +109,11 @@ async def test_run_deletion_preserves_listings_and_clear_removes_collected_data(
         assert history_result.runs_deleted == 1
         assert listing.parser_run_id is None
 
+        await GroupingService(session).regroup([brand.id])
+        await MetricsService(session).recompute([brand.id])
+        await session.commit()
+        assert await session.scalar(select(func.count()).select_from(GroupMetric))
+
         result = await clear_collected_data(
             ClearDataRequest(confirm=True),
             session,
@@ -120,6 +122,7 @@ async def test_run_deletion_preserves_listings_and_clear_removes_collected_data(
         assert result.listings_deleted == 1
         assert await session.get(Listing, listing.id) is None
         assert await session.get(Brand, brand.id) is not None
+        assert not await session.scalar(select(func.count()).select_from(GroupMetric))
     await engine.dispose()
 
 
@@ -159,7 +162,7 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
         await session.flush()
         planner = ParserPlanner(session, Settings())
         with pytest.raises(RuntimeError, match="schema_required"):
-            await planner.build(mode="full", brand_ids=[brand.id])
+            await planner.build(brand_ids=[brand.id])
         session.add(
             SourceSchema(
                 source="grailed",
@@ -171,7 +174,7 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
         )
         await session.flush()
         with pytest.raises(RuntimeError, match="brand_mapping_required"):
-            await planner.build(mode="full", brand_ids=[brand.id])
+            await planner.build(brand_ids=[brand.id])
         brand.source_mappings.append(
             BrandSourceMap(
                 brand_id=brand.id,
@@ -186,33 +189,24 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
             )
         )
         await session.flush()
-        oldest_allowed = int(
+        oldest_sale = int(
             (
                 datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
-                - timedelta(days=90)
+                - timedelta(days=365)
             ).timestamp()
         )
-        plan = await planner.build(mode="full", brand_ids=[brand.id])
-        assert plan.budget["limit"] >= plan.budget["estimated_requests"] * 2
-        assert plan.budget["over_limit"] is False
-        for task in plan.tasks:
-            assert task.query.numeric_filters[1:] == ("price_i>=400", "price_i<=5000")
-            cutoff = task.query.numeric_filters[0].removeprefix("created_at_i>=")
-            assert int(cutoff) >= oldest_allowed
-        maximum_plan = await ParserPlanner(
-            session, Settings(), collect_all=True
-        ).build(mode="full", brand_ids=[brand.id])
-        assert maximum_plan.budget["collect_all"] is True
-        assert all(task.max_hits is None for task in maximum_plan.tasks)
-        with pytest.raises(ApiError) as error:
-            await start_run(
-                RunRequest(mode="full", brand_ids=[brand.id]),
-                Response(),
-                session,
-                Settings(live_compliance_acknowledged=True),
-                cast(ParserRuntime, object()),
-            )
-        assert error.value.code == "dry_run_required"
+        plan = await planner.build(brand_ids=[brand.id])
+        assert plan.mode == "full"
+        assert plan.budget["full_brands"] == ["Rick Owens"]
+        active, sold = plan.tasks
+        # Active is always a complete pass; no hidden price or age filter.
+        assert active.query.numeric_filters == ()
+        assert active.persisted()["bucket_spec"]["sweep_missing"] is True
+        assert sold.query.numeric_filters == (f"sold_at_i>={oldest_sale}",)
+        banded = await ParserPlanner(
+            session, Settings(collect_price_min_usd=50, collect_price_max_usd=900)
+        ).build(brand_ids=[brand.id])
+        assert banded.tasks[0].query.numeric_filters == ("price_i>=50", "price_i<=900")
         run = await RunRepository(session).create(
             mode="full",
             budget=plan.budget,
@@ -223,5 +217,89 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
         run.status = "partial"
         await RunRepository(session).prepare_resume(run.id)
         assert persisted_task.status == "pending"
-        assert len(plan.digest()) == 64
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_finished_collection_regroups_and_recomputes_metrics(tmp_path: Path) -> None:
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'postprocess.db'}")
+    engine = create_database_engine(settings)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime.now(UTC)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with sessions() as session:
+        brand = Brand(
+            name="Rick Owens",
+            slug="rick-owens",
+            aliases=[],
+            include_subbrands=False,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(brand)
+        session.add(
+            SourceCredential(
+                source="grailed",
+                app_id="APP",
+                api_key="secret",
+                active_index="active",
+                sold_index="sold",
+                sorted_indices=[],
+                key_acl={},
+                discovered_at=now,
+                discovery_method="page_config",
+                verification_status="valid",
+            )
+        )
+        await session.flush()
+        run = await RunRepository(session).create(
+            mode="full",
+            budget={},
+            tasks=[{"brand_id": brand.id, "index_type": "sold", "bucket_spec": {}}],
+        )
+        for task in await RunRepository(session).tasks(run.id):
+            task.status = "done"
+        session.add(
+            Listing(
+                grailed_id=7,
+                status="sold",
+                url="https://www.grailed.com/listings/7",
+                title="Rick Owens Geobasket",
+                brand_name_raw=brand.name,
+                brand=brand,
+                category_path="footwear.hitop_sneakers",
+                price=Decimal("800"),
+                sold_price=Decimal("800"),
+                currency_original="USD",
+                created_at=now - timedelta(days=10),
+                sold_at=now - timedelta(days=1),
+                first_seen_at=now - timedelta(days=10),
+                last_seen_at=now,
+                fetch_tier="T1",
+                raw_json={},
+                schema_version=2,
+            )
+        )
+        await session.commit()
+        run_id = run.id
+
+    runtime = ParserRuntime(sessions, settings)
+    runtime.start(run_id)
+    for _ in range(200):
+        if not runtime.active_run_ids():
+            break
+        await asyncio.sleep(0.05)
+    await runtime.close()
+    async with sessions() as session:
+        finished = await RunRepository(session).get(run_id)
+        metric = await session.scalar(
+            select(GroupMetric).where(GroupMetric.scope == "brand")
+        )
+        listing = await session.scalar(select(Listing).where(Listing.grailed_id == 7))
+    await engine.dispose()
+    assert finished is not None and finished.status == "completed"
+    assert finished.stats["grouping"]["listings"] == 1
+    assert finished.stats["metrics"]["rows"] >= 3
+    assert listing is not None and listing.product_type == "hitop_sneakers"
+    assert metric is not None and metric.sold_30d == 1

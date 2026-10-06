@@ -44,7 +44,7 @@ def test_trusted_host_and_exact_cors_origin() -> None:
         denied = client.options(
             "/api/health",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": "http://192.168.1.10:3000",
                 "Access-Control-Request-Method": "GET",
             },
         )
@@ -64,7 +64,6 @@ def test_public_diagnostics_do_not_expose_configured_secrets(
 ) -> None:
     secret = "phase-one-secret"
     app.dependency_overrides[get_settings] = lambda: Settings(
-        proxy_url=f"http://user:{secret}@proxy.test:8080",
         seller_identity_salt=secret,
     )
     try:
@@ -117,26 +116,3 @@ def test_logging_masks_nested_secrets() -> None:
         "nested": {"authorization": "Bear****"},
         "safe": "visible",
     }
-
-
-def test_proxy_test_endpoint_returns_only_masked_proxy_details(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import app.api.routes as api_routes
-
-    async def successful_probe(_: str) -> bool:
-        return True
-
-    monkeypatch.setattr(api_routes, "_probe_proxy", successful_probe)
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        proxy_enabled=True,
-        proxy_list_http=["http://username:password@proxy.test:50100"],
-    )
-    try:
-        with TestClient(app) as client:
-            response = client.post("/api/settings/proxies/test")
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["proxies"][0]["proxy"] == "http://***:***@proxy.test:50100"
-    assert "password" not in str(body)
