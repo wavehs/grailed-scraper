@@ -17,7 +17,7 @@ from app.api.errors import ApiError
 from app.api.settings import SettingsPatch, update_settings
 from app.core.config import Settings
 from app.core.logging import configure_logging, mask_sensitive_data
-from app.core.privacy import compliance_reasons, require_live_compliance, seller_identity
+from app.core.privacy import compliance_reasons, seller_identity
 from app.db.models import Base
 from app.services.operations import backup_database, restore_database, retention
 from app.services.parser.observability import RunMetrics
@@ -104,24 +104,15 @@ def test_default_hash_salt_is_generated_once_outside_the_database(tmp_path) -> N
     assert first == second
     assert salt_file.is_file() and len(salt_file.read_text(encoding="ascii")) == 64
     assert compliance_reasons(
-        Settings(
-            source_mode="live",
-            store_seller_identity="plain",
-            live_compliance_acknowledged=False,
-        )
-    ) == ["live_compliance_not_acknowledged", "seller_identity_plaintext_enabled"]
+        Settings(source_mode="live", store_seller_identity="plain")
+    ) == ["seller_identity_plaintext_enabled"]
 
 
-def test_compliance_limits_and_live_ack_are_enforced() -> None:
+def test_compliance_limits_are_enforced() -> None:
     with pytest.raises(ValidationError):
         Settings(requests_per_minute=91)
     with pytest.raises(ValidationError):
         Settings(max_concurrent_requests=4)
-    with pytest.raises(RuntimeError, match="live_compliance_not_acknowledged"):
-        require_live_compliance(
-            Settings(source_mode="live", live_compliance_acknowledged=False)
-        )
-    require_live_compliance(Settings(source_mode="live", live_compliance_acknowledged=True))
 
 
 def test_run_metrics_resume_keeps_duration_and_latency() -> None:

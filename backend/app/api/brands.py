@@ -17,7 +17,6 @@ from app.api.discovery import ensure_discovery
 from app.api.errors import ApiError
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
-from app.core.privacy import require_live_compliance
 from app.db.models import (
     Brand,
     BrandSourceMap,
@@ -115,14 +114,6 @@ async def get_brand_service(
     settings: Annotated[Settings, Depends(get_effective_settings)],
 ) -> AsyncIterator[BrandServiceDependency]:
     repository = BrandRepository(session)
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(
-            503,
-            str(exc),
-            "Live mode requires compliance acknowledgement",
-        ) from exc
     await ensure_discovery(session, settings)
     transport = create_http_transport(settings)
     cached = await session.scalar(

@@ -13,8 +13,6 @@ source-independent checks only and never replaces the live gate below.
 
 ## Required live gate
 
-After compliance acknowledgement:
-
 ```powershell
 cd backend
 python -m app.cli discover

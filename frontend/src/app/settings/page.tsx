@@ -22,7 +22,6 @@ const optionalNumbers = new Set(['collect_price_min_usd', 'collect_price_max_usd
 const groupIcons: Record<string, JSX.Element> = {
   collection: <SlidersHorizontal size={16} />,
   privacy: <Shield size={16} />,
-  compliance: <Shield size={16} />,
 };
 
 export default function SettingsPage() {

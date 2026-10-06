@@ -23,7 +23,7 @@ from app.api.discovery import (
 from app.api.errors import ApiError
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
-from app.core.privacy import compliance_reasons, require_live_compliance
+from app.core.privacy import compliance_reasons
 from app.db.models import (
     Brand,
     GroupMetric,
@@ -183,10 +183,6 @@ async def start_run(
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
 ) -> dict[str, Any]:
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     if runtime.active_run_ids() or await session.scalar(
         select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
     ):
@@ -400,10 +396,6 @@ async def resume_run(
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
 ) -> RunSummary:
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     repository = RunRepository(session)
     existing = await repository.get(run_id)
     if existing is None:
@@ -426,7 +418,6 @@ async def resume_run(
 @router.get("/health", response_model=ParserHealthResponse)
 async def parser_health(
     request: Request,
-    response: Response,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
@@ -462,16 +453,9 @@ async def parser_health(
         if callable(health_snapshot)
         else {"circuits": [], "metrics": {}, "tier": None}
     )
+    # Missing credentials or schema are not reported: discovery runs automatically
+    # before a collection or brand lookup needs them.
     reasons = compliance_reasons(settings)
-    unavailable_reasons = {
-        "live_compliance_not_acknowledged",
-        "credentials_missing",
-        "schema_missing",
-    }
-    if credential is None:
-        reasons.append("credentials_missing")
-    if schema is None:
-        reasons.append("schema_missing")
     if not brands or any(not _verified_mapping(brand) for brand in brands):
         reasons.append("brand_mapping_required")
     now = datetime.now(UTC)
@@ -497,13 +481,9 @@ async def parser_health(
     if last_run is not None and last_run.degraded_mode:
         reasons.append("last_run_degraded")
     reasons = list(dict.fromkeys(reasons))
-    if any(reason in unavailable_reasons for reason in reasons):
-        health_status: Literal["ready", "degraded", "unavailable"] = "unavailable"
-    elif reasons:
-        health_status = "degraded"
-    else:
-        health_status = "ready"
-    response.status_code = 503 if health_status == "unavailable" else 200
+    health_status: Literal["ready", "degraded", "unavailable"] = (
+        "degraded" if reasons else "ready"
+    )
     return ParserHealthResponse(
         status=health_status,
         source_mode=settings.source_mode,
@@ -538,7 +518,6 @@ async def parser_health(
         versions={"curl_cffi": _package_version("curl_cffi")},
         circuits=list(runtime_health.get("circuits", [])),
         compliance={
-            "live_acknowledged": settings.live_compliance_acknowledged,
             "seller_identity_mode": settings.store_seller_identity,
             "limits": {
                 "requests_per_minute": settings.requests_per_minute,
@@ -566,10 +545,6 @@ async def parser_discovery_refresh(
     service: Annotated[DiscoveryService, Depends(get_discovery_service)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
 ) -> DiscoveryResponse:
-    try:
-        require_live_compliance(settings)
-    except RuntimeError as exc:
-        raise ApiError(503, str(exc), "Live mode requires compliance acknowledgement") from exc
     return await refresh_discovery(payload, service, settings)
 
 

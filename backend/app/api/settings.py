@@ -26,7 +26,6 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
         "collect_price_max_usd",
     ),
     "privacy": ("store_seller_identity",),
-    "compliance": ("live_compliance_acknowledged",),
 }
 EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in keys)
 # Null clears an optional bound instead of being ignored.
@@ -42,7 +41,6 @@ class SettingsPatch(BaseModel):
     collect_price_min_usd: int | None = Field(default=None, ge=0)
     collect_price_max_usd: int | None = Field(default=None, ge=1)
     store_seller_identity: Literal["none", "hashed", "plain"] | None = None
-    live_compliance_acknowledged: bool | None = None
     confirm_plain_seller_identity: bool = False
 
 
