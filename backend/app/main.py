@@ -90,8 +90,6 @@ async def _remove_own_pid_file(pid_file: Path, process_id: int) -> None:
             await asyncio.sleep(0.05 * (attempt + 1))
 
 
-
-
 def _find_static_directory() -> Path | None:
     """Locate the exported Next.js static assets directory if present."""
     candidate = PROJECT_ROOT / "frontend" / "out"
@@ -126,14 +124,6 @@ def mount_static_frontend(application: FastAPI) -> None:
         dir_index = target / "index.html"
         if target.is_dir() and dir_index.is_file():
             return FileResponse(dir_index)
-
-        if full_path.startswith("model-groups"):
-            model_group_page = static_dir / "model-groups.html"
-            if model_group_page.is_file():
-                return FileResponse(model_group_page)
-            model_group_1_page = static_dir / "model-groups" / "1.html"
-            if model_group_1_page.is_file():
-                return FileResponse(model_group_1_page)
 
         index_file = static_dir / "index.html"
         if index_file.is_file():

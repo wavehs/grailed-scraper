@@ -19,14 +19,13 @@ from app.db.models import (
     ListingModelAssignment,
     ListingOverride,
     ModelGroup,
-    ParserRun,
 )
-from app.db.session import get_db, get_session_factory
+from app.db.session import get_db
 from app.services.grouping import GroupingService
 from app.services.grouping.normalize import TitleNormalizer
 from app.services.grouping.policy import load_policy
 from app.services.grouping.service import NONE_SLUG
-from app.services.scoring import OpportunityScoringService
+from app.services.metrics import MetricsService
 
 router = APIRouter(tags=["groups"])
 _fallback_lock = asyncio.Lock()
@@ -128,7 +127,7 @@ async def regroup(
     async with _lock(request):
         result = await GroupingService(session).regroup(payload.brand_ids, full=payload.full)
         await session.commit()
-    await _rescore(session, {item.brand_id for item in result.brands})
+    await _refresh_metrics(session, {item.brand_id for item in result.brands})
     return result.summary()
 
 
@@ -177,7 +176,7 @@ async def list_groups(
 async def group_detail(
     group_id: int, session: Annotated[AsyncSession, Depends(get_db)]
 ) -> GroupDetail:
-    return await _detail(session, await _group(session, group_id))
+    return await group_detail_data(session, await _group(session, group_id))
 
 
 @router.patch("/groups/{group_id}", response_model=GroupDetail)
@@ -201,7 +200,7 @@ async def update_group(
         group.status = "confirmed"
     group.updated_at = now
     await _apply(request, session, group.brand_id)
-    return await _detail(session, group)
+    return await group_detail_data(session, group)
 
 
 @router.post("/groups/{group_id}/merge", response_model=GroupDetail)
@@ -239,7 +238,7 @@ async def merge_groups(
     source.parent_id = None
     source.updated_at = target.updated_at = datetime.now(UTC)
     await _apply(request, session, target.brand_id)
-    return await _detail(session, target)
+    return await group_detail_data(session, target)
 
 
 @router.post("/groups/{group_id}/split", response_model=GroupDetail, status_code=201)
@@ -299,7 +298,7 @@ async def split_group(
         session.add(created)
     await session.flush()
     await _apply(request, session, source.brand_id)
-    return await _detail(session, created)
+    return await group_detail_data(session, created)
 
 
 @router.post("/groups/{group_id}/not-model", response_model=GroupSummary)
@@ -357,7 +356,7 @@ async def move_listing(
     else:
         override.model_group_id = target.id
     await _apply(request, session, listing.brand_id)
-    return await _detail(session, target)
+    return await group_detail_data(session, target)
 
 
 async def _group(session: AsyncSession, group_id: int) -> ModelGroup:
@@ -404,25 +403,19 @@ def _lock(request: Request) -> asyncio.Lock:
 
 
 async def _apply(request: Request, session: AsyncSession, brand_id: int) -> None:
-    """Persist the rule, regroup the brand from scratch and refresh its scores."""
+    """Persist the rule, regroup the brand from scratch and refresh its metrics."""
 
     async with _lock(request):
         await session.flush()
         await GroupingService(session).regroup([brand_id], full=True)
         await session.commit()
-    await _rescore(session, {brand_id})
+    await _refresh_metrics(session, {brand_id})
 
 
-async def _rescore(session: AsyncSession, brand_ids: set[int]) -> None:
-    run_id = await session.scalar(
-        select(func.max(ParserRun.id)).where(ParserRun.status.in_(("completed", "partial")))
-    )
-    if run_id is None or not brand_ids:
-        return
-    await OpportunityScoringService(get_session_factory()).score_run_in_session(
-        session, run_id, brand_ids=brand_ids, replace=True
-    )
-    await session.commit()
+async def _refresh_metrics(session: AsyncSession, brand_ids: set[int]) -> None:
+    if brand_ids:
+        await MetricsService(session).recompute(brand_ids)
+        await session.commit()
 
 
 async def _counts(session: AsyncSession, group_ids: list[int]) -> dict[int, dict[str, int]]:
@@ -460,7 +453,7 @@ def _summary(group: ModelGroup, brand: str, counts: dict[int, dict[str, int]]) -
     )
 
 
-async def _detail(session: AsyncSession, group: ModelGroup) -> GroupDetail:
+async def group_detail_data(session: AsyncSession, group: ModelGroup) -> GroupDetail:
     await session.refresh(group)
     brand = await session.get(Brand, group.brand_id)
     brand_name = brand.name if brand else ""

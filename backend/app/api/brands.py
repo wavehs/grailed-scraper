@@ -21,10 +21,10 @@ from app.core.privacy import require_live_compliance
 from app.db.models import (
     Brand,
     BrandSourceMap,
+    GroupMetric,
     Listing,
     ModelGroup,
     ParserRun,
-    ScoringSnapshot,
     SourceCredential,
 )
 from app.db.session import get_db
@@ -245,7 +245,7 @@ async def delete_brand(
         select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
     ):
         raise ApiError(409, "run_active", "Stop the active collection run first")
-    await session.execute(delete(ScoringSnapshot).where(ScoringSnapshot.brand_id == brand_id))
+    await session.execute(delete(GroupMetric).where(GroupMetric.brand_id == brand_id))
     await session.execute(delete(Listing).where(Listing.brand_id == brand_id))
     await session.execute(delete(ModelGroup).where(ModelGroup.brand_id == brand_id))
     await session.delete(brand)

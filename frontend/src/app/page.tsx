@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 export default function Home() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/dashboard');
+    router.replace('/trends');
   }, [router]);
   return null;
 }

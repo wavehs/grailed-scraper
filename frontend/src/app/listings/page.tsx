@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useTypeNames } from '@/lib/queries';
 import type { CatalogListingList } from '@/lib/types';
 import { formatCurrency, formatDaysOnMarket } from '@/lib/utils';
 
@@ -26,6 +27,8 @@ export default function ListingsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [productType, setProductType] = useState('');
+  const { taxonomy, typeName } = useTypeNames();
   const [cursors, setCursors] = useState<Array<string | null>>([null]);
   const [page, setPage] = useState(0);
   const cursor = cursors[page] ?? null;
@@ -38,12 +41,13 @@ export default function ListingsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
   const query = useQuery({
-    queryKey: ['listing-catalog', debouncedSearch, status, cursor],
+    queryKey: ['listing-catalog', debouncedSearch, status, productType, cursor],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ search: debouncedSearch });
       if (status) params.set('status', status);
+      if (productType) params.set('product_type', productType);
       if (cursor) params.set('cursor', cursor);
-      return getApi<CatalogListingList>(`/analytics/listings?${params}`, signal);
+      return getApi<CatalogListingList>(`/listings?${params}`, signal);
     },
   });
   return (
@@ -80,6 +84,25 @@ export default function ListingsPage() {
             <option value="removed">{t('removed')}</option>
           </select>
         </label>
+        <label>
+          <span className="sr-only">{t('productType')}</span>
+          <select
+            aria-label={t('productType')}
+            value={productType}
+            onChange={(event) => {
+              setProductType(event.target.value);
+              setCursors([null]);
+              setPage(0);
+            }}
+          >
+            <option value="">{t('allTypes')}</option>
+            {(taxonomy?.types ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item[locale]}
+              </option>
+            ))}
+          </select>
+        </label>
       </Card>
       {query.isLoading ? (
         <LoadingState />
@@ -111,23 +134,24 @@ export default function ListingsPage() {
                   <TableCell>
                     <a
                       className="font-medium text-[var(--accent)] hover:underline"
-                      href={`https://www.grailed.com/listings/${item.grailed_id}`}
+                      href={item.url}
                       rel="noreferrer"
                       target="_blank"
                     >
                       {item.title}
                     </a>
                     <p className="text-xs text-[var(--text-muted)]">
-                      {item.brand} · {item.size ?? '—'} · {item.color ?? '—'} · #{item.grailed_id}
+                      {item.brand} · {typeName(item.product_type)} · {item.size ?? '—'} ·{' '}
+                      {item.color ?? '—'} · #{item.grailed_id}
                     </p>
                   </TableCell>
                   <TableCell>
                     {item.model_group_id ? (
                       <Link
                         className="text-[var(--accent)] hover:underline"
-                        href={`/model-groups?id=${item.model_group_id}`}
+                        href={`/group?id=${item.model_group_id}`}
                       >
-                        {item.model_name}
+                        {item.is_fallback ? t('noModel') : item.model_name}
                       </Link>
                     ) : (
                       '—'

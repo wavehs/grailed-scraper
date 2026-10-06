@@ -1,6 +1,6 @@
 # Grailed Liquidity Analyzer
 
-Live-only parser for Grailed listings. The runtime has no mock, replay, synthetic-source, or offline acceptance mode.
+Finds Grailed items that are starting to sell well: live listings (active and sold) grouped into brand → product type → model, with sales growth, time to sell, price and supply. The runtime has no mock, replay, synthetic-source, or offline acceptance mode.
 
 ## Quick Start (Windows)
 
@@ -9,6 +9,10 @@ Requirements: Python 3.11+, Node.js 20+, pnpm 9+.
 1. Run `setup.bat` once. It installs the backend venv, frontend packages, and applies migrations.
 2. Run `start.bat`. It rebuilds the UI when sources changed, applies migrations, and opens
    http://127.0.0.1:8000. For development use `dev-web.bat` (backend :8000 + Next.js :3000).
+3. Add brands on **Brands**, press **Update data** on **Collect data**, then open **Trends**:
+   models with growing sales, fast sales and small supply (see [docs/METRICS.md](docs/METRICS.md)).
+   Groups are brand + product type + model ([docs/GROUPING.md](docs/GROUPING.md)) and can be
+   renamed, merged or split on the group card.
 
 Before any Grailed request, review the applicable ToS, `robots.txt`, and law.
 

@@ -3,18 +3,16 @@ import { getApi, getHealthApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type {
   ApiHealth,
-  BrandAnalyticsList,
   BrandList,
-  DashboardRow,
-  CursorPage,
-  ModelGroupDetail,
   ParserHealth,
   RunList,
   SettingsResponse,
-  DashboardProductType,
   GroupDetail,
   GroupList,
   Taxonomy,
+  TrendCard,
+  TrendFilters,
+  TrendList,
 } from '@/lib/types';
 
 export function useApiHealth() {
@@ -57,93 +55,6 @@ export function useRunsQuery(
     queryFn: ({ signal }) =>
       getApi<RunList>(`/parser/runs?limit=${limit}&offset=${offset}`, signal),
     refetchInterval: refetchInterval ?? 5_000,
-  });
-}
-
-export function useDashboardQuery(
-  windowDays: number = 90,
-  search: string = '',
-  scoredOnly: boolean = true,
-  cursor: string | null = null,
-  sortBy: string = 'demand_score',
-  sortDesc: boolean = true,
-  brandId?: number,
-  productType?: DashboardProductType,
-  enabled: boolean = true,
-) {
-  return useQuery({
-    queryKey: [
-      'dashboard',
-      windowDays,
-      search,
-      scoredOnly,
-      cursor,
-      sortBy,
-      sortDesc,
-      brandId,
-      productType,
-    ],
-    queryFn: ({ signal }) =>
-      getApi<CursorPage<DashboardRow>>(
-        `/analytics/dashboard?${new URLSearchParams({
-          window_days: String(windowDays),
-          limit: '50',
-          scored_only: String(scoredOnly),
-          sort_by: sortBy,
-          sort_desc: String(sortDesc),
-          search,
-          ...(cursor ? { cursor } : {}),
-          ...(brandId ? { brand_id: String(brandId) } : {}),
-          ...(productType ? { product_type: productType } : {}),
-        })}`,
-        signal,
-      ),
-    placeholderData: (previousData) => previousData,
-    enabled,
-  });
-}
-
-export function useBrandDashboardQuery(
-  windowDays: number = 90,
-  search: string = '',
-  scoredOnly: boolean = true,
-  sortBy: string = 'demand_score',
-  sortDesc: boolean = true,
-  productType?: DashboardProductType,
-  enabled: boolean = true,
-) {
-  return useQuery({
-    queryKey: ['brand-dashboard', windowDays, search, scoredOnly, sortBy, sortDesc, productType],
-    queryFn: ({ signal }) =>
-      getApi<BrandAnalyticsList>(
-        `/analytics/brands?${new URLSearchParams({
-          window_days: String(windowDays),
-          limit: '200',
-          scored_only: String(scoredOnly),
-          sort_by: sortBy,
-          sort_desc: String(sortDesc),
-          search,
-          ...(productType ? { product_type: productType } : {}),
-        })}`,
-        signal,
-      ),
-    placeholderData: (previousData) => previousData,
-    enabled,
-  });
-}
-
-export function useModelGroupDetailQuery(
-  id: string | number,
-  windowDays: number = 90,
-  runId?: number,
-) {
-  return useQuery({
-    queryKey: ['model', String(id), windowDays, runId],
-    queryFn: ({ signal }) =>
-      getApi<ModelGroupDetail>(
-        `/analytics/model-groups/${id}?window_days=${windowDays}${runId ? `&run_id=${runId}` : ''}`,
-        signal,
-      ),
   });
 }
 
@@ -204,4 +115,42 @@ export function useTypeNames() {
       return item ? item[locale] : (id ?? '—');
     },
   };
+}
+
+export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams {
+  const params = new URLSearchParams({
+    level: filters.level,
+    window: String(filters.window),
+    sort: filters.sort,
+    desc: String(filters.desc),
+    limit: '50',
+    offset: String(offset),
+  });
+  if (filters.brandIds.length) params.set('brand_ids', filters.brandIds.join(','));
+  if (filters.section) params.set('section', filters.section);
+  if (filters.productType) params.set('product_type', filters.productType);
+  if (filters.priceMin) params.set('price_min', filters.priceMin);
+  if (filters.priceMax) params.set('price_max', filters.priceMax);
+  if (filters.newOnly) params.set('new_only', 'true');
+  if (filters.minSales) params.set('min_sales', String(filters.minSales));
+  if (filters.search.trim()) params.set('search', filters.search.trim());
+  return params;
+}
+
+export function useTrendsQuery(filters: TrendFilters, offset = 0) {
+  return useQuery({
+    queryKey: ['trends', filters, offset],
+    queryFn: ({ signal }) =>
+      getApi<TrendList>(`/trends?${trendParams(filters, offset)}`, signal),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useTrendCardQuery(groupId: number | null, window: number) {
+  return useQuery({
+    queryKey: ['trend-card', groupId, window],
+    queryFn: ({ signal }) =>
+      getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}`, signal),
+    enabled: groupId !== null,
+  });
 }

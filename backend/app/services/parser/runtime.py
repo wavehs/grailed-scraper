@@ -19,13 +19,13 @@ from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.runs import RunRepository
 from app.services.grouping import GroupingService
+from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
 from app.services.parser.fetching import FetchApi
 from app.services.parser.incremental import IncrementalPlanner, RefreshActiveService
 from app.services.parser.observability import RunMetrics
-from app.services.scoring import OpportunityScoringService, ScoringService
 from app.services.sources.base.models import CoverageReport
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
@@ -54,13 +54,11 @@ class ParserRuntime:
         sessions: async_sessionmaker[AsyncSession],
         settings: Settings,
         *,
-        scoring: ScoringService | None = None,
         market_lock: asyncio.Lock | None = None,
         grouping_lock: asyncio.Lock | None = None,
     ) -> None:
         self._sessions = sessions
         self._settings = settings
-        self._scoring = scoring or OpportunityScoringService(sessions)
         self._market_lock = market_lock or asyncio.Lock()
         # Shared with the grouping API so a manual regroup never races the run's regroup.
         self.grouping_lock = grouping_lock or asyncio.Lock()
@@ -180,18 +178,16 @@ class ParserRuntime:
                     async with self.grouping_lock:
                         grouping_result = await GroupingService(session).regroup(brand_ids)
                     await session.commit()
-                    await repository.set_phase(run_id, "scoring")
-                    # Release SQLite's write lock before the scoring service opens
-                    # its own short-lived transaction for immutable snapshots.
+                    await repository.set_phase(run_id, "metrics")
+                    metrics_result = await MetricsService(session).recompute(brand_ids)
                     await session.commit()
-                    scoring_result = await self._scoring.score_run(run_id)
                     run = await repository.get(run_id)
                     assert run is not None
                     metric_snapshot = resources.metrics.snapshot()
                     run.stats = {
                         **run.stats,
                         "grouping": grouping_result.summary(),
-                        "scoring": scoring_result,
+                        "metrics": metrics_result.summary(),
                         "observability": metric_snapshot,
                         "persistence": {
                             "inserted": metric_snapshot["listings_inserted"],

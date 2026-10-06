@@ -108,7 +108,7 @@ async def test_reconcile_and_resume_preserve_checkpoints_in_each_phase(tmp_path)
         run_ids: list[int] = []
         async with sessions() as session:
             repository = RunRepository(session)
-            for phase in ("fetching", "normalizing", "scoring"):
+            for phase in ("fetching", "normalizing", "metrics"):
                 run = await repository.create(
                     mode="full",
                     budget={},

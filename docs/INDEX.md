@@ -18,6 +18,6 @@
 | [TESTING.md](TESTING.md) | Source-independent checks and required live gates. |
 | [CONFIGURATION.md](CONFIGURATION.md) | Настройки приложения и source mapping. |
 | [COMPLIANCE.md](COMPLIANCE.md) | Этика, ToS и ограничения. |
-| [SCORING.md](SCORING.md) | Контракт скоринга до утверждения формулы. |
+| [METRICS.md](METRICS.md) | Метрики групп, формула тренда и API экрана «Тренды». |
 | [ROADMAP.md](ROADMAP.md) | Направления после MVP. |
 | [ENVIRONMENT.md](ENVIRONMENT.md) | Runtime versions, reproducible install, dependency audit и compatibility debt. |

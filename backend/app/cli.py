@@ -20,18 +20,17 @@ from app.db.models import (
     Listing,
     ListingModelAssignment,
     ModelGroup,
-    ParserRun,
     SourceCredential,
 )
 from app.db.session import get_database_url
 from app.services.grouping import GroupingService
 from app.services.grouping.policy import load_policy
+from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import collection_filters
-from app.services.scoring import OpportunityScoringService
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
@@ -278,7 +277,7 @@ async def run_taxonomy_check(settings: Settings) -> dict[str, object]:
 
 
 async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]:
-    """Back up, then regroup every brand (full pass) and rescore the latest run."""
+    """Back up, then regroup every brand and recompute all group metrics."""
 
     backup = backup_database(settings)
     engine = create_async_engine(get_database_url(settings))
@@ -287,23 +286,13 @@ async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]
         async with factory() as session:
             result = await GroupingService(session).regroup(full=full)
             await session.commit()
-            run_id = await session.scalar(
-                select(func.max(ParserRun.id)).where(
-                    ParserRun.status.in_(("completed", "partial"))
-                )
-            )
-        scoring: dict[str, object] | None = None
-        if run_id is not None:
-            async with factory() as session:
-                scoring = await OpportunityScoringService(factory).score_run_in_session(
-                    session, run_id, replace=True
-                )
-                await session.commit()
+            metrics = await MetricsService(session).recompute()
+            await session.commit()
         return {
             "status": "ok",
             "backup": str(backup),
             "grouping": result.summary(),
-            "scoring": scoring,
+            "metrics": metrics.summary(),
         }
     finally:
         await engine.dispose()
@@ -404,7 +393,7 @@ def main() -> int:
         "taxonomy-check", help="list real category paths missing from config/taxonomy.yaml"
     )
     regroup_parser = subparsers.add_parser(
-        "regroup", help="back up, then regroup all brands with grouping-v6"
+        "regroup", help="back up, regroup all brands and recompute metrics"
     )
     regroup_parser.add_argument(
         "--delta", action="store_true", help="only new or changed listings when rules are unchanged"

@@ -16,7 +16,7 @@ Grailed Liquidity Analyzer: a local tool that collects live Grailed listings (ac
 Use the backend venv explicitly (`backend/.venv`, Python 3.11.9). The global `python`/`pip` won't work. Paths below are for Windows.
 
 - Backend, from `backend/`:
-  - Tests: `.venv/Scripts/python -m pytest` (~30 s). One test: `.venv/Scripts/python -m pytest tests/test_stage9_scoring.py -k <name>`.
+  - Tests: `.venv/Scripts/python -m pytest` (~30 s). One test: `.venv/Scripts/python -m pytest tests/test_metrics.py -k <name>`.
   - Lint: `.venv/Scripts/python -m ruff check app tests`.
   - Typecheck: `.venv/Scripts/python -m mypy` (strict; covers `app` and `tests`).
   - Migrations: `.venv/Scripts/alembic upgrade head`.

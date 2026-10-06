@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
 import CollectPage from '@/app/collect/page';
 import SettingsPage from '@/app/settings/page';
-import ModelDetailClient from '@/app/model-groups/[id]/model-detail-client';
-import { Dashboard } from '@/components/dashboard';
+import GroupPage from '@/app/group/page';
+import TrendsPage from '@/app/trends/page';
 import { GroupEditor } from '@/components/group-editor';
 import { HealthBanner } from '@/components/health-banner';
 import { HelpTip } from '@/components/ui/help-tip';
 import { renderApp } from '@/test/render';
+import { navigation } from '@/test/setup';
 
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -37,138 +38,202 @@ const brand = {
 beforeEach(() => window.localStorage.clear());
 
 describe('stage 10 screens', () => {
-  it('renders Decimal scores from the live analytics API', async () => {
+  it('shows trends of every brand and filters by type, window and price', async () => {
+    const row = {
+      scope: 'model',
+      scope_key: 'model:5',
+      group_id: 5,
+      brand_id: 1,
+      brand: 'Balenciaga',
+      product_type: 'lowtop_sneakers',
+      section: 'footwear',
+      name: 'Track',
+      status: 'auto',
+      is_fallback: false,
+      versions: 2,
+      listings: 40,
+      sold: 12,
+      sold_7d: 4,
+      sold_30d: 12,
+      sold_prev_30d: 3,
+      sold_90d: 20,
+      growth: '3.2500',
+      speed: '0.7500',
+      trend_score: '146.25',
+      median_days_to_sell: '10.00',
+      sell_through_30d: '0.600000',
+      median_price: 52000,
+      price_change: '0.1000',
+      active_now: 8,
+      new_listings_14d: 3,
+      is_new: true,
+      first_seen_at: '2026-09-01T00:00:00Z',
+      weekly_sales: [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
+    };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/parser/health'))
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, id: 1, name: 'Balenciaga' }] });
+      if (url.endsWith('/grouping/taxonomy'))
         return json({
-          status: 'ready',
-          reasons: [],
-          transports: { T1: true },
-          discovery: { status: 'valid' },
-          schema: { active_alerts: 0, alerts: [] },
-        });
-      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
-      if (url.includes('/analytics/dashboard?'))
-        return json({
-          data: [
-            {
-              id: 1,
-              name: 'Dagger Necklace',
-              brand_name: 'Chrome Hearts',
-              available_sizes: [],
-              available_conditions: [],
-              sold_count: 24,
-              exact_sold_count: 24,
-              active_count: 111,
-              median_sold_price: 45000,
-              liquidity_score: '72.72',
-              demand_score: '66.84',
-              price_score: '0.00',
-              confidence_score: '58.10',
-              market_opportunity_score: '66.84',
-              scoring_status: 'scored',
-              model_version: 'market-v5',
-              window_days: 30,
-              run_id: 3,
-            },
+          version: 'taxonomy-v1',
+          sections: [{ id: 'footwear', ru: 'Обувь', en: 'Footwear' }],
+          types: [
+            { id: 'lowtop_sneakers', section: 'footwear', ru: 'Кроссовки', en: 'Low-top sneakers' },
           ],
-          total: 1,
-          limit: 200,
-          offset: 0,
         });
+      if (url.includes('/trends?'))
+        return json({ data: [row], total: 1, computed_at: '2026-10-01T12:00:00Z' });
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderApp(<Dashboard />);
-    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
-    expect(screen.getAllByText('66.8').length).toBeGreaterThan(0);
-    await userEvent.selectOptions(screen.getByLabelText('Brand'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'accessories');
+    renderApp(<TrendsPage />);
+    const link = await screen.findByRole('link', {
+      name: 'Balenciaga · Track · Low-top sneakers',
+    });
+    expect(link).toHaveAttribute('href', '/group?id=5');
+    expect(screen.getByText('146')).toBeInTheDocument();
+    expect(screen.getByText('×3.25')).toBeInTheDocument();
+    expect(screen.getByText('new')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Sales by week/ })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'lowtop_sneakers');
+    await userEvent.click(screen.getByRole('button', { name: '90 d' }));
+    await userEvent.type(screen.getByLabelText('Price to, $'), '600');
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) => {
           const url = String(input);
-          return url.includes('brand_id=1') && url.includes('product_type=accessories');
+          return (
+            url.includes('product_type=lowtop_sneakers') &&
+            url.includes('window=90') &&
+            url.includes('price_max=600')
+          );
         }),
       ).toBe(true),
     );
+    await userEvent.click(screen.getByRole('button', { name: 'Brands' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes('level=brand'))).toBe(
+        true,
+      ),
+    );
   });
 
-  it('switches to brand analytics view and drills down on click', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/parser/health'))
-        return json({
-          status: 'ready',
-          reasons: [],
-          transports: { T1: true },
-          discovery: { status: 'valid' },
-          schema: { active_alerts: 0, alerts: [] },
-        });
-      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 5, offset: 0 });
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, name: 'Chrome Hearts' }] });
-      if (url.includes('/analytics/brands?'))
-        return json({
-          data: [
-            {
-              id: 1,
-              name: 'Chrome Hearts',
-              groups_count: 5,
-              sold_count: 50,
-              exact_sold_count: 50,
-              active_count: 100,
-              median_sold_price: 60000,
-              median_days_to_sell: '14.0',
-              median_sold_likes: '25.0',
-              demand_score: '82.50',
-              liquidity_score: '78.00',
-              confidence_score: '80.00',
-              scoring_status: 'scored',
-            },
-          ],
-          total: 1,
-          limit: 200,
-          offset: 0,
-        });
-      if (url.includes('/analytics/dashboard?'))
-        return json({
-          data: [
-            {
-              id: 1,
-              name: 'Dagger Necklace',
-              brand_name: 'Chrome Hearts',
-              available_sizes: [],
-              available_conditions: [],
-              sold_count: 24,
-              exact_sold_count: 24,
-              active_count: 111,
-              median_sold_price: 45000,
-              liquidity_score: '72.72',
-              demand_score: '66.84',
-              price_score: '0.00',
-              confidence_score: '58.10',
-              scoring_status: 'scored',
-              model_version: 'market-v5',
-              window_days: 90,
-              run_id: 3,
-            },
-          ],
-          total: 1,
-          limit: 200,
-          offset: 0,
-        });
-      return json({});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderApp(<Dashboard />);
-    expect(await screen.findByRole('button', { name: 'By brands' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'By brands' }));
-    expect(await screen.findByRole('button', { name: 'Chrome Hearts' })).toBeInTheDocument();
-    expect(screen.getByText('82.5')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Chrome Hearts' }));
-    expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
+  it('shows the group card with versions, variants, sales links and edits', async () => {
+    const group = {
+      id: 1,
+      brand_id: 1,
+      brand: 'Rick Owens',
+      product_type: 'hitop_sneakers',
+      slug: 'geobasket',
+      name: 'Geobasket',
+      aliases: [],
+      parent_id: null,
+      status: 'confirmed',
+      source: 'seed',
+      is_fallback: false,
+      listings: 20,
+      sold: 12,
+      active: 8,
+      parent: null,
+      versions: [],
+    };
+    const metric = {
+      scope: 'model',
+      scope_key: 'model:1',
+      group_id: 1,
+      brand_id: 1,
+      brand: 'Rick Owens',
+      product_type: 'hitop_sneakers',
+      section: 'footwear',
+      name: 'Geobasket',
+      status: 'confirmed',
+      is_fallback: false,
+      versions: 1,
+      listings: 20,
+      sold: 12,
+      sold_7d: 2,
+      sold_30d: 12,
+      sold_prev_30d: 6,
+      sold_90d: 30,
+      growth: '1.8571',
+      speed: '0.6000',
+      trend_score: '66.86',
+      median_days_to_sell: '20.00',
+      sell_through_30d: '0.600000',
+      median_price: 90000,
+      price_change: null,
+      active_now: 8,
+      new_listings_14d: 1,
+      is_new: false,
+      first_seen_at: null,
+      weekly_sales: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/trends/groups/1'))
+          return json({
+            group,
+            metrics: metric,
+            computed_at: '2026-10-01T12:00:00Z',
+            weekly_median_price: Array(12).fill(90000),
+            colors: [{ value: 'milk', sold: 9, active: 2, sell_through: '0.818182' }],
+            sizes: [{ value: 'us 10', sold: 5, active: 1, sell_through: '0.833333' }],
+            versions: [
+              { ...metric, scope_key: 'model:2', group_id: 2, name: 'Mega Geobasket', sold: 3 },
+            ],
+            type_metrics: null,
+            recent_sales: [
+              {
+                id: 9,
+                grailed_id: 999,
+                url: 'https://www.grailed.com/listings/999',
+                title: 'Rick Owens Geobasket Milk',
+                price: 88000,
+                status: 'sold',
+                sold_at: '2026-09-30T00:00:00Z',
+                created_at: '2026-09-10T00:00:00Z',
+                days_to_sell: 20,
+                size: 'us 10',
+                color: 'milk',
+                group_id: 1,
+                group_name: 'Geobasket',
+                relisted: true,
+              },
+            ],
+            active_listings: [],
+          });
+        if (url.endsWith('/groups/1')) return json(group);
+        if (url.includes('/groups?')) return json({ data: [group], total: 1 });
+        if (url.endsWith('/grouping/taxonomy'))
+          return json({
+            version: 'taxonomy-v1',
+            sections: [],
+            types: [{ id: 'hitop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' }],
+          });
+        return json({});
+      }),
+    );
+    navigation.search = 'id=1';
+    renderApp(<GroupPage />);
+    expect(
+      await screen.findByRole('heading', { name: 'Rick Owens · Geobasket · High-top sneakers' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Mega Geobasket' })).toHaveAttribute(
+      'href',
+      '/group?id=2',
+    );
+    expect(screen.getByText('milk')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Rick Owens Geobasket Milk/ })).toHaveAttribute(
+      'href',
+      'https://www.grailed.com/listings/999',
+    );
+    expect(screen.getByText(/relisted/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move' })).toBeInTheDocument();
+    expect(await screen.findByText('Edit group')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(12);
   });
 
   it('confirms, merges and rejects groups through durable edit rules', async () => {
@@ -235,56 +300,6 @@ describe('stage 10 screens', () => {
     await userEvent.click(help);
     expect(screen.getByRole('tooltip')).toHaveTextContent('Maximum requests for this run.');
     expect(help).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('shows the best-selling colors and sizes for a model group', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        json({
-          id: 1,
-          name: 'Geobasket',
-          brand: 'Rick Owens',
-          category: 'footwear',
-          group_type: 'resolved',
-          model_version: 'market-v5',
-          window_days: 90,
-          run_id: 3,
-          input_digest: 'abc123',
-          variant_breakdown: {
-            colors: [
-              { value: 'black', sold_count: 4, active_count: 2, sell_through: '0.666667' },
-            ],
-            sizes: [{ value: '42', sold_count: 3, active_count: 1, sell_through: '0.750000' }],
-          },
-          metrics: {
-            sold_count: 4,
-            exact_sold_count: 4,
-            active_count: 2,
-            sell_through: '0.666667',
-            median_sold_price: 50000,
-            median_days_to_sell: '12',
-            median_sold_likes: '20',
-            liquidity_score: '50',
-            demand_score: '50',
-            price_score: '0',
-            confidence_score: '90',
-            market_opportunity_score: '50',
-            scoring_status: 'scored',
-            components: {},
-            confidence_factors: {},
-            quality_summary: {},
-            warnings: [],
-          },
-          sold_examples: [],
-          active_examples: [],
-        }),
-      ),
-    );
-    renderApp(<ModelDetailClient />);
-    expect(await screen.findByText('Best-selling variants')).toBeInTheDocument();
-    expect(screen.getByText('black')).toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
   });
 
   it('announces parser degradation and its actionable reason', async () => {

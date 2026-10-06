@@ -5,13 +5,13 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   Database,
-  LayoutDashboard,
   Menu,
   Moon,
   Play,
   Settings,
   Sun,
   Tags,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -25,7 +25,7 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { key: 'dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} />, group: 'analytics' },
+  { key: 'trends', href: '/trends', icon: <TrendingUp size={18} />, group: 'analytics' },
   { key: 'catalog', href: '/listings', icon: <Database size={18} />, group: 'analytics' },
   { key: 'brands', href: '/brands', icon: <Tags size={18} />, group: 'management' },
   { key: 'collect', href: '/collect', icon: <Play size={18} />, group: 'management' },
@@ -90,7 +90,7 @@ export function AppSidebar() {
         {/* Logo */}
         <Link
           className="mb-5 flex items-center gap-2.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-2.5"
-          href="/dashboard"
+          href="/trends"
           onClick={() => setOpen(false)}
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--accent)]">

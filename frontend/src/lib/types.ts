@@ -148,119 +148,10 @@ export type Brand = {
 };
 export type BrandList = { data: Brand[] };
 
-export type DashboardProductType = 'footwear' | 'clothing' | 'accessories';
-
-export type DashboardRow = {
-  id: number;
-  name: string;
-  brand_name: string;
-  category?: string;
-  available_sizes: string[];
-  available_conditions: string[];
-  sold_count: number;
-  exact_sold_count: number;
-  active_count: number;
-  median_sold_price: number | null;
-  median_days_to_sell: string | null;
-  median_sold_likes: string | null;
-  liquidity_score: string | null;
-  demand_score: string | null;
-  price_score: string;
-  confidence_score: string;
-  market_opportunity_score: string | null;
-  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-  model_version: string;
-  window_days: number;
-  run_id: number;
-};
-
 export type CursorPage<T> = {
   data: T[];
   limit: number;
   next_cursor: string | null;
-};
-
-export type BrandAnalyticsRow = {
-  id: number;
-  name: string;
-  groups_count: number;
-  sold_count: number;
-  exact_sold_count: number;
-  active_count: number;
-  median_sold_price: number | null;
-  median_days_to_sell: string | null;
-  median_sold_likes: string | null;
-  sell_through?: string | null;
-  demand_score: string | null;
-  liquidity_score: string | null;
-  confidence_score: string;
-  market_opportunity_score: string | null;
-  scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-  average_liquidity_score?: string | null;
-  average_demand_score?: string | null;
-  average_confidence_score?: string;
-  average_market_opportunity_score?: string | null;
-};
-
-export type BrandAnalyticsList = CursorPage<BrandAnalyticsRow>;
-
-export type ScoreComponent = {
-  score: string;
-  weight?: string;
-  liquidity_weight?: string;
-  demand_weight?: string;
-};
-export type ListingExample = {
-  id: number;
-  grailed_id: number;
-  title: string;
-  price: number;
-  likes: number;
-  sold_at?: string;
-  created_at?: string;
-  days_on_market?: number | null;
-};
-export type VariantPerformance = {
-  value: string | null;
-  sold_count: number;
-  active_count: number;
-  sell_through: string;
-};
-export type ModelGroupDetail = {
-  id: number;
-  name: string;
-  brand: string;
-  category?: string;
-  group_type: string;
-  model_version: string;
-  window_days: number;
-  run_id: number;
-  input_digest: string;
-  variant_breakdown: {
-    colors: VariantPerformance[];
-    sizes: VariantPerformance[];
-  };
-  metrics: {
-    sold_count: number;
-    exact_sold_count: number;
-    active_count: number;
-    sell_through: string;
-    median_sold_price?: number;
-    median_days_to_sell?: string;
-    median_sold_likes?: string;
-    liquidity_score: string | null;
-    demand_score: string | null;
-    price_score: string;
-    confidence_score: string;
-    market_opportunity_score: string | null;
-    scoring_status: 'scored' | 'insufficient_sales' | 'insufficient_temporal_data';
-    components: Record<string, ScoreComponent>;
-    confidence_factors: Record<string, unknown>;
-    quality_summary: Record<string, unknown>;
-    warnings: string[];
-  };
-  sold_examples: ListingExample[];
-  active_examples: ListingExample[];
 };
 
 export type SettingOrigin = 'default' | 'env' | 'database';
@@ -288,8 +179,11 @@ export type DiscoveryResponse = {
 export type CatalogListing = {
   id: number;
   grailed_id: number;
+  url: string;
   title: string;
   brand: string;
+  brand_id: number | null;
+  product_type: string | null;
   status: string;
   size?: string;
   color?: string;
@@ -300,6 +194,7 @@ export type CatalogListing = {
   days_on_market?: number | null;
   model_group_id?: number;
   model_name?: string;
+  is_fallback: boolean;
   model_sold_count: number;
   model_active_count: number;
 };
@@ -334,3 +229,87 @@ export type GroupDetail = GroupSummary & {
 };
 
 export type GroupList = { data: GroupSummary[]; total: number };
+
+export type TrendLevel = 'model' | 'type' | 'brand';
+export type TrendSort = 'trend' | 'growth' | 'speed' | 'sales' | 'price' | 'supply' | 'new';
+
+export type TrendRow = {
+  scope: TrendLevel;
+  scope_key: string;
+  group_id: number | null;
+  brand_id: number;
+  brand: string;
+  product_type: string | null;
+  section: string | null;
+  name: string | null;
+  status: GroupStatus | null;
+  is_fallback: boolean;
+  versions: number;
+  listings: number;
+  sold: number;
+  sold_7d: number;
+  sold_30d: number;
+  sold_prev_30d: number;
+  sold_90d: number;
+  growth: string;
+  speed: string | null;
+  trend_score: string | null;
+  median_days_to_sell: string | null;
+  sell_through_30d: string;
+  median_price: number | null;
+  price_change: string | null;
+  active_now: number;
+  new_listings_14d: number;
+  is_new: boolean;
+  first_seen_at: string | null;
+  weekly_sales: number[];
+};
+
+export type TrendList = { data: TrendRow[]; total: number; computed_at: string | null };
+
+export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
+
+export type TrendListing = {
+  id: number;
+  grailed_id: number;
+  url: string;
+  title: string;
+  price: number;
+  status: string;
+  sold_at: string | null;
+  created_at: string | null;
+  days_to_sell: number | null;
+  size: string | null;
+  color: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  relisted: boolean;
+};
+
+export type TrendCard = {
+  group: GroupDetail;
+  metrics: TrendRow | null;
+  computed_at: string | null;
+  weekly_median_price: Array<number | null>;
+  colors: TrendVariant[];
+  sizes: TrendVariant[];
+  versions: TrendRow[];
+  type_metrics: TrendRow | null;
+  recent_sales: TrendListing[];
+  active_listings: TrendListing[];
+};
+
+export type TrendFilters = {
+  level: TrendLevel;
+  brandIds: number[];
+  section: string;
+  productType: string;
+  window: 7 | 30 | 90;
+  priceMin: string;
+  priceMax: string;
+  newOnly: boolean;
+  minSales: number;
+  search: string;
+  sort: TrendSort;
+  desc: boolean;
+};
