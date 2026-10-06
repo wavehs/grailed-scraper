@@ -20,6 +20,8 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # Snapshots were per run, so the dashboard only showed the last run's brands.
     op.execute("DROP TABLE IF EXISTS scoring_snapshots")
+    # Derived data; a leftover of the old startup create_all is rebuilt from listings.
+    op.execute("DROP TABLE IF EXISTS group_metrics")
     op.create_table(
         "group_metrics",
         sa.Column("id", sa.Integer(), primary_key=True),
