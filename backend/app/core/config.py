@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -11,21 +10,7 @@ from typing import Any, Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def _resolve_project_root() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parents[3]
-
-
-def _resolve_resource_root() -> Path:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parents[3]
-
-
-PROJECT_ROOT = _resolve_project_root()
-RESOURCE_ROOT = _resolve_resource_root()
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'data' / 'grailed.db').as_posix()}"
 
 

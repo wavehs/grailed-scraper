@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import __version__
 from app.api.errors import install_exception_handlers
 from app.api.routes import router
-from app.core.config import PROJECT_ROOT, RESOURCE_ROOT, get_settings
+from app.core.config import PROJECT_ROOT, get_settings
 from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
 from app.core.runtime import SingleInstanceLock, inspect_runtime, require_startup_ready
@@ -109,19 +108,8 @@ async def _remove_own_pid_file(pid_file: Path, process_id: int) -> None:
 
 def _find_static_directory() -> Path | None:
     """Locate the exported Next.js static assets directory if present."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    candidates = [
-        Path(meipass) / "static" if meipass else None,
-        RESOURCE_ROOT / "static",
-        RESOURCE_ROOT / "frontend" / "out",
-        PROJECT_ROOT / "frontend" / "out",
-        PROJECT_ROOT / "static",
-        Path(__file__).resolve().parent / "static",
-    ]
-    for candidate in candidates:
-        if candidate and candidate.is_dir() and (candidate / "index.html").is_file():
-            return candidate
-    return None
+    candidate = PROJECT_ROOT / "frontend" / "out"
+    return candidate if (candidate / "index.html").is_file() else None
 
 
 def mount_static_frontend(application: FastAPI) -> None:

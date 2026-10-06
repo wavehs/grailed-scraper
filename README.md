@@ -2,49 +2,18 @@
 
 Live-only parser for Grailed listings. The runtime has no mock, replay, synthetic-source, or offline acceptance mode.
 
-## Quick Start (Automated 1-Click Setup)
+## Quick Start (Windows)
 
 Requirements: Python 3.11+, Node.js 20+, pnpm 9+.
 
-### Windows
-1. Run `setup.bat` (or in PowerShell: `.\scripts\install.ps1`).
-2. Run `start.bat` (or `.\scripts\start.ps1`) to launch the interactive control center.
+1. Run `setup.bat` once. It installs the backend venv, frontend packages, and applies migrations.
+2. Run `start.bat`. It rebuilds the UI when sources changed, applies migrations, and opens
+   http://127.0.0.1:8000. For development use `dev-web.bat` (backend :8000 + Next.js :3000).
 
-### Linux / macOS
-1. Run `bash scripts/install.sh`.
-2. Run `./scripts/start.sh` (or double-click `start.command` on macOS).
+Before any Grailed request, review the applicable ToS, `robots.txt`, and law.
 
----
-
-## Manual Setup (Alternative)
-
-```powershell
-Copy-Item .env.example .env
-cd backend
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
-scrapling install
-alembic upgrade head
-python -m app.cli doctor
-```
-
-Before any Grailed request, review the applicable ToS, `robots.txt`, and law, then set `APP_LIVE_COMPLIANCE_ACKNOWLEDGED=true`.
-
-```powershell
-python -m app.cli canary --brand "Rick Owens" --limit 50
-uvicorn app.main:app --port 8000
-
-cd ..\frontend
-corepack enable
-pnpm install --frozen-lockfile
-pnpm run dev
-```
-
-On Windows, do not enable Uvicorn `--reload` or multiple workers: they select an
-event loop without subprocess support, while the Scrapling browser requires it.
-
-The UI workflow is discovery → brand mapping → dry run → confirmation → run. T1 direct Algolia is the default; T2 browser-mediated Algolia and T3 DOM are live fallbacks only.
+Do not run Uvicorn with `--reload` or multiple workers: the backend holds a single-instance
+lock and SQLite has one writer.
 
 ## Checks
 
