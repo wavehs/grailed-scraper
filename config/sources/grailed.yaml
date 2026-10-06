@@ -20,6 +20,7 @@ fields:
   description:     ["description"]
   brand_name:      ["designers[0].name", "designer_names[0]"]
   brand_slug:      ["designers[0].slug"]
+  designer_names:  ["designers[*].name"]
   category:        ["category", "category_path"]
   subcategory:     ["subcategory", "category_path"]
   size:            ["size"]

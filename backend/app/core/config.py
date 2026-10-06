@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -37,24 +37,23 @@ class Settings(BaseSettings):
     log_directory: Path = PROJECT_ROOT / "data" / "logs"
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
-    algolia_hits_per_page: int = 200
+    algolia_hits_per_page: int = 1_000
     algolia_multiquery_batch_size: int = 8
     algolia_pagination_strategy: Literal["auto", "browse", "keyset", "range_split"] = "auto"
     algolia_attributes_mode: Literal["full", "lean"] = "full"
     parser_request_timeout_s: float = 15.0
     parser_max_retries: int = 3
-    parser_request_delay_ms: int = 400
     parser_max_concurrency: int = 1
-    parser_max_requests_per_run: int = 800
-    parser_max_items_per_brand: int = 500
+    # Safety net against runaway pagination, not a collection budget (~9 h at 90 rpm).
+    parser_max_requests_per_run: int = 50_000
+    sold_history_days: int = Field(default=365, ge=30, le=3650)
+    collect_price_min_usd: int | None = Field(default=None, ge=0)
+    collect_price_max_usd: int | None = Field(default=None, ge=1)
     identity_image_requests_per_run: int = Field(default=100, ge=0, le=100)
     parser_progress_interval_s: float = 2.0
     discovery_ttl_hours: int = 12
     discovery_sample_size: int = 200
     cors_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
-    parser_mode: Literal["delta", "full"] = "delta"
-    parser_full_refresh_days: int = 7
-    parser_refresh_active_enabled: bool = True
     parser_refresh_active_limit: int | None = Field(default=None, ge=1)
     parser_removed_confirm_hours: int = 48
     parser_watermark_overlap_hours: int = 2
@@ -64,9 +63,16 @@ class Settings(BaseSettings):
     fx_provider: Literal["static"] = "static"
     store_seller_identity: Literal["none", "hashed", "plain"] = "hashed"
     seller_identity_salt: str | None = None
-    live_compliance_acknowledged: bool = True
+    live_compliance_acknowledged: bool = False
     raw_data_retention_days: int = 90
     backup_retention_days: int = 30
+
+    @model_validator(mode="after")
+    def check_price_band(self) -> Settings:
+        low, high = self.collect_price_min_usd, self.collect_price_max_usd
+        if low is not None and high is not None and low > high:
+            raise ValueError("collect_price_min_usd must not exceed collect_price_max_usd")
+        return self
 
     @field_validator("log_level")
     @classmethod
@@ -82,16 +88,13 @@ class Settings(BaseSettings):
         "requests_per_minute",
         "max_concurrent_requests",
         "parser_request_timeout_s",
-        "parser_request_delay_ms",
         "parser_max_concurrency",
         "parser_max_requests_per_run",
-        "parser_max_items_per_brand",
         "parser_progress_interval_s",
         "algolia_hits_per_page",
         "algolia_multiquery_batch_size",
         "discovery_ttl_hours",
         "discovery_sample_size",
-        "parser_full_refresh_days",
         "parser_removed_confirm_hours",
         "parser_watermark_overlap_hours",
         "quality_price_outlier_mad_k",

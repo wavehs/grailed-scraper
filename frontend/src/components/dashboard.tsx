@@ -419,7 +419,7 @@ export function Dashboard({
                       <TableCell>
                         <Link
                           className="text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
-                          href={`/parser-runs?run=${run.id}`}
+                          href="/collect"
                         >
                           #{run.id}
                         </Link>

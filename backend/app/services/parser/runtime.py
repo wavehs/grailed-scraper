@@ -288,12 +288,12 @@ class ParserRuntime:
                 key_attrs=tuple(str(value) for value in spec_data.get("key_attrs", ())),
                 secondary_attrs=("id", "objectID", "price_i"),
                 pagination_limit=int(spec_data.get("pagination_limit", 1_000)),
-                hits_per_page=settings.algolia_hits_per_page,
+                hits_per_page=int(
+                    dict(spec_data["query"]).get("hits_per_page")
+                    or settings.algolia_hits_per_page
+                ),
                 fetch_tier="T1",
                 resume_cursor=prior_cursor,
-                max_hits=(
-                    int(spec_data["max_hits"]) if spec_data.get("max_hits") is not None else None
-                ),
             )
         )
         last_key: int | None = None
@@ -367,10 +367,54 @@ class ParserRuntime:
                     brand_id=cast(int, task.brand_id),
                     index_type=task.index_type,
                     last_key_value=str(last_key),
-                    mode=(await session.get(ParserRun, run_id)).mode,  # type: ignore[union-attr]
+                    mode=str(spec_data.get("mode", "delta")),
                     coverage_complete=combined.status == "complete",
                     truncated=combined.truncated,
                 )
+            await session.commit()
+        if spec_data.get("sweep_missing") and combined.status == "complete":
+            await self._sweep_missing(run_id, spec_data, fetcher, cancelled, settings)
+
+    async def _sweep_missing(
+        self,
+        run_id: int,
+        spec_data: dict[str, Any],
+        fetcher: FetchApi,
+        cancelled: asyncio.Event,
+        settings: Settings,
+    ) -> None:
+        """Check active listings the complete active pass did not see: sold or removed."""
+
+        async with self._write_lock, self._sessions() as session:
+            run = await session.get(ParserRun, run_id)
+            credential = await session.scalar(
+                select(SourceCredential).where(SourceCredential.source == "grailed")
+            )
+            if run is None or credential is None or credential.sold_index is None:
+                return
+            result = await RefreshActiveService(
+                fetcher,
+                LifecycleRepository(session),
+                ListingRepository(session),
+                ListingNormalizer(load_source_mapping(), settings=settings),
+                settings,
+                active_index=str(spec_data["index_name"]),
+                sold_index=credential.sold_index,
+                checkpoint=session.commit,
+                should_stop=cancelled.is_set,
+            ).run(
+                parser_run_id=run_id,
+                brand_id=cast(int, spec_data["brand_id"]),
+                not_seen_since=run.created_at,
+            )
+            sweeps = dict(run.stats.get("missing_sweeps", {}))
+            sweeps[str(spec_data["brand_id"])] = {
+                "checked": result.checked,
+                "sold": result.sold,
+                "pending": result.pending,
+                "removed": result.removed,
+            }
+            run.stats = {**run.stats, "missing_sweeps": sweeps}
             await session.commit()
 
     async def _process_refresh(

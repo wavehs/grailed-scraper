@@ -161,6 +161,9 @@ class Listing(Base):
     cover_content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     cover_dhash: Mapped[str | None] = mapped_column(String(16), index=True)
     photo_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    designer_names: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     seller_identity: Mapped[str | None] = mapped_column(Text)
     seller_identity_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="none")

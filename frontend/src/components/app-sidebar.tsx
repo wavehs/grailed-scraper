@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { key: 'dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} />, group: 'analytics' },
   { key: 'catalog', href: '/listings', icon: <Database size={18} />, group: 'analytics' },
   { key: 'brands', href: '/brands', icon: <Tags size={18} />, group: 'management' },
-  { key: 'parserRuns', href: '/parser-runs', icon: <Play size={18} />, group: 'management' },
+  { key: 'collect', href: '/collect', icon: <Play size={18} />, group: 'management' },
   { key: 'settings', href: '/settings', icon: <Settings size={18} />, group: 'system' },
 ];
 

@@ -9,10 +9,8 @@ from decimal import Decimal
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import MetaData, Table, create_engine, insert, inspect
 from sqlalchemy.orm import Session
-
-from app.db.models import Listing
 
 
 def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -149,9 +147,11 @@ def test_cursor_fts_migration_indexes_existing_and_changed_listings(tmp_path) ->
 
     engine = create_engine(f"sqlite:///{database_path.as_posix()}")
     observed = datetime(2026, 8, 24, tzinfo=UTC)
+    # Reflect the table at revision 0011: the ORM model has columns added later.
+    listings_0011 = Table("listings", MetaData(), autoload_with=engine)
     with Session(engine) as session:
-        session.add(
-            Listing(
+        session.execute(
+            insert(listings_0011).values(
                 source="grailed",
                 grailed_id=77,
                 status="active",

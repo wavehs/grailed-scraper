@@ -15,6 +15,7 @@ _RUNTIME_DIR = Path(tempfile.mkdtemp(prefix="grailed-tests-"))
 os.environ["APP_DATA_DIRECTORY"] = str(_RUNTIME_DIR)
 os.environ["APP_LOG_DIRECTORY"] = str(_RUNTIME_DIR / "logs")
 os.environ["APP_DATABASE_URL"] = f"sqlite+aiosqlite:///{(_RUNTIME_DIR / 'test.db').as_posix()}"
+os.environ["APP_LIVE_COMPLIANCE_ACKNOWLEDGED"] = "true"
 
 
 @pytest.fixture(autouse=True)

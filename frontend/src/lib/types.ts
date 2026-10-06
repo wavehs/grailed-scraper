@@ -26,11 +26,10 @@ export type ParserHealth = {
       created_at: string;
     }>;
   };
-  proxies: ProxyStatus[];
   active_runs: number[];
   reasons: string[];
-  versions: { scrapling?: string; camoufox?: string };
-  circuits: Array<{ tier: string; host: string; proxy: string; state: string }>;
+  versions: { curl_cffi?: string };
+  circuits: Array<{ tier: string; host: string; state: string }>;
   compliance: {
     live_acknowledged: boolean;
     seller_identity_mode: 'none' | 'hashed' | 'plain';
@@ -45,25 +44,14 @@ export type ParserHealth = {
   };
 };
 
-export type ProxyStatus = {
-  proxy: string;
-  success_rate: number;
-  successes: number;
-  failures: number;
-  consecutive_failures: number;
-  cooling_down: boolean;
-  cooldown_remaining_s?: number;
-};
-
 export type RunSummary = {
   id: number;
   mode: string;
   status: RunStatus;
   phase: string;
-  dry_run: boolean;
   degraded: boolean;
   tier?: string;
-  budget?: Record<string, number | boolean>;
+  budget?: { brands?: number; tasks?: number; full_brands?: string[] };
   coverage?: string;
   requests_made: number;
   warnings: string[];
@@ -134,23 +122,10 @@ export type RunMetrics = {
   listings_invalid: number;
   duration_s: number;
 };
-export type FetchPlan = {
-  mode: string;
-  confirmation_token: string;
-  budget: Record<string, number | boolean>;
-  warnings: string[];
-  tasks: Array<{
-    brand_id: number;
-    brand: string;
-    index_type: string;
-    index: string;
-    status: string;
-    strategy: string;
-    max_hits: number | null;
-  }>;
-};
-export type RunStartResponse =
-  { dry_run: true; plan: FetchPlan } | { dry_run: false; run: RunSummary };
+export type RunStartResponse = { run: RunSummary };
+export type RunDetail = { run: RunSummary; tasks: RunTask[] };
+
+export type DesignerSuggestion = { name: string; listings_count: number };
 
 export type Mapping = {
   id: number;
@@ -289,7 +264,8 @@ export type ModelGroupDetail = {
 };
 
 export type SettingOrigin = 'default' | 'env' | 'database';
-export type SettingEntry = { value: string | number | boolean; origin: SettingOrigin };
+export type SettingValue = string | number | boolean | null;
+export type SettingEntry = { value: SettingValue; origin: SettingOrigin };
 export type SettingsResponse = { groups: Record<string, Record<string, SettingEntry>> };
 export type DiscoveryResponse = {
   source: 'grailed';

@@ -206,6 +206,7 @@ class ListingNormalizer:
                 cover_photo_url=cover,
                 cover_asset_key=cover_asset_key,
                 photo_urls=photo_urls,
+                designer_names=_string_list(self._mapping.value(payload, "designer_names")),
                 photo_count=max(
                     _nonnegative_int(self._mapping.value(payload, "photo_count")),
                     len(photo_urls),

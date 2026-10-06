@@ -27,7 +27,7 @@ from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
 from app.services.parser.observability import RunMetrics
-from app.services.parser.planner import listing_numeric_filters
+from app.services.parser.planner import collection_filters
 from app.services.scoring import MODEL_VERSION, OpportunityScoringService
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
@@ -67,7 +67,7 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
             AlgoliaQuery(
                 hits_per_page=limit,
                 facet_filters=((f"designers.name:{brand}",),),
-                numeric_filters=listing_numeric_filters(),
+                numeric_filters=collection_filters(settings, "active"),
             ),
         )
         normalizer = ListingNormalizer(load_source_mapping(), settings=settings)
@@ -143,7 +143,7 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
                     query=AlgoliaQuery(
                         hits_per_page=page_size,
                         facet_filters=((f"{facet}:{brand}",),),
-                        numeric_filters=listing_numeric_filters(),
+                        numeric_filters=collection_filters(settings, index_type),
                     ),
                     strategy=settings.algolia_pagination_strategy,
                     can_browse=can_browse,

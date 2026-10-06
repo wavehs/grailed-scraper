@@ -144,3 +144,18 @@ async def source_status(
     if discovering:
         result = replace(result, status="discovering")
     return DiscoveryResponse.from_result(result)
+
+
+async def ensure_discovery(session: AsyncSession, settings: Settings) -> None:
+    """Reuse cached credentials; refresh them (one page GET plus probes) when stale."""
+
+    transport = create_http_transport(settings)
+    try:
+        await DiscoveryService(session, settings, transport).refresh(force=False)
+        await session.commit()
+    except DiscoveryUnavailableError as exc:
+        raise ApiError(503, "discovery_unavailable", "Grailed discovery is unavailable") from exc
+    except DiscoveryHttpError as exc:
+        raise ApiError(503, "discovery_failed", "Grailed discovery request failed") from exc
+    finally:
+        await transport.close()

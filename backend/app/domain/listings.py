@@ -53,6 +53,7 @@ class ListingData(BaseModel):
     cover_content_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     cover_dhash: str | None = Field(default=None, min_length=16, max_length=16)
     photo_urls: list[str] = Field(default_factory=list)
+    designer_names: list[str] = Field(default_factory=list)
     photo_count: int = Field(default=0, ge=0)
     seller_identity: str | None = None
     seller_identity_mode: Literal["none", "hashed", "plain"] = "none"
