@@ -191,7 +191,7 @@ class RefreshActiveService:
         existing: Mapping[int, Listing],
     ) -> UpsertResult:
         normalized = []
-        tier = _tier(self._fetcher)
+        tier: FetchTier = "T1"
         for payload in hits:
             identifier = _hit_id(payload)
             prior = existing.get(identifier or -1)
@@ -233,7 +233,3 @@ def _hit_id(payload: Mapping[str, Any]) -> int | None:
     except (TypeError, ValueError):
         return None
 
-
-def _tier(fetcher: FetchApi) -> FetchTier:
-    value = getattr(fetcher, "current_tier", "T1")
-    return cast(FetchTier, value) if value in {"T1", "T2", "T3"} else "T1"

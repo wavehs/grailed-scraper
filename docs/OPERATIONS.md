@@ -1,35 +1,30 @@
-## 12. Rate limiting, конкурентность, бюджет
+## 12. Rate limiting и запуск сбора
 
-### 12.1. Многоуровневый контроль
+### 12.1. Контроль скорости
 
 ```
-GlobalTokenBucket(rate = requests_per_minute/60, burst = 5)
+GlobalTokenBucket(rate = requests_per_minute/60)
    └── HostSemaphore(algolia_host, max_concurrent = 3)
-        └── PerTaskDelay(base = request_delay_ms) + jitter(±30%)
 ```
-Дефолты транспорта: `request_delay_ms=400`, `max_requests_per_minute=90`, `max_concurrency=3`, `multiquery_batch=8`.
-Parser использует один worker и обрабатывает бренды последовательно. Один run берёт не
-более 500 listings на бренд суммарно по active/sold; превышение всегда отражается как
-`truncated` с фактическим coverage.
+Дефолты: 90 запросов/мин, 3 одновременных запроса, multi-query до 8 подзапросов.
+Если ключ сообщает `maxQueriesPerIPPerHour`, discovery снижает скорость до безопасной.
+Других лимитов нет: сбор ограничивается только скоростью. `parser_max_requests_per_run`
+(50 000) — страховка от бесконечной пагинации, а не бюджет.
 
-Автоподстройка: если `key.maxQueriesPerIPPerHour` известен → `max_requests_per_minute = min(setting, limit/60 × 0.5)`.
+### 12.2. Одна кнопка «Обновить данные»
 
-Адаптивный троттлинг: p95 latency > 2с или доля 429 > 1% → RPS × 0.6 на 5 минут; 5 минут чисто → RPS × 1.2 (до потолка). Классический AIMD.
+`POST /api/parser/run` с `brand_ids` (или `null` для всех брендов с подтверждённым
+сопоставлением). Порядок:
 
-### 12.2. Бюджет прогона (pre-flight)
+1. Если ключ discovery устарел, он обновляется автоматически (один GET страницы и пробы).
+2. Активный индекс бренда собирается целиком; после полного прохода объявления, которых
+   больше нет, проверяются (`sold`, `removed_pending`).
+3. Проданные: для нового бренда — полный сбор за `sold_history_days`, для уже собранного —
+   delta от watermark (`parser/incremental.py`) с перекрытием 2 часа.
+4. Прогресс (`/parser/runs/{id}/progress`), отмена и продолжение работают через
+   `parser_run_tasks`; курсоры сохраняются не реже раза в 2 секунды.
 
-Перед стартом планировщик считает и показывает в UI:
-```
-Бренды: 21 | Индексы: 2 | Оценка запросов: ~310 | Оценка времени: ~6 мин
-Оценка новых листингов: ~4 200 | Режим: delta | Tier: T1 | Прокси: off
-```
-Если оценка > `max_requests_per_run` (дефолт 5000) — предупреждение и требование
-подтверждения. Тот же лимит проверяется перед каждым фактическим T1 transport call,
-включая retries: после исчерпания следующий сетевой запрос не отправляется.
-
-### 12.3. Dry-run
-
-Флаг `dry_run=true`: выполняется discovery + планирование + пробы `hitsPerPage=0`, но **ничего не пишется в БД**. Возвращает план и оценку. Обязателен как способ безопасно проверить конфиг.
+Dry-run, токены подтверждения и пробное зондирование бюджета удалены.
 
 ---
 
@@ -38,8 +33,8 @@ Parser использует один worker и обрабатывает брен
 ### 14.1. Новые/изменённые таблицы
 
 ```
-parser_runs        + mode, dry_run, degraded_mode, tier_used, budget_estimate,
-                     requests_made, coverage_avg, warnings(json)
+parser_runs        + mode, status, phase, budget_estimate (бренды/задачи),
+                     requests_made, coverage_avg, warnings(json), stats(json)
 parser_run_tasks   ← НОВАЯ: id, run_id, brand_id, index_type, bucket_spec(json),
                      cursor, status(pending|running|done|failed|skipped|truncated),
                      attempts, hits_collected, expected_hits, coverage,
@@ -54,7 +49,7 @@ fx_rates           ← НОВАЯ: date, currency, rate_to_usd
 unmatched_brands   ← НОВАЯ
 schema_alerts      ← НОВАЯ
 listings           + first_seen_at, last_seen_at, removed_checked_at,
-                     quality_flags(json), fetch_tier, sold_at_is_estimated,
+                     quality_flags(json), fetch_tier ('T1'), sold_at_is_estimated,
                      price_original, currency_original, fx_rate, schema_version
 ```
 

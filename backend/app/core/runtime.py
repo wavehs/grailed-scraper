@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import msvcrt
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.parse import urlsplit
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -20,8 +21,30 @@ from app.core.config import PROJECT_ROOT, Settings
 from app.db.session import get_database_url
 
 
+def _lock_byte(file: BinaryIO) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_byte(file: BinaryIO) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+
+
 class SingleInstanceLock:
-    """Hold one byte of a Windows lock file for the backend process lifetime."""
+    """Hold an exclusive lock on a lock file for the backend process lifetime."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -35,7 +58,7 @@ class SingleInstanceLock:
             lock_file.flush()
         lock_file.seek(0)
         try:
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            _lock_byte(lock_file)
         except OSError as exc:
             lock_file.close()
             raise RuntimeError("another_backend_instance_is_running") from exc
@@ -51,7 +74,7 @@ class SingleInstanceLock:
         if self._file is None:
             return
         self._file.seek(0)
-        msvcrt.locking(self._file.fileno(), msvcrt.LK_UNLCK, 1)
+        _unlock_byte(self._file)
         self._file.close()
         self._file = None
 
@@ -108,7 +131,9 @@ def validate_production(settings: Settings, revision: str) -> list[str]:
         reasons.append("backend_bind_not_loopback")
     if settings.frontend_bind_host not in loopback_hosts:
         reasons.append("frontend_bind_not_loopback")
-    if settings.cors_origins != ["http://127.0.0.1:3000"]:
+    if not settings.cors_origins or any(
+        urlsplit(origin).hostname not in loopback_hosts for origin in settings.cors_origins
+    ):
         reasons.append("frontend_origin_not_local")
     return reasons
 

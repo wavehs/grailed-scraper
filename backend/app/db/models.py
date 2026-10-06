@@ -109,7 +109,7 @@ class Listing(Base):
             "status IN ('active', 'sold', 'removed_pending', 'removed')",
             name="ck_listings_status",
         ),
-        CheckConstraint("fetch_tier IN ('T1', 'T2', 'T3')", name="ck_listings_fetch_tier"),
+        CheckConstraint("fetch_tier = 'T1'", name="ck_listings_fetch_tier"),
         CheckConstraint(
             "seller_identity_mode IN ('none', 'hashed', 'plain')",
             name="ck_listings_seller_identity_mode",
@@ -543,7 +543,7 @@ class ParserRunTask(Base):
             name="ck_parser_run_tasks_status",
         ),
         CheckConstraint(
-            "fetch_tier IS NULL OR fetch_tier IN ('T1', 'T2', 'T3')",
+            "fetch_tier IS NULL OR fetch_tier = 'T1'",
             name="ck_tasks_fetch_tier",
         ),
         Index("ix_parser_run_tasks_run_status", "run_id", "status"),

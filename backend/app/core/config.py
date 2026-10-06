@@ -117,6 +117,13 @@ class Settings(BaseSettings):
             raise ValueError("Algolia multi-query supports at most 8 sub-queries")
         return value
 
+    @field_validator("algolia_hits_per_page")
+    @classmethod
+    def cap_hits_per_page(cls, value: int) -> int:
+        if value > 1_000:
+            raise ValueError("Algolia returns at most 1000 hits per page")
+        return value
+
     @field_validator("requests_per_minute")
     @classmethod
     def cap_requests_per_minute(cls, value: int) -> int:

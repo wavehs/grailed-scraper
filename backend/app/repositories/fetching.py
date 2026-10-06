@@ -12,8 +12,6 @@ from app.db.models import ParserRun, ParserRunTask
 from app.domain.listings import FetchTier
 from app.services.sources.base.models import CoverageReport
 
-_TIER_ORDER = {"T1": 1, "T2": 2, "T3": 3}
-
 
 class FetchReportRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -59,10 +57,8 @@ class FetchReportRepository:
         parser_run.coverage_avg = (
             sum(coverages, Decimal(0)) / Decimal(len(coverages)) if coverages else None
         )
-        tiers = [task.fetch_tier for task in tasks if task.fetch_tier is not None]
-        if tiers:
-            parser_run.tier_used = max(tiers, key=lambda tier: _TIER_ORDER[tier])
-        parser_run.degraded_mode = any(tier in {"T2", "T3"} for tier in tiers)
+        if any(task.fetch_tier is not None for task in tasks):
+            parser_run.tier_used = "T1"
         warnings = list(parser_run.warnings)
         for task in tasks:
             if task.error:

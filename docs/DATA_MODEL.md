@@ -87,7 +87,7 @@ seller_id: int | None
 seller_username_hash: str | None   # см. §14
 seller_country: str | None
 quality_flags: list[str] = []      # ["outlier_price","possible_replica","lot",...]
-fetch_tier: Literal["T1","T2","T3"]
+fetch_tier: Literal["T1"]
 parser_run_id: int
 raw_json: dict
 schema_version: int

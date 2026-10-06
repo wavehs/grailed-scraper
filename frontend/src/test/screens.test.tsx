@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BrandsPage from '@/app/brands/page';
-import ParserRunsPage from '@/app/parser-runs/page';
+import CollectPage from '@/app/collect/page';
 import SettingsPage from '@/app/settings/page';
 import ModelDetailClient from '@/app/model-groups/[id]/model-detail-client';
 import { Dashboard } from '@/components/dashboard';
@@ -290,170 +290,91 @@ describe('stage 10 screens', () => {
     );
   });
 
-  it('performs dry-run planning before starting a parser run', async () => {
-    let runCalls = 0;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith('/health')) return json(health);
-        if (url.endsWith('/brands'))
-          return json({
-            data: [
-              {
-                ...brand,
-                status: 'verified',
-                mappings: [{ ...brand.mappings[0], state: 'verified' }],
-              },
-            ],
-          });
-        if (url.includes('/parser/runs?'))
-          return json({ data: [], total: 0, limit: 50, offset: 0 });
-        if (url.endsWith('/parser/run') && init?.method === 'POST') {
-          runCalls += 1;
-          if (runCalls === 1)
-            return json({
-              dry_run: true,
-              plan: {
-                mode: 'delta',
-                confirmation_token: 'confirmed-plan',
-                budget: {
-                  estimated_requests: 4,
-                  estimated_hits: 400,
-                  limit: 5000,
-                  over_limit: false,
-                },
-                warnings: [],
-                tasks: [],
-              },
-            });
-          return json({
-            dry_run: false,
-            run: {
-              id: 11,
-              mode: 'delta',
-              status: 'pending',
-              phase: 'planning',
-              dry_run: false,
-              degraded: false,
-              requests_made: 0,
-              warnings: [],
-              created_at: new Date().toISOString(),
-            },
-          });
-        }
-        if (url.endsWith('/parser/runs/11/progress'))
-          return json({
+  it('collects the selected brands with one click', async () => {
+    const verified = {
+      ...brand,
+      status: 'verified',
+      mappings: [{ ...brand.mappings[0], state: 'verified' }],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
+      if (url.endsWith('/brands'))
+        return json({ data: [verified, { ...verified, id: 2, name: 'Chrome Hearts' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/parser/run') && init?.method === 'POST')
+        return json({
+          run: {
+            id: 11,
+            mode: 'full',
             status: 'pending',
             phase: 'planning',
             degraded: false,
-            brands_total: 1,
-            brands_completed: 0,
-            tasks_total: 2,
-            tasks_done: 0,
-            hits_fetched: 0,
             requests_made: 0,
             warnings: [],
-          });
-        return json({});
-      }),
-    );
-    renderApp(<ParserRunsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Max' }));
-    expect(screen.getByText('All available listings will be collected.')).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: 'Check volume and continue' }));
-    expect(await screen.findByText('Collection plan')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Request budget')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Start run' }));
-    expect(await screen.findByText('Run #11')).toBeInTheDocument();
-    expect(runCalls).toBe(2);
-    const confirmed = vi
-      .mocked(fetch)
-      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[1];
-    const planned = vi
-      .mocked(fetch)
-      .mock.calls.filter(([input]) => String(input).endsWith('/parser/run'))[0];
-    expect(JSON.parse(String(planned[1]?.body))).toMatchObject({ collect_all: true });
-    expect(JSON.parse(String(planned[1]?.body))).not.toHaveProperty('max_items_per_brand');
-    const confirmedPayload = JSON.parse(String(confirmed[1]?.body));
-    expect(confirmedPayload).toMatchObject({
-      dry_run: false,
-      confirmation_token: 'confirmed-plan',
-    });
-    expect(confirmedPayload).not.toHaveProperty('max_requests');
-  });
-
-  it('confirms run deletion and collected-data cleanup', async () => {
-    let finishClear: (() => void) | undefined;
-    const clearResponse = new Promise<Response>((resolve) => {
-      finishClear = () =>
-        resolve(new Response(JSON.stringify({ listings_deleted: 12, runs_deleted: 1 })));
-    });
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/health')) return json(health);
-      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
-      if (url.includes('/parser/runs?'))
-        return json({
-          data: [
-            {
-              id: 7,
-              mode: 'full',
-              status: 'completed',
-              phase: 'done',
-              dry_run: false,
-              degraded: false,
-              coverage: 1,
-              requests_made: 10,
-              warnings: [],
-              created_at: new Date().toISOString(),
-            },
-          ],
-          total: 1,
-          limit: 50,
-          offset: 0,
+            created_at: new Date().toISOString(),
+          },
         });
-      if (url.endsWith('/parser/runs/7') && init?.method === 'DELETE')
-        return Promise.resolve(new Response(null, { status: 204 }));
-      if (url.endsWith('/parser/history/clear') && init?.method === 'POST')
-        return json({ runs_deleted: 1 });
-      if (url.endsWith('/parser/data/clear') && init?.method === 'POST') return clearResponse;
       return json({});
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderApp(<ParserRunsPage />);
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-    const deleteDialog = screen.getByRole('dialog', { name: 'Delete parser run?' });
-    await userEvent.click(within(deleteDialog).getByRole('button', { name: 'Delete' }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/parser/runs/7'),
-        expect.objectContaining({ method: 'DELETE' }),
-      ),
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: 'Delete all run history' }));
-    const historyDialog = screen.getByRole('dialog', {
-      name: 'Delete all parser run history?',
+    renderApp(<CollectPage />);
+    const all = await screen.findByRole('button', { name: 'Update data' });
+    await userEvent.click(all);
+    await userEvent.click(screen.getByRole('button', { name: /Chrome Hearts/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Update data' }));
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/parser/run') && init?.method === 'POST',
+      );
+      expect(calls).toHaveLength(2);
+      expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ brand_ids: null });
+      expect(JSON.parse(String(calls[1][1]?.body))).toEqual({ brand_ids: [1] });
     });
-    await userEvent.click(
-      within(historyDialog).getByRole('button', { name: 'Delete all run history' }),
-    );
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/parser/history/clear'),
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    );
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('confirmation_token')),
+    ).toBe(false);
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Clear collected data' }));
-    const clearDialog = screen.getByRole('dialog', { name: 'Clear collected data?' });
+  it('asks for the one-time compliance acknowledgement before collecting', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health'))
+        return json({ status: 'unavailable', reasons: ['live_compliance_not_acknowledged'] }, 503);
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/settings') && init?.method === 'PATCH') return json({ groups: {} });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<CollectPage />);
     await userEvent.click(
-      within(clearDialog).getByRole('button', { name: 'Clear collected data' }),
+      await screen.findByRole('button', { name: 'I understand, enable collection' }),
     );
-    expect(within(clearDialog).getByRole('progressbar')).toHaveAccessibleName('Clearing database…');
-    finishClear?.();
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/settings') && init?.method === 'PATCH',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ live_compliance_acknowledged: true });
+    });
+    expect(screen.getByRole('button', { name: 'Update data' })).toBeDisabled();
+  });
+
+  it('clears collected data after confirmation', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/parser/data/clear') && init?.method === 'POST')
+        return json({ listings_deleted: 12, runs_deleted: 1 });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<CollectPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Clear collected data' }));
+    const dialog = screen.getByRole('dialog', { name: 'Clear collected data' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining('/parser/data/clear'),
@@ -462,12 +383,43 @@ describe('stage 10 screens', () => {
     );
   });
 
+  it('adds a brand from a Grailed designer suggestion', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.includes('/brands/designers?'))
+        return json({ data: [{ name: 'Enfants Riches Déprimés', listings_count: 812 }] });
+      if (url.endsWith('/brands') && init?.method === 'POST')
+        return json({ ...brand, id: 5, name: 'Enfants Riches Déprimés' }, 201);
+      if (url.endsWith('/brands')) return json({ data: [brand] });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<BrandsPage />);
+    await userEvent.type(
+      await screen.findByPlaceholderText('Start typing a designer, e.g. Chrome Hearts'),
+      'enfants',
+    );
+    expect(await screen.findByText(/812/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/brands') && init?.method === 'POST',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        name: 'Enfants Riches Déprimés',
+        designer: 'Enfants Riches Déprimés',
+      });
+    });
+  });
+
   it('edits safe settings and sends a flat validated patch', async () => {
     const groups = {
-      source: { fetch_tier_preferred: { value: 'T1', origin: 'default' } },
-      parser: { requests_per_minute: { value: 90, origin: 'default' } },
-      proxy: { proxy_enabled: { value: false, origin: 'default' } },
-      discovery: { discovery_ttl_hours: { value: 12, origin: 'default' } },
+      collection: {
+        requests_per_minute: { value: 90, origin: 'default' },
+        sold_history_days: { value: 365, origin: 'default' },
+      },
+      privacy: { store_seller_identity: { value: 'hashed', origin: 'default' } },
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

@@ -7,7 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ListingStatus = Literal["active", "sold", "removed_pending", "removed"]
-FetchTier = Literal["T1", "T2", "T3"]
+# Only direct Algolia over HTTP remains; the column keeps the contract explicit.
+FetchTier = Literal["T1"]
 
 
 class ListingData(BaseModel):

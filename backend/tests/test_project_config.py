@@ -48,7 +48,11 @@ def test_reproducible_runtime_contract() -> None:
 
 def test_fetching_settings_keep_safe_limits() -> None:
     settings = Settings()
-    assert settings.algolia_hits_per_page == 200
+    assert settings.algolia_hits_per_page == 1_000
     assert settings.algolia_multiquery_batch_size == 8
+    assert settings.requests_per_minute <= 90
+    assert settings.max_concurrent_requests <= 3
+    with pytest.raises(ValidationError, match="at most 1000"):
+        Settings(algolia_hits_per_page=1_001)
     with pytest.raises(ValidationError, match="at most 8"):
         Settings(algolia_multiquery_batch_size=9)
