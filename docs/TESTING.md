@@ -6,6 +6,11 @@ Parser acceptance is live-only. No generated listing, local source substitute, c
 
 `pytest` may verify exact money handling, secret masking, migrations, database constraints, and idempotent upsert behavior. Transport and UI units may use narrow test doubles, but they are not parser acceptance evidence.
 
+CI runs `pytest --cov`. Line coverage of `backend/app` must stay at or above the
+`fail_under` floor in `backend/pyproject.toml` (73%; measured 74% on 2026-10-06). Raise the
+floor when coverage grows and never lower it to land a change. Coverage counts
+source-independent checks only and never replaces the live gate below.
+
 ## Required live gate
 
 After compliance acknowledgement:

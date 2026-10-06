@@ -25,7 +25,7 @@ lock and SQLite has one writer.
 cd backend
 ruff check app tests
 mypy
-pytest
+pytest --cov
 
 cd ..\frontend
 pnpm run lint

@@ -5,6 +5,7 @@ import BrandsPage from '@/app/brands/page';
 import CollectPage from '@/app/collect/page';
 import SettingsPage from '@/app/settings/page';
 import GroupPage from '@/app/group/page';
+import ListingsPage from '@/app/listings/page';
 import TrendsPage from '@/app/trends/page';
 import { GroupEditor } from '@/components/group-editor';
 import { HealthBanner } from '@/components/health-banner';
@@ -210,7 +211,9 @@ describe('stage 10 screens', () => {
           return json({
             version: 'taxonomy-v1',
             sections: [],
-            types: [{ id: 'hitop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' }],
+            types: [
+              { id: 'hitop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' },
+            ],
           });
         return json({});
       }),
@@ -292,6 +295,80 @@ describe('stage 10 screens', () => {
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ id: 8 })));
     const merge = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/merge'));
     expect(JSON.parse(String(merge?.[1]?.body))).toEqual({ target_id: 8 });
+  });
+
+  it('lists catalog listings with model links, filters and cursor pages', async () => {
+    const listing = {
+      id: 7,
+      grailed_id: 9001,
+      url: 'https://www.grailed.com/listings/9001',
+      title: 'Geobasket Milk',
+      brand: 'Rick Owens',
+      brand_id: 1,
+      product_type: 'hightop_sneakers',
+      status: 'sold',
+      size: '42',
+      color: 'Milk',
+      price: 650,
+      last_seen_at: '2026-10-01T12:00:00Z',
+      days_on_market: 12,
+      model_group_id: 5,
+      model_name: 'Geobasket',
+      is_fallback: false,
+      model_sold_count: 14,
+      model_active_count: 3,
+    };
+    const fallback = {
+      ...listing,
+      id: 8,
+      grailed_id: 9002,
+      title: 'Leather jacket',
+      status: 'active',
+      model_group_id: 6,
+      is_fallback: true,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/grouping/taxonomy'))
+        return json({
+          version: 'taxonomy-v1',
+          sections: [{ id: 'footwear', ru: 'Обувь', en: 'Footwear' }],
+          types: [
+            { id: 'hightop_sneakers', section: 'footwear', ru: 'Кеды', en: 'High-top sneakers' },
+          ],
+        });
+      if (url.includes('cursor=page-2'))
+        return json({ data: [fallback], limit: 50, next_cursor: null });
+      if (url.includes('/listings?'))
+        return json({ data: [listing], limit: 50, next_cursor: 'page-2' });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<ListingsPage />);
+    const title = await screen.findByRole('link', { name: 'Geobasket Milk' });
+    expect(title).toHaveAttribute('href', listing.url);
+    const row = title.closest('tr') as HTMLElement;
+    expect(within(row).getByRole('link', { name: 'Geobasket' })).toHaveAttribute(
+      'href',
+      '/group?id=5',
+    );
+    expect(within(row).getByText('Sold')).toBeInTheDocument();
+    expect(
+      await within(row).findByText(/Rick Owens · High-top sneakers · 42 · Milk · #9001/),
+    ).toBeInTheDocument();
+    const fetched = (part: string) =>
+      fetchMock.mock.calls.some(([input]) => String(input).includes(part));
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'sold');
+    await userEvent.selectOptions(screen.getByLabelText('Product type'), 'hightop_sneakers');
+    await waitFor(() => expect(fetched('status=sold&product_type=hightop_sneakers')).toBe(true));
+    await userEvent.type(screen.getByPlaceholderText('Search by product or brand'), 'geobasket');
+    await waitFor(() => expect(fetched('search=geobasket')).toBe(true));
+    await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    const second = await screen.findByRole('link', { name: 'No model' });
+    expect(second).toHaveAttribute('href', '/group?id=6');
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Geobasket Milk' })).toBeInTheDocument();
   });
 
   it('opens setting help on click', async () => {

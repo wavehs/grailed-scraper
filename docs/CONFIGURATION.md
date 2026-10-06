@@ -21,7 +21,7 @@
 | Ключ | Default | Описание |
 |---|---|---|
 | `environment` | `development` | `development` \| `test` \| `production` |
-| `revision` | auto | env → `data/release.json` → Git commit; `unknown` запрещён в production |
+| `revision` | auto | env → `data/release.json` → Git commit; `unknown` запрещён в production. `data/release.json` — локальный файл для установки без Git, в репозиторий не коммитится |
 | `backend_bind_host` / `frontend_bind_host` | `127.0.0.1` | в production только loopback |
 | `cors_origins` | `127.0.0.1:3000`, `localhost:3000` | в production только loopback-origin |
 | `source_mode` | `live` | `live` only |

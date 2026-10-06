@@ -25,3 +25,12 @@ markers = [
   "browser: requires locally installed browser dependencies",
   "integration: exercises an external service",
 ]
+
+[tool.coverage.run]
+source = ["app"]
+
+[tool.coverage.report]
+# Measured 74% on 2026-10-06. Raise the floor as coverage grows; never lower it to land a change.
+fail_under = 73
+skip_covered = true
+show_missing = true

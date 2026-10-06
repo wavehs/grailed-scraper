@@ -31,6 +31,16 @@ CI запускает `pip-audit -r backend/requirements-dev.txt` и
 компенсирующая мера и обязательная дата пересмотра. Исключение без даты пересмотра
 запрещено.
 
+## Обновления зависимостей
+
+Dependabot (`.github/dependabot.yml`) раз в неделю открывает сгруппированные PR с minor/patch
+обновлениями `backend/requirements*.txt` и `frontend/package.json`; major-обновления приходят
+отдельными PR, GitHub Actions обновляются раз в месяц. Каждый такой PR проходит тот же CI,
+включая `pip-audit` и `pnpm audit`. `curl_cffi` исключён: это транспорт к Grailed, и его
+обновление меняет parser path, поэтому делается вручную вместе с live gate из `TESTING.md`.
+Закреплённые точные версии и `pnpm.overrides` сохраняются: Dependabot меняет пин, а не
+снимает его.
+
 ## Compatibility debt
 
 Открытые предупреждения после gate 2026-08-13:

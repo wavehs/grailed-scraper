@@ -34,6 +34,7 @@ htmlcov/
 *.sqlite3
 data/app.lock
 data/app.pid
+data/release.json
 data/cache/*
 !data/cache/.gitkeep
 data/logs/*
