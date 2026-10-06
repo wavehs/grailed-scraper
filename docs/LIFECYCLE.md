@@ -12,6 +12,13 @@ scoring snapshots. `needs_attention` и незавершённый Batch бло�
 
 ### 10.1. Watermarks
 
+Локальный Ollama-run использует те же состояния, backup, market lock и atomic apply,
+но не создаёт внешние Batch jobs. Запросы последовательны; каждый результат фиксируется
+отдельно, heartbeat обновляется каждые две секунды. После отмены/ошибки остаются
+необработанные ключи для resume. Новые работы не запускаются при старте приложения.
+Reconcile присоединяет только работы настроенного провайдера; смена провайдера не
+переотправляет чужие jobs. У локальных runs бюджет API и стоимость API равны нулю.
+
 Таблица `parser_watermarks(source, brand_id, index_type, last_key_value, last_run_at, full_refresh_at)`.
 
 | Режим | Что делает | Когда |

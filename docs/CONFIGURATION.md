@@ -54,6 +54,10 @@
 | `quality_lot_price_multiplier` | 1.5 | минимальное отношение к медиане для lot/bundle |
 | `identity_image_requests_per_run` | 100 | максимум cover-image запросов после текстового blocking; 0 отключает |
 | `gemini_api_key` | null | только `APP_GEMINI_API_KEY`; UI показывает лишь наличие ключа |
+| `ai_grouping_provider` | `gemini` | `gemini` или `ollama`; локально: `APP_AI_GROUPING_PROVIDER=ollama` |
+| `ollama_model` | `qwen3:8b` | установленная локальная модель; cloud запрещён |
+| `ollama_context` | `4096` | 2048–8192 токенов; один запрос за раз |
+| `ollama_timeout_s` | `300` | 30–1800 секунд; heartbeat работает во время inference |
 | `parser_watermark_overlap_hours` | 2 | overlap delta-watermark |
 | `store_seller_identity` | `hashed` | `none` \| `hashed` \| `plain` |
 | `seller_identity_salt` | generated | секрет из env или `data/secrets/`; не доступен через API |

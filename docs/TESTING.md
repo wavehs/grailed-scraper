@@ -27,3 +27,18 @@ atomic apply and rollback. A real Gemini check is a 100-item canary; only a comp
 structured response permits the remaining historical rollout. It requires an explicit
 UI budget confirmation, caps the canary at `$0.50`, and caps canary plus the historical
 rollout at `$5.00`. It never replaces the bounded live Grailed gate above.
+
+## Local grouping gate
+
+Source-independent checks cover type conflicts, model qualifiers, strict JSON,
+truncation, persisted per-input resume, zero external Batch calls and atomic rollback.
+Hardware probes with user-provided example strings measure local inference only;
+they are not real-listing acceptance or accuracy measurements. Local canary uses at
+most 100 existing real listings and no new Grailed requests. Before broad rollout,
+review its assignments against human labels and report false merges, missed merges,
+and abstentions separately. Successful JSON alone is not quality acceptance.
+
+2026-09-07: live parser gate HOLD. Current Grailed Terms §12 explicitly prohibit
+automated extraction; repository instructions require stopping this gate.
+No fresh listing collection was performed. This does not block local work on
+user-provided data. Source: https://www.grailed.com/about/terms .

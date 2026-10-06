@@ -168,6 +168,8 @@ export type GroupingRunStatus =
   | 'rolled_back';
 
 export type AiGroupingPreflight = {
+  provider?: 'gemini' | 'ollama';
+  provider_configured?: boolean | null;
   mode: GroupingRunMode;
   gemini_configured: boolean;
   listing_count: number;
@@ -182,6 +184,7 @@ export type AiGroupingPreflight = {
 };
 
 export type AiGroupingExample = {
+  evidence_checked?: boolean;
   listing_id: number;
   title: string;
   old_group?: string;

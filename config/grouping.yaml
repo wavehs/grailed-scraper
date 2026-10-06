@@ -1,0 +1,32 @@
+version: local-grouping-v1
+# Physical product boundaries, never inferred from a motif such as Dagger or Cross.
+types:
+  hat: {words: [hat, hats, cap, caps, beanie, beanies, snapback, trucker], sources: [hats], categories: [accessories, womens_accessories]}
+  necklace: {words: [pendant, pendants, pendent, charm, charms, necklace, necklaces], sources: [necklaces, necklaces_pendants], categories: [accessories, womens_accessories, womens_jewelry]}
+  ring: {words: [ring, rings], sources: [rings], categories: [accessories, womens_accessories, womens_jewelry]}
+  bracelet: {words: [bracelet, bracelets, bangle, bangles], sources: [bracelets], categories: [accessories, womens_accessories, womens_jewelry]}
+  earring: {words: [earring, earrings], sources: [earrings], categories: [accessories, womens_accessories, womens_jewelry]}
+  keychain: {words: [keychain, keychains, keyring], sources: [keychains], categories: [accessories, womens_accessories]}
+  eyewear: {words: [sunglasses, glasses, eyewear], sources: [glasses, sunglasses], categories: [accessories, womens_accessories]}
+  watch: {words: [watch, watches], sources: [watches], categories: [accessories, womens_accessories, womens_jewelry]}
+  belt: {words: [belt, belts], sources: [belts], categories: [accessories, womens_accessories]}
+  wallet: {words: [wallet, wallets, cardholder], sources: [wallets], categories: [accessories, womens_accessories]}
+  bag: {words: [bag, bags, backpack, tote, duffle], sources: [bags, backpacks, luggage], categories: [accessories, womens_accessories, womens_bags_luggage]}
+  footwear: {words: [shoe, shoes, sneaker, sneakers, boot, boots, loafer, loafers, sandal, sandals], sources: [sneakers, boots, casual_leather_shoes, formal_shoes, hi_top_sneakers, low_top_sneakers, sandals, slip_ons], categories: [footwear, womens_footwear]}
+  hoodie: {words: [hoodie, hoodies, hoody], sources: [hoodies], categories: [tops, outerwear, womens_tops, womens_outerwear]}
+  sweatshirt: {words: [sweatshirt, sweatshirts, crewneck], sources: [sweatshirts], categories: [tops, womens_tops]}
+  jacket: {words: [jacket, jackets, coat, coats, blazer, parka], sources: [jackets, coats, blazers, bombers, parkas, leather_jackets, denim_jackets], categories: [outerwear, tailoring, womens_outerwear]}
+  sweater: {words: [sweater, sweaters, cardigan, knitwear], sources: [sweaters, sweaters_knitwear], categories: [tops, womens_tops]}
+  jeans: {words: [jeans], sources: [jeans, denim], categories: [bottoms, womens_bottoms]}
+  pants: {words: [pants, trousers, joggers, sweatpants], sources: [pants, casual_pants, sweatpants_joggers], categories: [bottoms, womens_bottoms]}
+  shorts: {words: [shorts], sources: [shorts], categories: [bottoms, womens_bottoms]}
+  dress: {words: [dress, dresses], sources: [dresses], categories: [womens_dresses]}
+  tee: {words: [tee, tees, tshirt, shirt, shirts, tank], sources: [short_sleeve_t_shirts, long_sleeve_t_shirts, shirts, polos], categories: [tops, womens_tops]}
+brand_models:
+  rick owens:
+    geobasket: {aliases: [geobasket, geobaskets], type: footwear}
+    ramones: {aliases: [ramones], type: footwear}
+colors: [beige, black, blue, brown, cream, gold, gray, grey, green, multicolor, navy, olive, orange, pink, purple, red, silver, white, yellow]
+brand_colors:
+  rick owens: [milk, dust, pearl, chalk, taupe, burgundy]
+protected_modifiers: [double, triple, mini, tiny, baby, large, small, jumbo, mega, high, low, mid, fur, dog, tag]

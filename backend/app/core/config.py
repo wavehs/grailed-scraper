@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
     gemini_api_key: SecretStr | None = None
+    ai_grouping_provider: Literal["gemini", "ollama"] = "gemini"
+    ollama_model: str = Field(default="qwen3:8b", min_length=1, max_length=64)
+    ollama_context: int = Field(default=4096, ge=2048, le=8192)
+    ollama_timeout_s: float = Field(default=300, ge=30, le=1800)
     proxy_url: str | None = None
     proxy_list_browser: list[str] | str = []
     proxy_list_http: list[str] | str = []

@@ -37,6 +37,14 @@ from app.services.ai_grouping.domain import (
     compute_input_hash,
     deterministic_product_type,
 )
+from app.services.ai_grouping.safety import (
+    LOCAL_GROUPING_VERSION,
+    LOCAL_KEY_PREFIX,
+    local_input_version,
+)
+from app.services.ai_grouping.safety import (
+    product_type as safe_product_type,
+)
 from app.services.identity.images import fingerprint_url, hamming_distance
 from app.services.transport.protocols import HttpTransport
 from app.services.transport.rate_limiter import RateLimiter
@@ -511,6 +519,25 @@ class IdentityResolver:
             and (group := groups_by_id.get(assignment.model_group_id)) is not None
             and group.stable_key.startswith(f"{AI_KEY_PREFIX}:")
         }
+        preserved_ids.update(
+            listing.id
+            for listing in listings
+            if listing.brand_id is not None
+            and (assignment := existing.get(listing.id)) is not None
+            and assignment.grouping_version == LOCAL_GROUPING_VERSION
+            and assignment.method.startswith("ollama_")
+            and assignment.input_hash
+            == compute_input_hash(
+                brand=brand_names.get(listing.brand_id, listing.brand_name_raw),
+                category=listing.category,
+                subcategory=listing.subcategory,
+                title=listing.title,
+                prompt_version=f"{local_input_version()}:{self._settings.ollama_model}",
+            )
+            and (group := groups_by_id.get(assignment.model_group_id)) is not None
+            and group.brand_id == listing.brand_id
+            and group.stable_key.startswith(f"{LOCAL_KEY_PREFIX}:")
+        )
         signatures: dict[int, LineSignature | None] = {}
         buckets: dict[tuple[int, str], list[Listing]] = defaultdict(list)
         for listing in listings:
@@ -523,8 +550,15 @@ class IdentityResolver:
                 listing.color,
                 listing.category,
             )
-            product_type = deterministic_product_type(listing.subcategory)
-            if signature is not None and product_type is not None:
+            product_type = safe_product_type(
+                listing.title,
+                brand_names.get(listing.brand_id, listing.brand_name_raw),
+                listing.category,
+                listing.subcategory,
+            )
+            if product_type is None:
+                signature = None
+            elif signature is not None:
                 signature = LineSignature(product_type, signature.key, signature.name)
             signatures[listing.id] = signature
             if signature is not None:
@@ -564,7 +598,7 @@ class IdentityResolver:
                     anchor
                     for token in token_sets[signature.key]
                     for anchor in anchors_by_token[token]
-                    if token_sets[anchor] <= token_sets[signature.key]
+                    if token_sets[anchor] == token_sets[signature.key]
                 }
                 if subset:
                     anchor = min(
@@ -1098,9 +1132,8 @@ def _singularize(token: str) -> str:
 
 
 def _fuzzy_line_allowed(left: str, right: str) -> bool:
-    return any(len(token) >= 5 for token in left.split()) and any(
-        len(token) >= 5 for token in right.split()
-    )
+    # Extra tokens may identify a different model. Similarity is not merge evidence.
+    return left == right
 
 
 def _deletions(token: str) -> set[str]:

@@ -72,6 +72,33 @@ function mockApi(runs: unknown[] = [], detail?: unknown, preflightValue = prefli
 beforeEach(() => window.localStorage.clear());
 
 describe('AI grouping page', () => {
+  it('starts local processing without a Gemini key or paid budget', async () => {
+    const localPreflight = {
+      ...preflight,
+      provider: 'ollama',
+      provider_configured: true,
+      gemini_configured: false,
+      estimated_cost_usd: '0.00',
+      budget_cap_usd: '0.00',
+    };
+    const fetchMock = mockApi([], undefined, localPreflight);
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<AiGroupingPage />);
+    expect(await screen.findByText('Local model ready')).toBeInTheDocument();
+    expect(screen.getByText('Local processing')).toBeInTheDocument();
+    expect(screen.queryByText('Gemini configured')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start canary · $0.00 max' }));
+    await waitFor(() => {
+      const request = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/ai-grouping/runs') && init?.method === 'POST',
+      );
+      expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+        mode: 'canary',
+        budget_cap_usd: '0.00',
+      });
+    });
+  });
+
   it('shows preflight and the exact safe Google disclosure without rendering a secret', async () => {
     vi.stubGlobal('fetch', mockApi());
     renderApp(<AiGroupingPage />);

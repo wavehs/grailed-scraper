@@ -244,7 +244,9 @@ async def test_resolver_groups_model_variants_and_same_seller_relist(tmp_path) -
             )
         )
         assert len(assignments) == 6
-        assert len({item.model_group_id for item in assignments[:4]}) == 1
+        assert len({item.model_group_id for item in assignments[:3]}) == 1
+        # An extra model-defining token (Creep) is no longer swallowed by a subset match.
+        assert assignments[3].model_group_id != assignments[0].model_group_id
         assert [item.method for item in assignments[:4]] == ["rule_provisional"] * 4
         assert all(item.grouping_version == GROUPING_VERSION for item in assignments)
         assert all(item.input_hash for item in assignments)

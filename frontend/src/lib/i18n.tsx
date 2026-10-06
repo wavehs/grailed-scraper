@@ -25,6 +25,17 @@ const en: Record<string, string> = {
   parserRuns: 'Parser runs',
   aiGrouping: 'AI grouping',
   aiGroupingIntro: 'Classify listings into safe brand, product type, and model groups with Gemini.',
+  aiLocalIntro:
+    'Group by brand, physical product type, and model on this computer. Colors remain variants.',
+  aiLocalPrivacy: 'Local processing',
+  aiLocalDisclosure:
+    'Only title, brand, and categories are processed by Ollama on this computer. Conflicting or insufficient evidence keeps a listing separate.',
+  aiLocalConfigured: 'Local model ready',
+  aiEvidenceChecked: 'Evidence checked',
+  aiEvidenceMissing: 'Kept separate: insufficient evidence',
+  aiLocalMissing: 'Start Ollama and download the configured model.',
+  aiLocalStartHelp:
+    'One listing at a time, with a second evidence check. Progress is saved and successful runs apply automatically. Model agreement is not a measured accuracy score.',
   aiDataPrivacy: 'Data sent to Gemini',
   aiGoogleDisclosure:
     'Brand, category, subcategory, title, an opaque hash, and a derived locked product type are sent to Google.',
@@ -404,6 +415,17 @@ const ru: Record<string, string> = {
   aiGrouping: 'AI-группировка',
   aiGroupingIntro:
     'Безопасная группировка объявлений по бренду, типу товара и модели через Gemini.',
+  aiLocalIntro:
+    'Группировка по бренду, физическому типу товара и модели на этом компьютере. Цвета остаются вариантами.',
+  aiLocalPrivacy: 'Локальная обработка',
+  aiLocalDisclosure:
+    'Ollama обрабатывает только название, бренд и категории на этом компьютере. При противоречиях или недостатке данных товар остаётся отдельно.',
+  aiLocalConfigured: 'Локальная модель готова',
+  aiEvidenceChecked: 'Признаки проверены',
+  aiEvidenceMissing: 'Оставлен отдельно: недостаточно данных',
+  aiLocalMissing: 'Запустите Ollama и загрузите выбранную модель.',
+  aiLocalStartHelp:
+    'По одному товару, с повторной проверкой доказательств. Прогресс сохраняется, успешный результат применяется автоматически. Совпадение ответов модели не является измеренной точностью.',
   aiDataPrivacy: 'Данные для Gemini',
   aiGoogleDisclosure:
     'В Google отправляются бренд, категория, подкатегория, название, непрозрачный хеш и вычисленный фиксированный тип товара.',

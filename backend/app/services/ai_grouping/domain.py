@@ -169,7 +169,12 @@ def normalize_model_span(model_span: str) -> str:
 
 
 def stable_ai_key(
-    brand: str, product_type: str, model_span: str, *, brand_id: int | None = None
+    brand: str,
+    product_type: str,
+    model_span: str,
+    *,
+    brand_id: int | None = None,
+    key_prefix: str = AI_KEY_PREFIX,
 ) -> str:
     """Build an immutable brand/type/model key; product types can never collide."""
 
@@ -183,7 +188,7 @@ def stable_ai_key(
     if brand_id is not None:
         brand_slug = f"{brand_slug}-{brand_id}"
     digest = hashlib.sha256(normalized_model.encode("utf-8")).hexdigest()
-    return f"{AI_KEY_PREFIX}:{brand_slug}:{type_slug}:{digest}"
+    return f"{key_prefix}:{brand_slug}:{type_slug}:{digest}"
 
 
 def unique_fallback_key(
@@ -193,6 +198,7 @@ def unique_fallback_key(
     brand_id: int | None = None,
     physical_item_id: int | None,
     listing_id: int,
+    key_prefix: str = AI_KEY_PREFIX,
 ) -> str:
     """Keep unresolved listings separate while preserving same-item relists."""
 
@@ -211,7 +217,7 @@ def unique_fallback_key(
         raise ValueError("brand and product_type must be non-empty")
     if brand_id is not None:
         brand_slug = f"{brand_slug}-{brand_id}"
-    return f"{AI_KEY_PREFIX}:{brand_slug}:{type_slug}:unique:{identity}"
+    return f"{key_prefix}:{brand_slug}:{type_slug}:unique:{identity}"
 
 
 def batch_cost_usd(model: str, input_tokens: int, output_tokens: int) -> Decimal:

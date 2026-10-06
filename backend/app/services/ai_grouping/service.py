@@ -199,6 +199,13 @@ def parse_bundle_output(
 class AiGroupingService:
     """Persist grouping work before external calls and apply it transactionally."""
 
+    grouping_version = GROUPING_VERSION
+    prompt_version = PROMPT_VERSION
+    key_prefix = "ai-v1"
+    method_prefix = "gemini"
+    base_model = _CHEAP_MODEL
+    review_model = _REVIEW_MODEL
+
     def __init__(
         self,
         sessions: async_sessionmaker[AsyncSession],
@@ -277,7 +284,7 @@ class AiGroupingService:
         preflight = await self.preflight(mode)
         if not preflight["can_start"]:
             raise RuntimeError(str(preflight["blocked_reason"]))
-        if budget_cap <= 0 or budget_cap > Decimal(preflight["budget_cap_usd"]):
+        if budget_cap < 0 or budget_cap > Decimal(preflight["budget_cap_usd"]):
             raise ValueError("grouping_budget_invalid")
         ensure_within_budget(Decimal(0), Decimal(preflight["estimated_cost_usd"]), budget_cap)
         async with self._sessions() as session:
@@ -286,10 +293,10 @@ class AiGroupingService:
             run = AiGroupingRun(
                 mode=mode,
                 status="preparing",
-                base_model=_CHEAP_MODEL,
-                review_model=_REVIEW_MODEL,
-                grouping_version=GROUPING_VERSION,
-                prompt_version=PROMPT_VERSION,
+                base_model=self.base_model,
+                review_model=self.review_model,
+                grouping_version=self.grouping_version,
+                prompt_version=self.prompt_version,
                 budget_limit_usd=budget_cap,
                 estimated_cost_usd=Decimal(preflight["estimated_cost_usd"]),
                 actual_cost_usd=Decimal(0),
@@ -465,7 +472,7 @@ class AiGroupingService:
                 )
                 group_rows = list(
                     await session.scalars(
-                        select(ModelGroup).where(ModelGroup.stable_key.like("ai-v1:%"))
+                        select(ModelGroup).where(ModelGroup.stable_key.like(f"{self.key_prefix}:%"))
                     )
                 )
                 groups = {group.stable_key: group for group in group_rows}
@@ -492,7 +499,7 @@ class AiGroupingService:
                         item.updated_at = now
                         stale += 1
                         continue
-                    local_product_type = deterministic_product_type(listing.subcategory)
+                    local_product_type = self._product_type(listing, brand.name)
                     product_type = local_product_type or item.product_type or "unknown"
                     model = item.normalized_model if item.model_span else None
                     candidate_id = _positive_int((item.result or {}).get("candidate_id"))
@@ -502,10 +509,18 @@ class AiGroupingService:
                         if can_reuse_group
                         else None
                     )
-                    method = "gemini_candidate" if group is not None else "gemini_exact"
+                    method = (
+                        f"{self.method_prefix}_candidate"
+                        if group is not None
+                        else f"{self.method_prefix}_exact"
+                    )
                     if group is None and model and can_reuse_group:
                         stable_key = stable_ai_key(
-                            brand.name, product_type, model, brand_id=brand.id
+                            brand.name,
+                            product_type,
+                            model,
+                            brand_id=brand.id,
+                            key_prefix=self.key_prefix,
                         )
                         group = groups.get(stable_key)
                         if group is not None and group.brand_id != brand.id:
@@ -531,6 +546,7 @@ class AiGroupingService:
                             brand_id=brand.id,
                             physical_item_id=(physical.physical_item_id if physical else None),
                             listing_id=listing.id,
+                            key_prefix=self.key_prefix,
                         )
                         group = groups.get(stable_key)
                         if group is None:
@@ -545,7 +561,7 @@ class AiGroupingService:
                             )
                             session.add(group)
                             groups[stable_key] = group
-                        method = "gemini_unique"
+                        method = f"{self.method_prefix}_unique"
                         unique_count += 1
                     assignment = assignments.get(listing.id)
                     item.previous_model_group_id = (
@@ -581,7 +597,7 @@ class AiGroupingService:
                             method=method,
                             confidence=item.confidence or Decimal(0),
                             algorithm_version=IDENTITY_VERSION,
-                            grouping_version=GROUPING_VERSION,
+                            grouping_version=self.grouping_version,
                             input_hash=item.input_hash,
                             ai_grouping_run_id=run_id,
                             updated_at=now,
@@ -592,7 +608,7 @@ class AiGroupingService:
                         assignment.method = method
                         assignment.confidence = item.confidence or Decimal(0)
                         assignment.algorithm_version = IDENTITY_VERSION
-                        assignment.grouping_version = GROUPING_VERSION
+                        assignment.grouping_version = self.grouping_version
                         assignment.input_hash = item.input_hash
                         assignment.ai_grouping_run_id = run_id
                         assignment.updated_at = now
@@ -1374,6 +1390,8 @@ class AiGroupingService:
                 .where(
                     AiGroupingRun.status == "completed",
                     AiGroupingItem.status == "applied",
+                    AiGroupingRun.grouping_version == self.grouping_version,
+                    AiGroupingRun.base_model == self.base_model,
                 )
                 .distinct()
             )
@@ -1389,6 +1407,8 @@ class AiGroupingService:
             .where(
                 AiGroupingRun.status == "completed",
                 AiGroupingItem.status == "applied",
+                AiGroupingRun.grouping_version == self.grouping_version,
+                AiGroupingRun.base_model == self.base_model,
             )
             .group_by(AiGroupingItem.input_hash)
             .subquery()
@@ -1469,7 +1489,12 @@ class AiGroupingService:
         return (
             await session.scalar(
                 select(AiGroupingRun.id)
-                .where(AiGroupingRun.mode == "canary", AiGroupingRun.status == "completed")
+                .where(
+                    AiGroupingRun.mode == "canary",
+                    AiGroupingRun.status == "completed",
+                    AiGroupingRun.grouping_version == self.grouping_version,
+                    AiGroupingRun.base_model == self.base_model,
+                )
                 .limit(1)
             )
             is not None
@@ -1520,25 +1545,40 @@ class AiGroupingService:
                 for row in rows
                 if row[2] is None
                 or row[2].method == "rule_provisional"
-                or row[2].grouping_version != GROUPING_VERSION
+                or row[2].grouping_version != self.grouping_version
+                or row[2].input_hash != self._input_hash(row[0], row[1].name)
+                or not self._assignment_model_current(row[2])
             ]
         if mode == "remaining":
             return [
                 row
                 for row in rows
                 if row[2] is None
-                or row[2].grouping_version != GROUPING_VERSION
-                or not row[2].method.startswith("gemini_")
+                or row[2].grouping_version != self.grouping_version
+                or not row[2].method.startswith(f"{self.method_prefix}_")
+                or row[2].input_hash != self._input_hash(row[0], row[1].name)
+                or not self._assignment_model_current(row[2])
             ]
         return _canary_rows(rows)
 
+    def _assignment_model_current(self, assignment: ListingModelAssignment) -> bool:
+        return True
+
     @staticmethod
-    def _input_hash(listing: Listing, brand: str) -> str:
+    def _product_type(listing: Listing, brand: str) -> str | None:
+        from app.services.ai_grouping.safety import product_type
+
+        if product_type(listing.title, brand, listing.category, listing.subcategory) is None:
+            return None
+        return deterministic_product_type(listing.subcategory)
+
+    def _input_hash(self, listing: Listing, brand: str) -> str:
         return compute_input_hash(
             brand=brand,
             category=listing.category,
             subcategory=listing.subcategory,
             title=listing.title,
+            prompt_version=self.prompt_version,
         )
 
 
@@ -1684,13 +1724,13 @@ def _local_candidate_id(item: PromptItem, decision: ParsedDecision) -> int | Non
     if decision.model_span is None or decision.product_type is None:
         return None
     model = normalize_model_span(decision.model_span)
-    scored = [
-        (token_set_ratio(model, name), candidate_id)
+    exact = [
+        candidate_id
         for candidate_id, name, product_type in item.candidates
         if product_type == decision.product_type
+        and normalize_model_span(name.split(" — ", 1)[0]) == model
     ]
-    score, candidate_id = max(scored, default=(0, 0), key=lambda value: (value[0], -value[1]))
-    return candidate_id if score >= 92 else None
+    return exact[0] if len(exact) == 1 else None
 
 
 def _stable_product_type(stable_key: str) -> str | None:

@@ -70,7 +70,8 @@ export default function AiGroupingPage() {
         mode === 'canary' && preflight.data
           ? preflight.data
           : await getApi<AiGroupingPreflight>(`/ai-grouping/preflight?mode=${mode}`);
-      if (!check.gemini_configured) throw new Error(t('aiGeminiMissing'));
+      if (!(check.provider_configured ?? check.gemini_configured))
+        throw new Error(t(check.provider === 'ollama' ? 'aiLocalMissing' : 'aiGeminiMissing'));
       if (!check.can_start) throw new Error(check.blocked_reason ?? t('aiGroupingBlocked'));
       return api<AiGroupingRun>('/ai-grouping/runs', 'POST', {
         mode,
@@ -89,13 +90,18 @@ export default function AiGroupingPage() {
     onSuccess: refresh,
   });
 
-  const configured = preflight.data?.gemini_configured ?? false;
+  const local = preflight.data?.provider === 'ollama';
+  const configured =
+    preflight.data?.provider_configured ?? preflight.data?.gemini_configured ?? false;
   const busy = start.isPending || control.isPending || hasActiveRun;
   const actionError = start.error ?? control.error;
 
   return (
     <section className="space-y-6">
-      <PageHeader title={t('aiGrouping')} description={t('aiGroupingIntro')} />
+      <PageHeader
+        title={t('aiGrouping')}
+        description={t(local ? 'aiLocalIntro' : 'aiGroupingIntro')}
+      />
 
       {preflight.isError ? (
         <ErrorState error={preflight.error} retry={() => preflight.refetch()} />
@@ -106,10 +112,10 @@ export default function AiGroupingPage() {
               <div>
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
                   <ShieldCheck size={17} className="text-[var(--accent)]" />
-                  {t('aiDataPrivacy')}
+                  {t(local ? 'aiLocalPrivacy' : 'aiDataPrivacy')}
                 </h2>
                 <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                  {t('aiGoogleDisclosure')}
+                  {t(local ? 'aiLocalDisclosure' : 'aiGoogleDisclosure')}
                 </p>
               </div>
               <Badge
@@ -119,8 +125,8 @@ export default function AiGroupingPage() {
                 {preflight.isLoading
                   ? t('loading')
                   : configured
-                    ? t('aiGeminiConfigured')
-                    : t('aiGeminiNotConfigured')}
+                    ? t(local ? 'aiLocalConfigured' : 'aiGeminiConfigured')
+                    : t(local ? 'aiLocalMissing' : 'aiGeminiNotConfigured')}
               </Badge>
             </div>
           </Card>
@@ -156,7 +162,9 @@ export default function AiGroupingPage() {
 
           <Card className="p-5">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">{t('aiStartRun')}</h2>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">{t('aiStartHelp')}</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              {t(local ? 'aiLocalStartHelp' : 'aiStartHelp')}
+            </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 icon={<Play size={15} />}
@@ -286,7 +294,10 @@ export default function AiGroupingPage() {
                         <strong className="text-[var(--text-primary)]">{example.new_group}</strong>
                       </p>
                       <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {example.product_type} · {t('confidence')} {example.confidence}
+                        {example.product_type} ·{' '}
+                        {run.grouping_version.startsWith('local-')
+                          ? t(example.evidence_checked ? 'aiEvidenceChecked' : 'aiEvidenceMissing')
+                          : `${t('confidence')} ${example.confidence}`}
                       </p>
                     </li>
                   ))}

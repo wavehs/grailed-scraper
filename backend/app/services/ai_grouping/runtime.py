@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.db.models import AiGroupingBatch, AiGroupingRun
 from app.services.ai_grouping.client import GeminiBatchClient
+from app.services.ai_grouping.local_client import LocalGroupingClient
+from app.services.ai_grouping.local_service import LocalGroupingService
 from app.services.ai_grouping.service import AiGroupingService, GroupingMode
 
 _RECONCILABLE = {
@@ -45,11 +47,22 @@ class AiGroupingRuntime:
         client: Any | None = None,
     ) -> None:
         self._sessions = sessions
-        self._service = service or AiGroupingService(sessions, settings)
+        self._provider = settings.ai_grouping_provider
         self._market_lock = market_lock or asyncio.Lock()
         key = settings.gemini_api_key
         secret = key.get_secret_value().strip() if key is not None else ""
-        self._client = client or (GeminiBatchClient(secret) if secret else None)
+        self._client = client or (
+            LocalGroupingClient(settings)
+            if self._provider == "ollama"
+            else GeminiBatchClient(secret)
+            if secret
+            else None
+        )
+        self._service = service or (
+            LocalGroupingService(sessions, settings, self._client)
+            if isinstance(self._client, LocalGroupingClient)
+            else AiGroupingService(sessions, settings)
+        )
         self._jobs: dict[int, asyncio.Task[None]] = {}
         self._cancel: dict[int, asyncio.Event] = {}
         self._start_lock = asyncio.Lock()
@@ -91,7 +104,12 @@ class AiGroupingRuntime:
             run_ids = list(
                 await session.scalars(
                     select(AiGroupingRun.id)
-                    .where(AiGroupingRun.status.in_(_RECONCILABLE))
+                    .where(
+                        AiGroupingRun.status.in_(_RECONCILABLE),
+                        AiGroupingRun.grouping_version.like("local-%")
+                        if self._provider == "ollama"
+                        else ~AiGroupingRun.grouping_version.like("local-%"),
+                    )
                     .order_by(AiGroupingRun.id)
                 )
             )
@@ -101,6 +119,8 @@ class AiGroupingRuntime:
     async def cancel(self, run_id: int) -> None:
         client = self._require_client()
         run = await self._require_run(run_id)
+        if run.grouping_version.startswith("local-") != (self._provider == "ollama"):
+            raise RuntimeError("grouping_provider_mismatch")
         if run.status not in _CANCELLABLE:
             raise RuntimeError("grouping_run_not_cancellable")
         event = self._cancel.get(run_id)
@@ -115,6 +135,9 @@ class AiGroupingRuntime:
     async def resume(self, run_id: int) -> None:
         async with self._start_lock:
             self._require_client()
+            run = await self._require_run(run_id)
+            if run.grouping_version.startswith("local-") != (self._provider == "ollama"):
+                raise RuntimeError("grouping_provider_mismatch")
             if any(not task.done() for task in self._jobs.values()):
                 raise RuntimeError("grouping_run_active")
             async with self._sessions() as session:

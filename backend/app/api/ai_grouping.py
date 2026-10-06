@@ -31,6 +31,8 @@ _SAFE_CODE = re.compile(r"[a-z0-9_]{1,80}")
 
 class PreflightResponse(BaseModel):
     mode: GroupingMode
+    provider: str = "gemini"
+    provider_configured: bool | None = None
     gemini_configured: bool
     listing_count: int
     unique_input_count: int
@@ -45,7 +47,7 @@ class PreflightResponse(BaseModel):
 
 class StartRequest(BaseModel):
     mode: GroupingMode
-    budget_cap_usd: Decimal = Field(gt=0, decimal_places=8)
+    budget_cap_usd: Decimal = Field(ge=0, decimal_places=8)
 
 
 class ResumeRequest(BaseModel):
@@ -59,6 +61,7 @@ class GroupingExample(BaseModel):
     new_group: str
     product_type: str
     confidence: Decimal
+    evidence_checked: bool = False
 
 
 class RunResponse(BaseModel):
@@ -300,6 +303,7 @@ async def _examples(session: AsyncSession, run_id: int) -> list[GroupingExample]
             new_group=item.target_name or "",
             product_type=item.product_type or item.target_category or "unknown",
             confidence=item.confidence or Decimal(0),
+            evidence_checked=bool((item.result or {}).get("two_pass_agreement")),
         )
         for item, title, previous in rows
     ]
