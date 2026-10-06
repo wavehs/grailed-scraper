@@ -39,7 +39,16 @@ def restore_listings_fts_triggers() -> None:
 
 
 def upgrade() -> None:
-    # The browser tiers never produced rows, so no stored value needs rewriting.
+    # SQLite DDL is not transactional: a failed earlier attempt leaves its batch copy behind.
+    op.execute("DROP TABLE IF EXISTS _alembic_tmp_listings")
+    op.execute("DROP TABLE IF EXISTS _alembic_tmp_parser_run_tasks")
+    # Older databases do hold T0/T2/T3 rows; keep their provenance as a quality flag.
+    op.execute(
+        "UPDATE listings SET quality_flags = "
+        "json_insert(quality_flags, '$[#]', 'legacy_fetch_tier_' || fetch_tier), "
+        "fetch_tier = 'T1' WHERE fetch_tier != 'T1'"
+    )
+    op.execute("UPDATE parser_run_tasks SET fetch_tier = NULL WHERE fetch_tier != 'T1'")
     with op.batch_alter_table("listings", recreate="always") as batch:
         batch.drop_constraint("ck_listings_fetch_tier", type_="check")
         batch.create_check_constraint("ck_listings_fetch_tier", "fetch_tier = 'T1'")

@@ -244,3 +244,58 @@ def test_grouping_migrations_tolerate_tables_left_by_startup_create_all(tmp_path
     assert {"grouping_hash", "grouped_at"} <= brand_columns
     assert "product_type" in group_columns
     assert stopwords == [("promo",)]
+
+
+def test_fetch_tier_migration_recovers_from_legacy_tiers_and_failed_attempt(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    backend_root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    database_path = tmp_path / "legacy-tier.db"
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.attributes["database_url"] = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+    command.upgrade(config, "20261006_0016")
+
+    observed = datetime(2026, 10, 6, tzinfo=UTC)
+    engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+    listings_0016 = Table("listings", MetaData(), autoload_with=engine)
+    with Session(engine) as session:
+        session.execute(
+            insert(listings_0016).values(
+                source="grailed",
+                grailed_id=88,
+                status="active",
+                url="https://example.test/88",
+                title="Legacy Item",
+                brand_name_raw="Rick Owens",
+                price=Decimal("100.00"),
+                currency_original="USD",
+                likes_count=0,
+                sold_at_is_estimated=False,
+                first_seen_at=observed,
+                last_seen_at=observed,
+                photo_urls=[],
+                photo_count=0,
+                seller_identity_mode="none",
+                quality_flags=[],
+                fetch_tier="T2",
+                raw_json={},
+                schema_version=1,
+            )
+        )
+        session.commit()
+    # A previous failed batch rebuild leaves its copy behind on SQLite.
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE _alembic_tmp_listings (id INTEGER)")
+    engine.dispose()
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        leftovers = connection.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE '_alembic_tmp_%'"
+        ).fetchall()
+        tier, flags = connection.execute(
+            "SELECT fetch_tier, quality_flags FROM listings"
+        ).fetchone()
+    assert leftovers == []
+    assert tier == "T1"
+    assert json.loads(flags) == ["legacy_fetch_tier_T2"]
