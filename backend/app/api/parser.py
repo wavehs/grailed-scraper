@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from importlib import metadata
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -23,8 +24,6 @@ from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import compliance_reasons, require_live_compliance
 from app.db.models import (
-    AiGroupingBatch,
-    AiGroupingRun,
     Brand,
     Listing,
     ModelGroup,
@@ -45,8 +44,7 @@ from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.exceptions import AlgoliaError
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.sources.grailed.discovery.service import DiscoveryService
-from app.services.transport.capabilities import probe_capabilities
-from app.services.transport.factory import create_http_transport, create_proxy_manager
+from app.services.transport.factory import create_http_transport
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 RunStatus = Literal[
@@ -151,7 +149,6 @@ class ParserHealthResponse(BaseModel):
     transports: dict[str, bool]
     discovery: dict[str, Any]
     schema_status: dict[str, Any] = Field(serialization_alias="schema")
-    proxies: list[dict[str, Any]]
     active_runs: list[int]
     reasons: list[str] = []
     versions: dict[str, str | None] = {}
@@ -178,8 +175,6 @@ class RunMetricsResponse(BaseModel):
     listings_invalid: int = 0
     quality_flags_counts: dict[str, int] = {}
     coverage_by_brand: dict[str, str | None] = {}
-    browser_restarts: int = 0
-    proxy_failures: int = 0
     duration_s: float = 0
 
 
@@ -311,7 +306,6 @@ async def clear_collected_data(
     await _ensure_no_active_runs(session, runtime)
     listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
     runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
-    await session.execute(delete(AiGroupingRun))
     await session.execute(delete(Listing))
     await session.execute(delete(PhysicalItem))
     await session.execute(delete(ParserRun))
@@ -344,35 +338,6 @@ async def _ensure_no_active_runs(session: AsyncSession, runtime: ParserRuntime) 
         select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
     ):
         raise ApiError(409, "run_active", "Stop active parser runs before deleting data")
-    if await session.scalar(
-        select(AiGroupingRun.id)
-        .where(
-            AiGroupingRun.status.in_(
-                (
-                    "preparing",
-                    "submitted",
-                    "running",
-                    "validating",
-                    "waiting_for_market",
-                    "applying",
-                    "interrupted",
-                    "needs_attention",
-                )
-            )
-        )
-        .limit(1)
-    ):
-        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
-    if await session.scalar(
-        select(AiGroupingBatch.id)
-        .where(
-            AiGroupingBatch.status.in_(
-                ("preparing", "submitted", "running", "interrupted", "needs_attention")
-            )
-        )
-        .limit(1)
-    ):
-        raise ApiError(409, "ai_grouping_active", "Stop AI grouping before deleting data")
 
 
 @router.get("/runs/{run_id}/progress", response_model=ProgressResponse)
@@ -542,12 +507,11 @@ async def parser_health(
     )
     last_run = await session.scalar(select(ParserRun).order_by(ParserRun.id.desc()).limit(1))
     brands = list(await session.scalars(select(Brand).options(selectinload(Brand.source_mappings))))
-    capabilities = probe_capabilities()
     health_snapshot = getattr(runtime, "health_snapshot", None)
     runtime_health = (
         health_snapshot()
         if callable(health_snapshot)
-        else {"circuits": [], "proxies": [], "metrics": {}, "tier": None}
+        else {"circuits": [], "metrics": {}, "tier": None}
     )
     reasons = compliance_reasons(settings)
     unavailable_reasons = {
@@ -594,11 +558,7 @@ async def parser_health(
     return ParserHealthResponse(
         status=health_status,
         source_mode=settings.source_mode,
-        transports={
-            "T1": capabilities.t1_available,
-            "T2": bool(settings.fetch_tier_allow_browser and capabilities.t2_available),
-            "T3": bool(settings.fetch_tier_allow_dom and capabilities.t2_available),
-        },
+        transports={"T1": True},
         discovery={
             "available": credential is not None,
             "status": credential.verification_status if credential else "missing",
@@ -624,14 +584,9 @@ async def parser_health(
                 for item in alert_rows
             ],
         },
-        proxies=list(runtime_health.get("proxies", []))
-        or create_proxy_manager(settings).statuses(),
         active_runs=runtime.active_run_ids(),
         reasons=reasons,
-        versions={
-            "scrapling": capabilities.scrapling_version,
-            "camoufox": capabilities.camoufox_version,
-        },
+        versions={"curl_cffi": _package_version("curl_cffi")},
         circuits=list(runtime_health.get("circuits", [])),
         compliance={
             "live_acknowledged": settings.live_compliance_acknowledged,
@@ -710,9 +665,7 @@ async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan
     )
     if credential is None:
         raise RuntimeError("discovery_required")
-    proxy_manager = create_proxy_manager(settings)
-    proxy = proxy_manager.select("grailed-dry-run", pool="http") if settings.proxy_enabled else None
-    transport = create_http_transport(settings, proxy=proxy)
+    transport = create_http_transport(settings)
     client = AlgoliaClient(
         transport,
         AlgoliaCredentialsData(credential.app_id, credential.api_key, credential.algolia_agent),
@@ -722,9 +675,6 @@ async def _probe_plan(session: AsyncSession, settings: Settings, plan: FetchPlan
         max_requests=settings.parser_max_requests_per_run,
         multiquery_batch_size=settings.algolia_multiquery_batch_size,
         timeout_s=settings.parser_request_timeout_s,
-        proxy_key=proxy or "direct",
-        proxy_manager=proxy_manager,
-        proxy_url=proxy,
     )
     try:
         return await ParserPlanner(
@@ -741,3 +691,10 @@ def _verified_mapping(brand: Brand) -> bool:
         and (brand.include_subbrands or not item.is_subbrand)
         for item in brand.source_mappings
     )
+
+
+def _package_version(package: str) -> str | None:
+    try:
+        return metadata.version(package)
+    except metadata.PackageNotFoundError:
+        return None

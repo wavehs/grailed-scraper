@@ -68,10 +68,10 @@ User-Agent:               {из браузерной сессии}
 |---|---|---|
 | 200 | — | ok; проверить `exhaustiveNbHits` |
 | 400 | `AlgoliaBadQuery` | не ретраить; залогировать params; пометить задачу `failed_permanent` |
-| 401/403 | `AlgoliaAuthError` | инвалидировать credentials → re-discovery (под локом) → 1 повтор → эскалация tier |
+| 401/403 | `AlgoliaAuthError` | инвалидировать credentials → re-discovery (под локом) → 1 повтор → ошибка задачи |
 | 404 | `AlgoliaIndexNotFound` | пометить индекс мёртвым, перезапустить index_prober |
 | 429 | `AlgoliaRateLimited` | respect `Retry-After`, иначе backoff 5→15→45с; снизить глобальный RPS на 50% на 10 минут |
 | 5xx / timeout | `AlgoliaTransient` | следующий хост, до `max_retries` |
-| не-JSON body | `WafChallenge` | немедленная эскалация на T2 |
+| не-JSON body | `WafChallenge` | остановить задачу: источник ответил не JSON (WAF/CAPTCHA) |
 
 ---

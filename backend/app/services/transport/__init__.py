@@ -1,11 +1,6 @@
-"""HTTP transport, resilience and proxy primitives."""
+"""HTTP transport and resilience primitives."""
 
-from app.services.transport.factory import create_http_transport, create_proxy_manager
+from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpResponse, HttpTransport
 
-__all__ = [
-    "HttpResponse",
-    "HttpTransport",
-    "create_http_transport",
-    "create_proxy_manager",
-]
+__all__ = ["HttpResponse", "HttpTransport", "create_http_transport"]

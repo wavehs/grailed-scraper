@@ -21,10 +21,12 @@ def test_backend_package_exposes_a_version() -> None:
     assert __version__ == "1.0.0"
 
 
-def test_scrapling_is_pinned() -> None:
+def test_http_stack_is_pinned_without_browsers() -> None:
     requirements = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
 
-    assert "scrapling[fetchers]==0.4.11" in requirements
+    assert "curl_cffi==0.16.3" in requirements
+    for package in ("scrapling", "camoufox", "playwright", "patchright", "pywebview"):
+        assert package not in requirements.casefold()
 
 
 def test_reproducible_runtime_contract() -> None:
@@ -44,19 +46,8 @@ def test_reproducible_runtime_contract() -> None:
     assert ci.index("alembic upgrade head") < ci.index("- run: pytest")
 
 
-def test_proxy_pools_accept_environment_friendly_values() -> None:
-    settings = Settings(
-        proxy_list_http="http://one:1,socks5://two:2",
-        proxy_list_browser='["https://three:3"]',
-    )
-
-    assert settings.proxy_pool("http") == ["http://one:1", "socks5://two:2"]
-    assert settings.proxy_pool("browser") == ["https://three:3"]
-
-
 def test_fetching_settings_keep_safe_limits() -> None:
     settings = Settings()
-    assert settings.fetch_tier_allow_dom is True
     assert settings.algolia_hits_per_page == 200
     assert settings.algolia_multiquery_batch_size == 8
     with pytest.raises(ValidationError, match="at most 8"):

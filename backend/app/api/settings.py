@@ -19,9 +19,6 @@ SettingOrigin = Literal["default", "env", "database"]
 
 SETTING_GROUPS: dict[str, tuple[str, ...]] = {
     "source": (
-        "fetch_tier_preferred",
-        "fetch_tier_allow_browser",
-        "fetch_tier_allow_dom",
         "algolia_hits_per_page",
         "algolia_multiquery_batch_size",
         "algolia_pagination_strategy",
@@ -38,11 +35,6 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
         "parser_max_items_per_brand",
         "identity_image_requests_per_run",
     ),
-    "proxy": (
-        "proxy_enabled",
-        "proxy_rotation_mode",
-        "proxy_allow_direct_fallback",
-    ),
     "discovery": ("discovery_ttl_hours", "discovery_sample_size"),
     "privacy": ("store_seller_identity",),
 }
@@ -52,9 +44,6 @@ EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in
 class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    fetch_tier_preferred: Literal["T1", "T2", "T3"] | None = None
-    fetch_tier_allow_browser: bool | None = None
-    fetch_tier_allow_dom: bool | None = None
     algolia_hits_per_page: int | None = Field(default=None, ge=1)
     algolia_multiquery_batch_size: int | None = Field(default=None, ge=1, le=8)
     algolia_pagination_strategy: Literal["auto", "browse", "keyset", "range_split"] | None = None
@@ -68,9 +57,6 @@ class SettingsPatch(BaseModel):
     parser_max_concurrency: int | None = Field(default=None, ge=1, le=3)
     parser_max_items_per_brand: int | None = Field(default=None, ge=1)
     identity_image_requests_per_run: int | None = Field(default=None, ge=0, le=100)
-    proxy_enabled: bool | None = None
-    proxy_rotation_mode: Literal["round_robin", "random", "weighted"] | None = None
-    proxy_allow_direct_fallback: bool | None = None
     discovery_ttl_hours: int | None = Field(default=None, ge=1)
     discovery_sample_size: int | None = Field(default=None, ge=1)
     store_seller_identity: Literal["none", "hashed", "plain"] | None = None

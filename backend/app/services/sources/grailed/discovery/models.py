@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-DiscoveryMethod = Literal["intercept", "bundle", "manual"]
+DiscoveryMethod = Literal["page_config", "manual"]
 DiscoveryStatus = Literal["ready", "stale", "discovering", "degraded", "unavailable"]
 
 
@@ -18,7 +18,7 @@ class DiscoverySeed:
     indices: tuple[str, ...] = ()
     facet_filters: tuple[str, ...] = ()
     session_headers: tuple[tuple[str, str], ...] = ()
-    method: DiscoveryMethod = "intercept"
+    method: DiscoveryMethod = "page_config"
 
 
 @dataclass(frozen=True, slots=True)

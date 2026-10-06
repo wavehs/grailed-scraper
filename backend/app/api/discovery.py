@@ -16,14 +16,13 @@ from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
 from app.db.session import get_db
-from app.services.sources.grailed.browser.factory import create_browser_session_pool
 from app.services.sources.grailed.discovery.client import DiscoveryHttpError
 from app.services.sources.grailed.discovery.models import DiscoveryResult
 from app.services.sources.grailed.discovery.service import (
     DiscoveryService,
     DiscoveryUnavailableError,
 )
-from app.services.transport.factory import create_http_transport, create_proxy_manager
+from app.services.transport.factory import create_http_transport
 
 router = APIRouter(prefix="/sources/grailed", tags=["sources"])
 
@@ -43,7 +42,7 @@ class SchemaAlertResponse(BaseModel):
 class DiscoveryResponse(BaseModel):
     source: Literal["grailed"]
     status: Literal["ready", "stale", "discovering", "degraded", "unavailable"]
-    method: Literal["intercept", "bundle", "manual"] | None = None
+    method: str | None = None
     discovered_at: datetime | None = None
     expires_at: datetime | None = None
     app_id: str | None = None
@@ -107,23 +106,11 @@ async def get_discovery_service(
             str(exc),
             "Live mode requires compliance acknowledgement",
         ) from exc
-    proxy = None
-    if settings.proxy_enabled:
-        proxy = create_proxy_manager(settings).select("grailed-discovery", pool="browser")
-    transport = create_http_transport(settings, proxy=proxy)
-    browser = (
-        create_browser_session_pool(settings, proxy=proxy)
-        if settings.source_mode == "live" and settings.fetch_tier_allow_browser
-        else None
-    )
+    transport = create_http_transport(settings)
     try:
-        yield DiscoveryService(session, settings, transport, browser)
+        yield DiscoveryService(session, settings, transport)
     finally:
-        try:
-            if browser is not None:
-                await browser.close()
-        finally:
-            await transport.close()
+        await transport.close()
 
 
 @router.post("/discovery/refresh", response_model=DiscoveryResponse)

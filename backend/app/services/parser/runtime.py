@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.models import ParserRun, ParserRunTask, SourceCredential
-from app.domain.listings import FetchTier, ListingStatus
+from app.domain.listings import ListingStatus
 from app.repositories.fetching import FetchReportRepository
 from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.listings import ListingRepository
@@ -22,7 +22,7 @@ from app.services.identity import IdentityResolver
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
-from app.services.parser.fetching import FetchApi, TieredFetcher
+from app.services.parser.fetching import FetchApi
 from app.services.parser.incremental import IncrementalPlanner, RefreshActiveService
 from app.services.parser.observability import RunMetrics
 from app.services.scoring import OpportunityScoringService, ScoringService
@@ -30,31 +30,20 @@ from app.services.sources.base.models import CoverageReport
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
-from app.services.sources.grailed.browser.factory import create_browser_session_pool
-from app.services.sources.grailed.browser.inpage_client import BrowserAlgoliaClient
 from app.services.sources.grailed.discovery.service import DiscoveryService
-from app.services.sources.grailed.dom.client import DomAlgoliaClient
-from app.services.sources.grailed.dom.robots import RobotsPolicy
-from app.services.transport.factory import create_http_transport, create_proxy_manager
-from app.services.transport.protocols import BrowserSession, HttpTransport
-from app.services.transport.proxy_manager import ProxyManager
+from app.services.transport.factory import create_http_transport
+from app.services.transport.protocols import HttpTransport
 
 
 @dataclass(slots=True)
 class _Resources:
     fetcher: FetchApi
     transport: HttpTransport
-    browser: BrowserSession | None
     metrics: RunMetrics
     algolia: AlgoliaClient
-    proxy_manager: ProxyManager | None = None
 
     async def close(self) -> None:
-        try:
-            if self.browser is not None:
-                await self.browser.close()
-        finally:
-            await self.transport.close()
+        await self.transport.close()
 
 
 class ParserRuntime:
@@ -119,17 +108,10 @@ class ParserRuntime:
         if not self._resources_by_run:
             return dict(self._last_health)
         resources = next(reversed(self._resources_by_run.values()))
-        browser_restarts = int(getattr(resources.browser, "restart_count", 0))
-        resources.metrics.browser_restarts = browser_restarts
-        proxies = resources.proxy_manager.statuses() if resources.proxy_manager else []
-        resources.metrics.proxy_failures = sum(
-            value if isinstance((value := item.get("failures")), int) else 0 for item in proxies
-        )
         return {
             "circuits": resources.algolia.circuit_statuses(),
-            "proxies": proxies,
             "metrics": resources.metrics.snapshot(),
-            "tier": getattr(resources.fetcher, "current_tier", None),
+            "tier": "T1",
         }
 
     async def close(self) -> None:
@@ -165,7 +147,7 @@ class ParserRuntime:
             async with self._sessions() as session:
                 run = await session.get(ParserRun, run_id)
                 assert run is not None
-                run.tier_used = cast(str, getattr(resources.fetcher, "current_tier", "T1"))
+                run.tier_used = "T1"
                 await RunRepository(session).heartbeat(run_id)
                 await session.commit()
             heartbeat = asyncio.create_task(self._heartbeat(run_id, cancelled, settings))
@@ -307,7 +289,7 @@ class ParserRuntime:
                 secondary_attrs=("id", "objectID", "price_i"),
                 pagination_limit=int(spec_data.get("pagination_limit", 1_000)),
                 hits_per_page=settings.algolia_hits_per_page,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
+                fetch_tier="T1",
                 resume_cursor=prior_cursor,
                 max_hits=(
                     int(spec_data["max_hits"]) if spec_data.get("max_hits") is not None else None
@@ -374,7 +356,7 @@ class ParserRuntime:
             await FetchReportRepository(session).finish_task(
                 task_id,
                 combined,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
+                fetch_tier="T1",
                 cursor=task.cursor,
             )
             metrics = self._resources_by_run[run_id].metrics
@@ -434,7 +416,7 @@ class ParserRuntime:
             await FetchReportRepository(session).finish_task(
                 task_id,
                 report,
-                fetch_tier=cast(FetchTier, getattr(fetcher, "current_tier", "T1")),
+                fetch_tier="T1",
                 cursor=None,
             )
             run = await session.get(ParserRun, run_id)
@@ -470,16 +452,14 @@ class ParserRuntime:
         )
         if credential is None:
             raise RuntimeError("discovery_required")
-        proxy_manager = create_proxy_manager(settings)
-        proxy = proxy_manager.select(f"parser-run-{run_id}") if settings.proxy_enabled else None
-        transport = create_http_transport(settings, proxy=proxy)
+        transport = create_http_transport(settings)
         seed = AlgoliaCredentialsData(
             credential.app_id, credential.api_key, credential.algolia_agent
         )
 
         async def refresh_credentials() -> AlgoliaCredentialsData:
             async with self._sessions() as session:
-                service = DiscoveryService(session, settings, transport, browser)
+                service = DiscoveryService(session, settings, transport)
                 await service.invalidate_and_refresh()
                 refreshed = await session.scalar(
                     select(SourceCredential).where(SourceCredential.source == "grailed")
@@ -490,7 +470,6 @@ class ParserRuntime:
                     refreshed.app_id, refreshed.api_key, refreshed.algolia_agent
                 )
 
-        browser = create_browser_session_pool(settings, proxy=proxy)
         t1 = AlgoliaClient(
             transport,
             seed,
@@ -502,22 +481,9 @@ class ParserRuntime:
             timeout_s=settings.parser_request_timeout_s,
             metrics=metrics,
             tier="T1",
-            proxy_key=proxy or "direct",
-            proxy_manager=proxy_manager,
-            proxy_url=proxy,
             refresh_credentials=refresh_credentials,
         )
-        clients: dict[FetchTier, FetchApi] = {"T1": t1}
-        if browser is not None:
-            clients["T2"] = BrowserAlgoliaClient(browser, seed)
-            if settings.fetch_tier_allow_dom:
-                clients["T3"] = cast(FetchApi, DomAlgoliaClient(browser, RobotsPolicy(transport)))
-        fetcher = TieredFetcher(
-            clients,
-            preferred=settings.fetch_tier_preferred,
-            metrics=metrics,
-        )
-        return _Resources(fetcher, transport, browser, metrics, t1, proxy_manager)
+        return _Resources(t1, transport, metrics, t1)
 
     async def _heartbeat(self, run_id: int, cancelled: asyncio.Event, settings: Settings) -> None:
         while not cancelled.is_set():
@@ -528,9 +494,7 @@ class ParserRuntime:
                 if resources is not None:
                     run = await session.get(ParserRun, run_id)
                     assert run is not None
-                    current_tier = cast(str, getattr(resources.fetcher, "current_tier", "T1"))
-                    run.tier_used = _max_tier(run.tier_used, current_tier)
-                    run.degraded_mode = run.degraded_mode or current_tier in {"T2", "T3"}
+                    run.tier_used = "T1"
                     run.stats = {
                         **run.stats,
                         "observability": resources.metrics.snapshot(),
@@ -612,8 +576,3 @@ def _query(payload: dict[str, Any]) -> AlgoliaQuery:
         facets=tuple(str(value) for value in payload.get("facets", [])),
         extra=dict(payload.get("extra", {})),
     )
-
-
-def _max_tier(previous: str | None, current: str) -> str:
-    order = {"T1": 1, "T2": 2, "T3": 3}
-    return current if order.get(current, 0) >= order.get(previous or "", 0) else previous or current

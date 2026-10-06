@@ -7,7 +7,6 @@ import pytest
 
 from app.services.transport.circuit_breaker import CircuitBreaker, CircuitOpenError, CircuitState
 from app.services.transport.protocols import HttpResponse
-from app.services.transport.proxy_manager import ProxyManager, ProxyUnavailableError
 from app.services.transport.rate_limiter import RateLimiter
 from app.services.transport.resilience import retry_after_seconds
 from app.services.transport.response_cache import ResponseCache
@@ -57,32 +56,6 @@ def test_retry_after_seconds_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert retry_after_seconds({"retry-after": date_str}) == 15.0
 
 
-def test_proxy_manager_is_sticky_and_cools_down_failed_proxy() -> None:
-    now = 0.0
-    manager = ProxyManager(["http://one", "socks5://two"], now=lambda: now)
-    selected = manager.select("brand-1")
-    assert manager.select("brand-1") == selected
-    assert selected is not None
-    for _ in range(3):
-        manager.record_failure(selected)
-    assert manager.select("brand-1") != selected
-
-
-def test_proxy_manager_can_refuse_direct_fallback() -> None:
-    manager = ProxyManager([], allow_direct_fallback=False)
-    with pytest.raises(ProxyUnavailableError):
-        manager.select("brand-1")
-
-
-def test_proxy_manager_chooses_from_requested_pool() -> None:
-    manager = ProxyManager(
-        http_proxies=["http://http-proxy"], browser_proxies=["socks5://browser-proxy"]
-    )
-
-    assert manager.select("http-session", pool="http") == "http://http-proxy"
-    assert manager.select("browser-session", pool="browser") == "socks5://browser-proxy"
-
-
 @pytest.mark.asyncio
 async def test_rate_limiter_caps_same_host_concurrency() -> None:
     limiter = RateLimiter(requests_per_minute=60_000, max_concurrent_per_host=1, jitter_ratio=0)
@@ -99,18 +72,3 @@ async def test_rate_limiter_caps_same_host_concurrency() -> None:
 
     await asyncio.gather(worker(), worker())
     assert maximum == 1
-
-
-@pytest.mark.asyncio
-async def test_proxy_health_test_masks_credentials_and_records_result() -> None:
-    manager = ProxyManager(["http://user:password@proxy.test:50100"])
-
-    statuses = await manager.test_all(lambda _: _healthy_proxy())
-
-    assert statuses[0]["proxy"] == "http://***:***@proxy.test:50100"
-    assert statuses[0]["successes"] == 1
-    assert "password" not in str(statuses)
-
-
-async def _healthy_proxy() -> bool:
-    return True

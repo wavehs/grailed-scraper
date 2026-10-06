@@ -46,7 +46,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
             before = client.get("/api/settings")
             updated = client.patch(
                 "/api/settings",
-                json={"requests_per_minute": 24, "proxy_rotation_mode": "round_robin"},
+                json={"requests_per_minute": 24, "discovery_ttl_hours": 6},
             )
             after = client.get("/api/settings")
             invalid = client.patch("/api/settings", json={"requests_per_minute": 91})

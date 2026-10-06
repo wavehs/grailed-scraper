@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -38,13 +37,6 @@ class Settings(BaseSettings):
     log_directory: Path = PROJECT_ROOT / "data" / "logs"
     requests_per_minute: int = 90
     max_concurrent_requests: int = 3
-    gemini_api_key: SecretStr | None = None
-    proxy_url: str | None = None
-    proxy_list_browser: list[str] | str = []
-    proxy_list_http: list[str] | str = []
-    fetch_tier_preferred: Literal["T1", "T2", "T3"] = "T1"
-    fetch_tier_allow_browser: bool = True
-    fetch_tier_allow_dom: bool = True
     algolia_hits_per_page: int = 200
     algolia_multiquery_batch_size: int = 8
     algolia_pagination_strategy: Literal["auto", "browse", "keyset", "range_split"] = "auto"
@@ -57,16 +49,8 @@ class Settings(BaseSettings):
     parser_max_items_per_brand: int = 500
     identity_image_requests_per_run: int = Field(default=100, ge=0, le=100)
     parser_progress_interval_s: float = 2.0
-    browser_max_pages: int = 2
-    browser_restart_every_requests: int = 300
-    browser_restart_every_minutes: int = 20
-    browser_use_raw_fallback: bool = False
     discovery_ttl_hours: int = 12
     discovery_sample_size: int = 200
-    discovery_page_timeout_s: float = 45.0
-    proxy_enabled: bool = False
-    proxy_allow_direct_fallback: bool = True
-    proxy_rotation_mode: Literal["round_robin", "random", "weighted"] = "weighted"
     cors_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
     parser_mode: Literal["delta", "full"] = "delta"
     parser_full_refresh_days: int = 7
@@ -103,14 +87,10 @@ class Settings(BaseSettings):
         "parser_max_requests_per_run",
         "parser_max_items_per_brand",
         "parser_progress_interval_s",
-        "browser_max_pages",
         "algolia_hits_per_page",
         "algolia_multiquery_batch_size",
-        "browser_restart_every_requests",
-        "browser_restart_every_minutes",
         "discovery_ttl_hours",
         "discovery_sample_size",
-        "discovery_page_timeout_s",
         "parser_full_refresh_days",
         "parser_removed_confirm_hours",
         "parser_watermark_overlap_hours",
@@ -154,42 +134,6 @@ class Settings(BaseSettings):
         if value > 2:
             raise ValueError("Parser progress must be persisted at least every 2 seconds")
         return value
-
-    @field_validator("proxy_list_browser", "proxy_list_http", mode="before")
-    @classmethod
-    def parse_proxy_list(cls, value: Any) -> list[str]:
-        """Accept JSON arrays and the convenient comma-separated env form."""
-
-        if value is None or value == "":
-            return []
-        if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()]
-        if isinstance(value, str):
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                decoded = value.split(",")
-            if not isinstance(decoded, list):
-                raise ValueError("Proxy list must be a JSON array or comma-separated URLs")
-            return [str(item).strip() for item in decoded if str(item).strip()]
-        raise ValueError("Proxy list must contain proxy URLs")
-
-    def proxy_pool(self, kind: Literal["http", "browser"]) -> list[str]:
-        """Return the configured pool, retaining the legacy single-proxy setting."""
-
-        configured = self.proxy_list_http if kind == "http" else self.proxy_list_browser
-        if configured:
-            return _proxy_values(configured)
-        if self.proxy_url:
-            return [self.proxy_url]
-        other_pool = self.proxy_list_browser if kind == "http" else self.proxy_list_http
-        return _proxy_values(other_pool)
-
-
-def _proxy_values(value: list[str] | str) -> list[str]:
-    """Narrow validator-normalized proxy settings for static type checking."""
-
-    return value if isinstance(value, list) else [value]
 
 
 @lru_cache

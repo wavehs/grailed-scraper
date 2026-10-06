@@ -33,7 +33,6 @@ from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
-from app.services.transport.capabilities import probe_capabilities
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
@@ -313,7 +312,7 @@ async def rebuild_market(settings: Settings, *, resume: bool = False) -> dict[st
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("doctor", help="show Scraping stack capability report")
+    subparsers.add_parser("doctor", help="show HTTP stack versions (no network)")
     canary_parser = subparsers.add_parser(
         "canary", help="run a bounded source compatibility sample"
     )
@@ -340,7 +339,10 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.command == "doctor":
-        print(json.dumps(probe_capabilities().as_dict(), indent=2, sort_keys=True))
+        from importlib import metadata
+
+        report = {name: metadata.version(name) for name in ("curl_cffi", "fastapi", "SQLAlchemy")}
+        print(json.dumps(report, indent=2, sort_keys=True))
         return 0
     if args.command == "canary":
         try:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import re
 import unicodedata
 from bisect import bisect_right
@@ -31,17 +32,57 @@ from app.db.models import (
     PhysicalItem,
     PhysicalItemMember,
 )
-from app.services.ai_grouping.domain import (
-    AI_KEY_PREFIX,
-    GROUPING_VERSION,
-    compute_input_hash,
-    deterministic_product_type,
-)
 from app.services.identity.images import fingerprint_url, hamming_distance
 from app.services.transport.protocols import HttpTransport
 from app.services.transport.rate_limiter import RateLimiter
 
 IDENTITY_VERSION = "identity-v5"
+GROUPING_VERSION = "grouping-v1"
+_BROAD_SUBCATEGORIES = {
+    "",
+    "bags_luggage",
+    "gloves_scarves",
+    "jewelry_watches",
+    "misc",
+    "miscellaneous",
+    "other",
+    "socks_underwear",
+    "ties_pocketsquares",
+}
+_PRODUCT_TYPE_ALIASES = {
+    "hats": "hat",
+    "wallets": "wallet",
+    "rings": "ring",
+    "necklaces": "necklace",
+    "bracelets": "bracelet",
+    "earrings": "earring",
+}
+
+
+def _normalized_text(value: str | None) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split()) if value else ""
+
+
+def compute_input_hash(
+    *, brand: str, category: str | None, subcategory: str | None, title: str
+) -> str:
+    payload = {
+        "brand": _normalized_text(brand),
+        "category": _normalized_text(category),
+        "subcategory": _normalized_text(subcategory),
+        "title": _normalized_text(title),
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def deterministic_product_type(subcategory: str | None) -> str | None:
+    normalized = _normalized_text(subcategory).replace("-", "_")
+    leaf = normalized.rsplit(".", 1)[-1]
+    if normalized in _BROAD_SUBCATEGORIES or leaf in _BROAD_SUBCATEGORIES:
+        return None
+    return _PRODUCT_TYPE_ALIASES.get(leaf, leaf.replace("_", "-"))
+
 _GENERIC = {
     "authentic",
     "brand",
@@ -501,16 +542,7 @@ class IdentityResolver:
             for listing in listings
             if listing.brand_id is not None
         }
-        preserved_ids = {
-            listing.id
-            for listing in listings
-            if (assignment := existing.get(listing.id)) is not None
-            and assignment.grouping_version == GROUPING_VERSION
-            and assignment.input_hash == input_hashes.get(listing.id)
-            and assignment.method.startswith("gemini_")
-            and (group := groups_by_id.get(assignment.model_group_id)) is not None
-            and group.stable_key.startswith(f"{AI_KEY_PREFIX}:")
-        }
+        preserved_ids: set[int] = set()
         signatures: dict[int, LineSignature | None] = {}
         buckets: dict[tuple[int, str], list[Listing]] = defaultdict(list)
         for listing in listings:
@@ -683,7 +715,6 @@ class IdentityResolver:
                     algorithm_version=IDENTITY_VERSION,
                     grouping_version=GROUPING_VERSION,
                     input_hash=input_hashes[listing.id],
-                    ai_grouping_run_id=None,
                     updated_at=now,
                 )
                 self._session.add(assignment)
@@ -695,7 +726,6 @@ class IdentityResolver:
                 or assignment.algorithm_version != IDENTITY_VERSION
                 or assignment.grouping_version != GROUPING_VERSION
                 or assignment.input_hash != input_hashes[listing.id]
-                or assignment.ai_grouping_run_id is not None
             ):
                 if assignment.model_group_id != group.id:
                     merge_targets[assignment.model_group_id].add(group.id)
@@ -705,14 +735,11 @@ class IdentityResolver:
                 assignment.algorithm_version = IDENTITY_VERSION
                 assignment.grouping_version = GROUPING_VERSION
                 assignment.input_hash = input_hashes[listing.id]
-                assignment.ai_grouping_run_id = None
                 assignment.updated_at = now
         for old_group_id, targets in merge_targets.items():
             if len(targets) == 1 and old_group_id not in targets:
                 old_group = groups_by_id.get(old_group_id)
-                if old_group is not None and not old_group.stable_key.startswith(
-                    f"{AI_KEY_PREFIX}:"
-                ):
+                if old_group is not None:
                     old_group.merged_into_id = next(iter(targets))
                     old_group.updated_at = now
 

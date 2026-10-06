@@ -30,7 +30,6 @@ from app.services.sources.grailed.algolia.models import (
 from app.services.sources.grailed.algolia.query_builder import build_params
 from app.services.transport.circuit_breaker import CircuitBreaker
 from app.services.transport.protocols import HttpResponse, HttpTransport
-from app.services.transport.proxy_manager import ProxyManager
 from app.services.transport.rate_limiter import RateLimiter
 from app.services.transport.resilience import retry_after_seconds
 from app.services.transport.response_cache import ResponseCache
@@ -75,9 +74,6 @@ class AlgoliaClient:
         tier: str | None = None,
         metrics: RunMetrics | None = None,
         response_cache: ResponseCache | None = None,
-        proxy_key: str = "direct",
-        proxy_manager: ProxyManager | None = None,
-        proxy_url: str | None = None,
         refresh_credentials: CredentialRefresh | None = None,
     ) -> None:
         if not 1 <= multiquery_batch_size <= 8:
@@ -104,17 +100,14 @@ class AlgoliaClient:
         self._tier = tier or "T1"
         self._metrics = metrics
         self._cache = response_cache or ResponseCache()
-        self._proxy_key = proxy_key
-        self._proxy_manager = proxy_manager
-        self._proxy_url = proxy_url
         self._refresh_credentials = refresh_credentials
         self._credential_refresh_lock = asyncio.Lock()
-        self._breakers: dict[tuple[str, str, str], CircuitBreaker] = {}
+        self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
 
     def circuit_statuses(self) -> list[dict[str, str]]:
         return [
-            {"tier": tier, "host": host, "proxy": proxy, "state": breaker.state.value}
-            for (tier, host, proxy), breaker in self._breakers.items()
+            {"tier": tier, "host": host, "state": breaker.state.value}
+            for (tier, host), breaker in self._breakers.items()
         ]
 
     async def search(self, index_name: str, query: AlgoliaQuery) -> AlgoliaPage:
@@ -273,9 +266,7 @@ class AlgoliaClient:
                     f"Parser request budget exhausted at {self._max_requests} requests"
                 )
             self._requests_started += 1
-            breaker = self._breakers.setdefault(
-                (self._tier, host, self._proxy_key), CircuitBreaker()
-            )
+            breaker = self._breakers.setdefault((self._tier, host), CircuitBreaker())
             breaker.allow_request()
             started = time.perf_counter()
             try:
@@ -292,8 +283,6 @@ class AlgoliaClient:
                 breaker.record_failure()
                 last_error = exc
                 self._hosts.mark_down(host)
-                if self._proxy_manager is not None and self._proxy_url is not None:
-                    self._proxy_manager.record_failure(self._proxy_url)
                 if self._metrics is not None and attempt < self._max_retries:
                     self._metrics.retries += 1
                 if attempt < self._max_retries:
@@ -319,12 +308,8 @@ class AlgoliaClient:
             if response.status_code < 400:
                 breaker.record_success()
                 self._cache.set(cache_key, response)
-                if self._proxy_manager is not None and self._proxy_url is not None:
-                    self._proxy_manager.record_success(self._proxy_url)
             else:
                 breaker.record_failure()
-                if self._proxy_manager is not None and self._proxy_url is not None:
-                    self._proxy_manager.record_failure(self._proxy_url)
             return response
         if last_response is not None:
             return last_response
