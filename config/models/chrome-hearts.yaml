@@ -1,0 +1,17 @@
+models:
+  - {name: Dagger, types: [pendant, ring, earring, bracelet, chain, keychain], infer: pendant}
+  - {name: Cross, types: [pendant, ring, earring, bracelet, chain], infer: pendant}
+  - {name: Baby Fat, aliases: [baby fat cross], types: [pendant], parent: Cross}
+  - {name: Floral Cross, types: [pendant, ring, earring], parent: Cross}
+  - {name: Tiny E Cross, aliases: [tiny e], types: [pendant], parent: Cross}
+  - {name: Horseshoe, types: [ring, pendant, tshirt, longsleeve, hoodie, sweatshirt, hat, sweatpants, shorts], infer: pendant}
+  - {name: Cemetery, types: [ring, pendant, tshirt, longsleeve, hoodie, sweatshirt, hat], infer: ring}
+  - {name: Paper Chain, types: [chain, bracelet], infer: chain}
+  - {name: Spacer, types: [ring]}
+  - {name: Keeper, types: [ring]}
+  - {name: Scroll Band, aliases: [scroll], types: [ring]}
+  - {name: Fleur Knee, types: [pendant, ring, earring]}
+  - {name: Matty Boy, aliases: [mattyboy], types: any}
+  - {name: Made in Hollywood, aliases: [hollywood], types: any}
+  - {name: Deadly Doll, types: any}
+  - {name: Fuck You, types: any}

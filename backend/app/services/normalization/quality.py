@@ -38,7 +38,7 @@ class QualityProcessor:
         for listing in sorted(listings, key=lambda item: item.created_at or item.first_seen_at):
             flags = set(listing.quality_flags)
             text = f"{listing.title}\n{listing.description or ''}"
-            if self._settings.quality_filter_replicas and _REPLICA.search(text):
+            if self._settings.quality_filter_replicas and _looks_replica(listing, text):
                 flags.add("possible_replica")
             group_key = (listing.brand_id, listing.category)
             group_median = medians[group_key]
@@ -60,6 +60,14 @@ class QualityProcessor:
                 flags.add("wrong_brand")
             result.append(listing.model_copy(update={"quality_flags": sorted(flags)}))
         return result
+
+
+def _looks_replica(listing: ListingData, text: str) -> bool:
+    matches = {match.casefold() for match in _REPLICA.findall(text)}
+    # "Replica" is a Maison Margiela line (Replica sneakers), not a counterfeit marker.
+    if "margiela" in listing.brand_name_raw.casefold():
+        matches.discard("replica")
+    return bool(matches)
 
 
 def _is_outlier(price: Decimal, center: Decimal, mad: Decimal, k: Decimal) -> bool:

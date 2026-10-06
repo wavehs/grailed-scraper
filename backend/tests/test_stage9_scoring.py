@@ -31,7 +31,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import app
-from app.services.identity.service import IdentityResolver
+from app.services.grouping import GroupingService
 from app.services.scoring.calculator import (
     confidence_score,
     engagement_score,
@@ -42,6 +42,11 @@ from app.services.scoring.calculator import (
 from app.services.scoring.service import OpportunityScoringService
 
 AS_OF = datetime(2026, 8, 8, 12, tzinfo=UTC)
+CATEGORY_PATHS = {
+    "outerwear": "outerwear.leather_jackets",
+    "tops": "tops.short_sleeve_shirts",
+    "footwear": "footwear.hitop_sneakers",
+}
 
 
 def test_decimal_formula_boundaries_are_absolute_and_frequency_capped() -> None:
@@ -104,6 +109,7 @@ def _listing(
         brand_id=brand_id,
         category=category,
         subcategory=None,
+        category_path=CATEGORY_PATHS[category],
         size_raw=size,
         size_normalized=size,
         condition_raw="Used",
@@ -301,7 +307,7 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> tuple[int, int, in
             ]
         )
         await session.flush()
-        await IdentityResolver(session, get_settings()).resolve_run(run.id)
+        await GroupingService(session).regroup([brand.id])
         specific_group_id = int(
             await session.scalar(
                 select(ListingModelAssignment.model_group_id)
@@ -503,7 +509,7 @@ def test_stage9_analytics_api_uses_exact_cents(tmp_path) -> None:  # type: ignor
     sold_counts = [item["sold_count"] for item in sorted_dashboard.json()["data"]]
     assert sold_counts == sorted(sold_counts)
     assert filtered_dashboard.json()["next_cursor"] is None
-    assert filtered_dashboard.json()["data"][0]["category"] == "footwear"
+    assert filtered_dashboard.json()["data"][0]["category"] == "hitop_sneakers"
     assert isinstance(detail.json()["metrics"]["median_sold_price"], int)
     variants = detail.json()["variant_breakdown"]
     assert (

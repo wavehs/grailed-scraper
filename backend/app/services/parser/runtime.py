@@ -18,7 +18,7 @@ from app.repositories.fetching import FetchReportRepository
 from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.runs import RunRepository
-from app.services.identity import IdentityResolver
+from app.services.grouping import GroupingService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
@@ -56,11 +56,14 @@ class ParserRuntime:
         *,
         scoring: ScoringService | None = None,
         market_lock: asyncio.Lock | None = None,
+        grouping_lock: asyncio.Lock | None = None,
     ) -> None:
         self._sessions = sessions
         self._settings = settings
         self._scoring = scoring or OpportunityScoringService(sessions)
         self._market_lock = market_lock or asyncio.Lock()
+        # Shared with the grouping API so a manual regroup never races the run's regroup.
+        self.grouping_lock = grouping_lock or asyncio.Lock()
         self._jobs: dict[int, asyncio.Task[None]] = {}
         self._cancel: dict[int, asyncio.Event] = {}
         self._resources_by_run: dict[int, _Resources] = {}
@@ -170,11 +173,12 @@ class ParserRuntime:
                 if cancelled.is_set():
                     await repository.finish(run_id, "cancelled")
                 else:
-                    await repository.set_phase(run_id, "resolving_identity")
+                    await repository.set_phase(run_id, "grouping")
                     await repository.heartbeat(run_id)
-                    identity_result = await IdentityResolver(
-                        session, settings, resources.transport
-                    ).resolve_run(run_id)
+                    await session.commit()
+                    brand_ids = await repository.brand_ids(run_id)
+                    async with self.grouping_lock:
+                        grouping_result = await GroupingService(session).regroup(brand_ids)
                     await session.commit()
                     await repository.set_phase(run_id, "scoring")
                     # Release SQLite's write lock before the scoring service opens
@@ -186,7 +190,7 @@ class ParserRuntime:
                     metric_snapshot = resources.metrics.snapshot()
                     run.stats = {
                         **run.stats,
-                        "identity": identity_result,
+                        "grouping": grouping_result.summary(),
                         "scoring": scoring_result,
                         "observability": metric_snapshot,
                         "persistence": {

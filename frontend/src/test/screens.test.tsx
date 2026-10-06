@@ -6,6 +6,7 @@ import CollectPage from '@/app/collect/page';
 import SettingsPage from '@/app/settings/page';
 import ModelDetailClient from '@/app/model-groups/[id]/model-detail-client';
 import { Dashboard } from '@/components/dashboard';
+import { GroupEditor } from '@/components/group-editor';
 import { HealthBanner } from '@/components/health-banner';
 import { HelpTip } from '@/components/ui/help-tip';
 import { renderApp } from '@/test/render';
@@ -168,6 +169,64 @@ describe('stage 10 screens', () => {
     expect(screen.getByText('82.5')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Chrome Hearts' }));
     expect(await screen.findByRole('link', { name: 'Dagger Necklace' })).toBeInTheDocument();
+  });
+
+  it('confirms, merges and rejects groups through durable edit rules', async () => {
+    const group = {
+      id: 7,
+      brand_id: 1,
+      brand: 'Chrome Hearts',
+      product_type: 'tshirt',
+      slug: 'neck-logo',
+      name: 'Neck Logo',
+      aliases: ['neck logo'],
+      parent_id: null,
+      status: 'auto',
+      source: 'mined',
+      is_fallback: false,
+      listings: 12,
+      sold: 5,
+      active: 7,
+      parent: null,
+      versions: [],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/grouping/taxonomy'))
+        return json({
+          version: 'taxonomy-v1',
+          sections: [{ id: 'tops', ru: 'Верх', en: 'Tops' }],
+          types: [{ id: 'tshirt', section: 'tops', ru: 'Футболка', en: 'T-shirt' }],
+        });
+      if (url.includes('/groups?'))
+        return json({
+          data: [group, { ...group, id: 8, name: 'Neck Logo Tee', status: 'confirmed' }],
+          total: 2,
+        });
+      if (url.endsWith('/groups/7') && init?.method === 'PATCH')
+        return json({ ...group, status: 'confirmed' });
+      if (url.endsWith('/groups/7/merge')) return json({ ...group, id: 8 });
+      if (url.endsWith('/groups/7')) return json(group);
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const changed = vi.fn();
+    renderApp(<GroupEditor groupId={7} onChanged={changed} />);
+    expect(await screen.findByText('Chrome Hearts · Neck Logo · T-shirt')).toBeInTheDocument();
+    expect(screen.getByText('auto')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/groups/7') && init?.method === 'PATCH',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ status: 'confirmed' });
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Merge into…' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Merge into…'), '8');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ id: 8 })));
+    const merge = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/merge'));
+    expect(JSON.parse(String(merge?.[1]?.body))).toEqual({ target_id: 8 });
   });
 
   it('opens setting help on click', async () => {

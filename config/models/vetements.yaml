@@ -1,0 +1,6 @@
+models:
+  - {name: Total Darkness, types: any}
+  - {name: Titanic, types: any}
+  - {name: Polizei, types: any}
+  - {name: DHL, types: any}
+  - {name: Antwerpen, types: any}

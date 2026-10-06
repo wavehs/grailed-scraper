@@ -13,8 +13,11 @@ Object.defineProperty(window, 'ResizeObserver', {
   },
 });
 
+export const routerPush = vi.fn();
+
 vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
   useParams: () => ({ id: '1' }),
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: routerPush, replace: routerPush, back: vi.fn() }),
 }));

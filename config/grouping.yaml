@@ -1,0 +1,264 @@
+# Word lists for grouping-v6 title normalization (no rules, no thresholds).
+# Every entry is normalized like a title: case, accents and plurals do not matter.
+version: grouping-v6
+
+# Spelling variants: the left phrase is replaced by the right one before matching.
+spelling:
+  geo basket: geobasket
+  geobasketball: geobasket
+  drk shdw: drkshdw
+  dark shadow: drkshdw
+  triple s: triples
+  matty boy: mattyboy
+  matti boy: mattyboy
+  baby fat: babyfat
+  boy scout: boyscout
+  crimes de l amour: crimes de lamour
+  bape sta: bapesta
+  german army trainer: gat
+
+# Removed everywhere: articles, conditions and marketing words.
+noise:
+  - a
+  - an
+  - and
+  - the
+  - with
+  - w
+  - x
+  - by
+  - for
+  - from
+  - in
+  - on
+  - to
+  - or
+  - is
+  - my
+  - this
+  - new
+  - brand
+  - bnwt
+  - bnib
+  - nwt
+  - nwot
+  - nib
+  - ds
+  - deadstock
+  - unworn
+  - worn
+  - used
+  - mint
+  - condition
+  - excellent
+  - great
+  - perfect
+  - good
+  - rare
+  - grail
+  - grails
+  - vintage
+  - vtg
+  - authentic
+  - auth
+  - legit
+  - genuine
+  - receipt
+  - steal
+  - sale
+  - price
+  - priced
+  - drop
+  - dropped
+  - firm
+  - obo
+  - offer
+  - offers
+  - last
+  - final
+  - only
+  - must
+  - go
+  - free
+  - shipping
+  - fast
+  - ship
+  - read
+  - description
+  - see
+  - pics
+  - photos
+  - tags
+  - tag
+  - box
+  - dustbag
+  - dust bag
+  - mens
+  - men
+  - man
+  - womens
+  - women
+  - woman
+  - unisex
+  - kids
+  - fits
+  - fit
+  - tts
+  - true to size
+  - 925
+  - 22k
+  - 18k
+  - 14k
+  - gold plated
+  - spring
+  - summer
+  - fall
+  - autumn
+  - winter
+  - resort
+  - ss
+  - fw
+  - aw
+  - pre
+  - preowned
+  - pre owned
+  - nwot
+  - ver
+  - piece
+  - pieces
+  - lot
+  - bundle
+  - set
+
+# Kept inside model names ("Neck Logo", "Nylon Metal") but never a model on their own.
+generic:
+  - archive
+  - archival
+  - runway
+  - mainline
+  - collection
+  - season
+  - edition
+  - limited
+  - exclusive
+  - sample
+  - made
+  - japan
+  - italy
+  - usa
+  - france
+  - portugal
+  - logo
+  - print
+  - printed
+  - graphic
+  - embroidered
+  - embroidery
+  - patch
+  - patches
+  - pocket
+  - zip
+  - zipper
+  - button
+  - classic
+  - basic
+  - plain
+  - washed
+  - faded
+  - distressed
+  - destroyed
+  - ripped
+  - cropped
+  - leather
+  - suede
+  - nylon
+  - cotton
+  - wool
+  - cashmere
+  - silk
+  - linen
+  - canvas
+  - mesh
+  - fleece
+  - polyester
+  - sterling
+  - oversized
+  - oversize
+  - boxy
+  - relaxed
+  - slim
+  - regular
+
+# Colors; brand-specific color names live under brand_colors.
+colors:
+  - black
+  - blk
+  - white
+  - wht
+  - off white
+  - red
+  - blue
+  - navy
+  - royal
+  - grey
+  - gray
+  - charcoal
+  - green
+  - olive
+  - khaki
+  - army green
+  - forest
+  - mint green
+  - beige
+  - cream
+  - ivory
+  - ecru
+  - bone
+  - natural
+  - sand
+  - brown
+  - tan
+  - camel
+  - chocolate
+  - pink
+  - purple
+  - lilac
+  - lavender
+  - yellow
+  - orange
+  - gold
+  - silver
+  - multi
+  - multicolor
+  - multicolour
+  - camo
+  - camouflage
+  - leopard
+  - tie dye
+  - dark
+  - light
+  - dk
+  - lt
+  - metallic
+  - neon
+  - burgundy
+  - maroon
+  - teal
+  - turquoise
+
+brand_colors:
+  rick-owens: [milk, dust, pearl, chalk, taupe, oyster, moonstone, mineral, dark dust, natural milk, blue bone, pelican, pistachio, lido]
+  balenciaga: [faded]
+  maison-margiela: [optic white]
+
+# Size markers drop the marker and the next size token ("size 45", "EU 42", "JP 17.5").
+size_markers: [size, sz, sizes, eu, us, uk, it, fr, jp, cm, waist, inseam, tagged, measures]
+# Standalone tokens that are always sizes ("3xl" is a Balenciaga model, so it is kept).
+size_tokens: [xxs, xs, xl, xxl, xxxl, 2xl, 4xl, 5xl, os, osfa, one size]
+# Letter sizes removed only right after a size marker.
+size_letters: [s, m, l, small, medium, large, xsmall, xlarge]
+
+# Kept modifiers that make a listing a version inside a line ("Mega Geobasket").
+protected_modifiers: [double, triple, mega, jumbo, tiny, baby, mini, micro, big, super, ultra]
+# Version numbers right after a model ("Track 2", "Speed 3"); larger numbers are sizes.
+version_numbers: [2, 3, 4]

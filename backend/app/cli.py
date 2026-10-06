@@ -5,34 +5,38 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.privacy import require_live_compliance
 from app.db.models import (
+    Brand,
     Listing,
     ListingModelAssignment,
+    ModelGroup,
     ParserRun,
-    ScoringSnapshot,
     SourceCredential,
 )
 from app.db.session import get_database_url
-from app.services.identity import IdentityResolver
-from app.services.identity.service import IDENTITY_VERSION
+from app.services.grouping import GroupingService
+from app.services.grouping.policy import load_policy
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import backup_database, restore_database, result_dict, retention
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import collection_filters
-from app.services.scoring import MODEL_VERSION, OpportunityScoringService
+from app.services.scoring import OpportunityScoringService
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
+from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
@@ -200,112 +204,174 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
         await engine.dispose()
 
 
-async def rebuild_market(settings: Settings, *, resume: bool = False) -> dict[str, object]:
-    """Back up and rebuild current model identity and market snapshots."""
+async def run_discovery(settings: Settings) -> dict[str, object]:
+    """Read the public search key from Grailed's page config and probe indices and facets."""
+
+    require_live_compliance(settings)
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    transport: HttpTransport = create_http_transport(settings)
+    try:
+        async with factory() as session:
+            result = await DiscoveryService(session, settings, transport).refresh(force=True)
+            await session.commit()
+        return {
+            "status": result.status,
+            "method": result.method,
+            "active_index": result.active_index,
+            "sold_index": result.sold_index,
+            "brand_facet": result.brand_facet,
+            "category_facet": result.category_facet,
+            "max_hits_per_page": result.max_hits_per_page,
+            "schema_field_count": result.schema_field_count,
+            "credentials_included": False,
+        }
+    finally:
+        await transport.close()
+        await engine.dispose()
+
+
+async def run_taxonomy_check(settings: Settings) -> dict[str, object]:
+    """One bounded request: real category_path values that config/taxonomy.yaml lacks."""
+
+    require_live_compliance(settings)
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        cached = await session.scalar(
+            select(SourceCredential).where(SourceCredential.source == "grailed")
+        )
+    await engine.dispose()
+    if cached is None or cached.active_index is None:
+        raise RuntimeError("Run discovery before the taxonomy check")
+    transport: HttpTransport = create_http_transport(settings)
+    client = AlgoliaClient(
+        transport,
+        AlgoliaCredentialsData(cached.app_id, cached.api_key, cached.algolia_agent),
+        requests_per_minute=settings.requests_per_minute,
+        max_concurrency=1,
+        max_retries=settings.parser_max_retries,
+        timeout_s=settings.parser_request_timeout_s,
+    )
+    facet = cached.category_facet or "category_path"
+    try:
+        page = await client.search(
+            cached.active_index,
+            AlgoliaQuery(hits_per_page=0, facets=(facet,), extra={"maxValuesPerFacet": 1000}),
+        )
+    finally:
+        await transport.close()
+    values = page.facets.get(facet, {})
+    taxonomy = load_policy().taxonomy
+    unknown = {
+        path: count
+        for path, count in sorted(values.items(), key=lambda item: -item[1])
+        if not taxonomy.rule_for(path)[1]
+    }
+    return {
+        "status": "ok" if values and not unknown else "partial" if values else "failed",
+        "facet": facet,
+        "category_paths": len(values),
+        "mapped": len(values) - len(unknown),
+        "unknown": unknown,
+    }
+
+
+async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]:
+    """Back up, then regroup every brand (full pass) and rescore the latest run."""
 
     backup = backup_database(settings)
     engine = create_async_engine(get_database_url(settings))
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    transport: HttpTransport = create_http_transport(settings)
-    identity_settings = settings.model_copy(update={"identity_image_requests_per_run": 0})
     try:
         async with factory() as session:
+            result = await GroupingService(session).regroup(full=full)
+            await session.commit()
             run_id = await session.scalar(
                 select(func.max(ParserRun.id)).where(
                     ParserRun.status.in_(("completed", "partial"))
                 )
             )
-            if run_id is None:
-                raise RuntimeError("No completed or partial parser run exists")
-            before = int(
-                await session.scalar(
-                    select(func.count(func.distinct(ListingModelAssignment.model_group_id)))
-                )
-                or 0
-            )
-            all_brand_ids = {
-                brand_id
-                for brand_id in await session.scalars(
-                    select(Listing.brand_id).where(Listing.brand_id.is_not(None)).distinct()
-                )
-                if brand_id is not None
-            }
-            if not resume:
-                await session.execute(
-                    update(ListingModelAssignment).values(algorithm_version="stale")
-                )
-                await session.commit()
-            stale_brand_ids = {
-                brand_id
-                for brand_id in await session.scalars(
-                    select(Listing.brand_id)
-                    .outerjoin(
-                        ListingModelAssignment,
-                        ListingModelAssignment.listing_id == Listing.id,
-                    )
-                    .where(
-                        Listing.brand_id.is_not(None),
-                        or_(
-                            ListingModelAssignment.listing_id.is_(None),
-                            ListingModelAssignment.algorithm_version != IDENTITY_VERSION,
-                        ),
-                    )
-                    .distinct()
-                )
-                if brand_id is not None
-            }
-            brand_ids = stale_brand_ids if resume else all_brand_ids
-        identity_by_brand: dict[int, dict[str, int | str]] = {}
-        for brand_id in sorted(brand_ids):
+        scoring: dict[str, object] | None = None
+        if run_id is not None:
             async with factory() as session:
-                identity_by_brand[brand_id] = await IdentityResolver(
-                    session, identity_settings, transport
-                ).resolve_run(
-                    run_id,
-                    brand_ids={brand_id},
-                    rebuild_all_physical=True,
+                scoring = await OpportunityScoringService(factory).score_run_in_session(
+                    session, run_id, replace=True
                 )
                 await session.commit()
-        async with factory() as session:
-            after = int(
-                await session.scalar(
-                    select(func.count(func.distinct(ListingModelAssignment.model_group_id)))
-                )
-                or 0
-            )
-            await session.execute(
-                delete(ScoringSnapshot).where(
-                    ScoringSnapshot.parser_run_id == run_id,
-                    ScoringSnapshot.model_version == MODEL_VERSION,
-                )
-            )
-            await session.commit()
-        scoring = await OpportunityScoringService(factory).score_run(
-            run_id, brand_ids=all_brand_ids
-        )
-        async with factory() as session:
-            insufficient = int(
-                await session.scalar(
-                    select(func.count(ScoringSnapshot.id)).where(
-                        ScoringSnapshot.parser_run_id == run_id,
-                        ScoringSnapshot.model_version == MODEL_VERSION,
-                        ScoringSnapshot.scoring_status != "scored",
-                    )
-                )
-                or 0
-            )
         return {
             "status": "ok",
             "backup": str(backup),
-            "run_id": run_id,
-            "groups_before": before,
-            "groups_after": after,
-            "insufficient_snapshots": insufficient,
-            "identity": identity_by_brand,
+            "grouping": result.summary(),
             "scoring": scoring,
         }
     finally:
-        await transport.close()
+        await engine.dispose()
+
+
+async def grouping_report(settings: Settings, brand: str | None) -> dict[str, object]:
+    """Offline grouping quality: model coverage, mixed-type check and top groups per brand."""
+
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            statement = select(Brand).order_by(Brand.name)
+            if brand:
+                statement = statement.where(func.lower(Brand.name) == brand.casefold())
+            brands = list(await session.scalars(statement))
+            report: dict[str, object] = {}
+            for item in brands:
+                rows = (
+                    await session.execute(
+                        select(
+                            ModelGroup.id,
+                            ModelGroup.name,
+                            ModelGroup.slug,
+                            ModelGroup.product_type,
+                            ModelGroup.status,
+                            func.count(ListingModelAssignment.listing_id),
+                        )
+                        .join(
+                            ListingModelAssignment,
+                            ListingModelAssignment.model_group_id == ModelGroup.id,
+                        )
+                        .where(ModelGroup.brand_id == item.id)
+                        .group_by(ModelGroup.id)
+                    )
+                ).all()
+                total = sum(row[5] for row in rows)
+                none = sum(row[5] for row in rows if row[2] == "_none" and row[3] != "review")
+                review = sum(row[5] for row in rows if row[3] == "review")
+                mixed = await session.scalar(
+                    select(func.count())
+                    .select_from(Listing)
+                    .join(
+                        ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id
+                    )
+                    .join(ModelGroup, ModelGroup.id == ListingModelAssignment.model_group_id)
+                    .where(
+                        Listing.brand_id == item.id,
+                        Listing.product_type != ModelGroup.product_type,
+                    )
+                )
+                top = sorted(
+                    (row for row in rows if row[2] != "_none"), key=lambda row: -row[5]
+                )[:15]
+                report[item.name] = {
+                    "listings": total,
+                    "with_model": total - none - review,
+                    "with_model_share": round((total - none - review) / total, 3) if total else 0,
+                    "no_model": none,
+                    "review": review,
+                    "mixed_type_assignments": int(mixed or 0),
+                    "top_groups": [
+                        {"name": row[1], "type": row[3], "status": row[4], "listings": row[5]}
+                        for row in top
+                    ],
+                }
+        return {"status": "ok", "brands": report}
+    finally:
         await engine.dispose()
 
 
@@ -331,12 +397,22 @@ def main() -> int:
     restore_parser = subparsers.add_parser("db-restore", help="verify or restore SQLite backup")
     restore_parser.add_argument("source", type=Path)
     restore_parser.add_argument("--apply", action="store_true")
-    rebuild_parser = subparsers.add_parser(
-        "market-rebuild", help="back up and rebuild identity-v5 and market-v5"
+    subparsers.add_parser(
+        "discover", help="refresh the public search key and indices (live, bounded)"
     )
-    rebuild_parser.add_argument(
-        "--resume", action="store_true", help="skip brands already assigned by identity-v5"
+    subparsers.add_parser(
+        "taxonomy-check", help="list real category paths missing from config/taxonomy.yaml"
     )
+    regroup_parser = subparsers.add_parser(
+        "regroup", help="back up, then regroup all brands with grouping-v6"
+    )
+    regroup_parser.add_argument(
+        "--delta", action="store_true", help="only new or changed listings when rules are unchanged"
+    )
+    report_parser = subparsers.add_parser(
+        "grouping-report", help="grouping quality per brand (offline)"
+    )
+    report_parser.add_argument("--brand")
     args = parser.parse_args()
     if args.command == "doctor":
         from importlib import metadata
@@ -370,16 +446,26 @@ def main() -> int:
     if args.command == "db-restore":
         print(json.dumps(restore_database(Settings(), args.source, apply=args.apply), indent=2))
         return 0
-    if args.command == "market-rebuild":
-        try:
-            rebuild_result = asyncio.run(rebuild_market(Settings(), resume=args.resume))
-        except RuntimeError as exc:
-            print(json.dumps({"status": "error", "message": str(exc)}))
-            return 1
-        print(json.dumps(rebuild_result, indent=2, sort_keys=True))
-        return 0
+    if args.command == "discover":
+        return _print(run_discovery(Settings()))
+    if args.command == "taxonomy-check":
+        return _print(run_taxonomy_check(Settings()))
+    if args.command == "regroup":
+        return _print(regroup(Settings(), full=not args.delta))
+    if args.command == "grouping-report":
+        return _print(grouping_report(Settings(), args.brand))
     parser.error("Unknown command")
     return 2
+
+
+def _print(job: Coroutine[Any, Any, dict[str, object]]) -> int:
+    try:
+        result = asyncio.run(job)
+    except RuntimeError as exc:
+        print(json.dumps({"status": "error", "message": str(exc)}))
+        return 1
+    print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False, default=str))
+    return 0 if result.get("status") in {"ok", "ready", "degraded"} else 1
 
 
 if __name__ == "__main__":

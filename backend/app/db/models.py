@@ -52,6 +52,9 @@ class Brand(Base):
     slug: Mapped[str | None] = mapped_column(String(255), unique=True)
     aliases: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     include_subbrands: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Hash of the grouping rules used by the last regroup; unchanged rules allow a delta pass.
+    grouping_hash: Mapped[str | None] = mapped_column(String(64))
+    grouped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -120,6 +123,7 @@ class Listing(Base):
         Index("ix_listings_status_id", "status", "id"),
         Index("ix_listings_source_product", "source", "source_product_id"),
         Index("ix_listings_seller_created", "seller_identity", "created_at"),
+        Index("ix_listings_brand_type_status", "brand_id", "product_type", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -134,6 +138,9 @@ class Listing(Base):
     brand_id: Mapped[int | None] = mapped_column(ForeignKey("brands.id", ondelete="SET NULL"))
     category: Mapped[str | None] = mapped_column(String(255))
     subcategory: Mapped[str | None] = mapped_column(String(255))
+    category_path: Mapped[str | None] = mapped_column(String(255))
+    # Taxonomy type set by grouping (config/taxonomy.yaml), never by the parser.
+    product_type: Mapped[str | None] = mapped_column(String(32))
     size_raw: Mapped[str | None] = mapped_column(String(128))
     size_normalized: Mapped[str | None] = mapped_column(String(128))
     condition_raw: Mapped[str | None] = mapped_column(String(128))
@@ -157,9 +164,6 @@ class Listing(Base):
     removed_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     days_on_market: Mapped[int | None] = mapped_column(Integer)
     cover_photo_url: Mapped[str | None] = mapped_column(Text)
-    cover_asset_key: Mapped[str | None] = mapped_column(String(64), index=True)
-    cover_content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
-    cover_dhash: Mapped[str | None] = mapped_column(String(16), index=True)
     photo_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     designer_names: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list, server_default="[]"
@@ -176,7 +180,10 @@ class Listing(Base):
     raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_json_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    identity_version: Mapped[str | None] = mapped_column(String(32))
+    # Same-seller relist: points at the first listing of the item (time to sell starts there).
+    relist_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("listings.id", name="fk_listings_relist_of", ondelete="SET NULL")
+    )
 
     brand: Mapped[Brand | None] = relationship(back_populates="listings")
     parser_run: Mapped[ParserRun | None] = relationship(back_populates="listings")
@@ -203,28 +210,38 @@ class ListingPriceHistory(Base):
 
 
 class ModelGroup(Base):
-    """Stable automatically resolved product-line analytics segment."""
+    """One model of a brand and product type: a line (no parent) or a version inside it."""
 
     __tablename__ = "model_groups"
     __table_args__ = (
+        UniqueConstraint("brand_id", "product_type", "slug", name="uq_model_groups_identity"),
         CheckConstraint(
-            "group_type IN ('rule', 'fallback', 'source_product', 'resolved')",
-            name="ck_model_groups_type",
+            "status IN ('confirmed', 'auto', 'ignored')", name="ck_model_groups_status"
         ),
-        Index("ix_model_groups_brand_type", "brand_id", "group_type"),
+        CheckConstraint(
+            "source IN ('seed', 'mined', 'user', 'system')", name="ck_model_groups_source"
+        ),
+        Index("ix_model_groups_brand_type", "brand_id", "product_type"),
+        Index("ix_model_groups_parent", "parent_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    stable_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     brand_id: Mapped[int] = mapped_column(
         ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
     )
+    product_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    # "_none" is the per-type "No model" bucket; other slugs are normalized model phrases.
+    slug: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str | None] = mapped_column(String(255))
-    group_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    merged_into_id: Mapped[int | None] = mapped_column(
-        ForeignKey("model_groups.id", name="fk_model_groups_merged_into", ondelete="SET NULL")
+    aliases: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", name="fk_model_groups_parent", ondelete="SET NULL")
     )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="auto")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="mined")
+    # Seeded hint: an ambiguous category without type words takes this model's type.
+    infer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    support: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -233,97 +250,50 @@ class ModelGroup(Base):
 
 
 class ListingModelAssignment(Base):
-    """Auditable exact-model assignment; fallback analytics groups are not stored here."""
+    """Current group of every grouped listing; recomputed by grouping, never edited directly."""
 
     __tablename__ = "listing_model_assignments"
-    __table_args__ = (
-        Index("ix_listing_model_assignments_group", "model_group_id"),
-        Index("ix_listing_model_assignments_grouping_version", "grouping_version"),
-        Index("ix_listing_model_assignments_input_hash", "input_hash"),
-    )
+    __table_args__ = (Index("ix_listing_model_assignments_group", "model_group_id"),)
 
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
     )
     model_group_id: Mapped[int] = mapped_column(
-        ForeignKey("model_groups.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False
     )
-    method: Mapped[str] = mapped_column(String(32), nullable=False)
-    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    grouping_version: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="legacy", server_default="legacy"
-    )
-    input_hash: Mapped[str | None] = mapped_column(String(64))
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class PhysicalItem(Base):
-    """One physical item across same-seller relists before its sale."""
+class ListingOverride(Base):
+    """A manual "move this listing to that group" rule that survives regrouping."""
 
-    __tablename__ = "physical_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class PhysicalItemMember(Base):
-    __tablename__ = "physical_item_members"
-    __table_args__ = (Index("ix_physical_item_members_item", "physical_item_id"),)
+    __tablename__ = "listing_overrides"
 
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
     )
-    physical_item_id: Mapped[int] = mapped_column(
-        ForeignKey("physical_items.id", ondelete="CASCADE"), nullable=False
+    model_group_id: Mapped[int] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False
     )
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class IdentityMatch(Base):
-    """Explainable model/relist pair and its automatic or manual decision."""
+class BrandStopword(Base):
+    """A phrase the user marked as "not a model" for one brand."""
 
-    __tablename__ = "identity_matches"
+    __tablename__ = "brand_stopwords"
     __table_args__ = (
-        CheckConstraint("level IN ('model', 'physical')", name="ck_identity_matches_level"),
-        CheckConstraint(
-            "status IN ('pending', 'auto_confirmed', 'confirmed', 'rejected')",
-            name="ck_identity_matches_status",
-        ),
-        CheckConstraint(
-            "relation_type IS NULL OR relation_type = 'relist'",
-            name="ck_identity_matches_relation",
-        ),
-        CheckConstraint("left_listing_id < right_listing_id", name="ck_identity_matches_order"),
-        UniqueConstraint(
-            "level", "left_listing_id", "right_listing_id", name="uq_identity_matches_pair"
-        ),
-        Index(
-            "ix_identity_matches_queue",
-            "status",
-            "level",
-            desc("confidence"),
-            "id",
-        ),
+        UniqueConstraint("brand_id", "phrase", name="uq_brand_stopwords_phrase"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    level: Mapped[str] = mapped_column(String(16), nullable=False)
-    left_listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
     )
-    right_listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
-    )
-    relation_type: Mapped[str | None] = mapped_column(String(16))
-    status: Mapped[str] = mapped_column(String(24), nullable=False)
-    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    algorithm_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    phrase: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ScoringSnapshot(Base):

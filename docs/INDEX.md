@@ -11,6 +11,7 @@
 | [PAGINATION.md](PAGINATION.md) | Browse, keyset и adaptive range split. |
 | [DATA_MODEL.md](DATA_MODEL.md) | Mapping, ListingData и data quality. |
 | [LIFECYCLE.md](LIFECYCLE.md) | Watermarks, delta/full и жизненный цикл листинга. |
+| [GROUPING.md](GROUPING.md) | Тип вещи, модели, линейки и версии, ручные правила, перевыставления. |
 | [BRAND_MAPPING.md](BRAND_MAPPING.md) | Автосопоставление брендов и фасетов. |
 | [OPERATIONS.md](OPERATIONS.md) | Лимиты, бюджет, прокси и персистентность. |
 | [OBSERVABILITY.md](OBSERVABILITY.md) | Логи, метрики и health. |

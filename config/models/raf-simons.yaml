@@ -1,0 +1,11 @@
+models:
+  - {name: Ozweego, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Response Trail, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Cylon, types: [lowtop_sneakers]}
+  - {name: Pharaxus, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Antei, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Stan Smith, types: [lowtop_sneakers]}
+  - {name: Riot, types: any}
+  - {name: Virginia Creeper, types: any}
+  - {name: Peter Saville, types: any}
+  - {name: Joy Division, types: any}

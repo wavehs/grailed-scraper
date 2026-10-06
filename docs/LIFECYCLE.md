@@ -1,14 +1,8 @@
 ## 10. Инкрементальность и жизненный цикл листинга
 
-AI-группировка проходит `preparing → submitted → running → validating →
-waiting_for_market → applying → completed`; terminal alternatives: `failed`,
-`cancelled`, `interrupted`, `needs_attention`, `rolled_back`. После рестарта runtime
-присоединяется к сохранённому provider job. Неопределимая отправка становится
-`needs_attention`, без автоматической повторной оплаты. Применение ждёт общий market
-lock с parser run, создаёт backup и одной транзакцией меняет groups, assignments и
-scoring snapshots. `needs_attention` и незавершённый Batch блокируют новые запуски и
-очистку данных. Для широкого `subcategory` тип от LLM используется только в безопасной
-уникальной группе; объединение с существующей группой требует локального типа товара.
+После сбора затронутые бренды перегруппировываются ([GROUPING.md](GROUPING.md)),
+затем пересчитываются метрики. Перевыставление того же продавца связывается с первым
+объявлением через `listings.relist_of_id`.
 
 ### 10.1. Watermarks
 

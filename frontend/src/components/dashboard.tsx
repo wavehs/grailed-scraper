@@ -20,6 +20,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@/components/ui/data-table';
+import { RegroupButton } from '@/components/group-editor';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card } from '@/components/ui/card';
@@ -336,7 +337,11 @@ export function Dashboard({
     );
   return (
     <section className="flex flex-col gap-5" aria-labelledby="dashboard-heading">
-      <PageHeader title={t('marketDashboard')} description={t('marketIntro')} />
+      <PageHeader
+        title={t('marketDashboard')}
+        description={t('marketIntro')}
+        actions={<RegroupButton />}
+      />
 
       {/* System status cards */}
       {health.data && (

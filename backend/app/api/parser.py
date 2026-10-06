@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,7 +31,6 @@ from app.db.models import (
     ParserRun,
     ParserRunTask,
     ParserWatermark,
-    PhysicalItem,
     SchemaAlert,
     SourceCredential,
     SourceSchema,
@@ -267,11 +266,12 @@ async def clear_collected_data(
     listings_deleted = int(await session.scalar(select(func.count(Listing.id))) or 0)
     runs_deleted = int(await session.scalar(select(func.count(ParserRun.id))) or 0)
     await session.execute(delete(Listing))
-    await session.execute(delete(PhysicalItem))
     await session.execute(delete(ParserRun))
     await session.execute(delete(ParserWatermark))
     await session.execute(delete(UnmatchedBrand))
-    await session.execute(delete(ModelGroup).where(ModelGroup.group_type != "rule"))
+    # Seeds, user groups and "not a model" rules are kept; derived groups are rebuilt.
+    await session.execute(delete(ModelGroup).where(ModelGroup.source.in_(("mined", "system"))))
+    await session.execute(update(Brand).values(grouping_hash=None, grouped_at=None))
     await session.commit()
     return ClearDataResponse(
         listings_deleted=listings_deleted,

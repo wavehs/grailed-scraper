@@ -49,7 +49,6 @@ class Settings(BaseSettings):
     sold_history_days: int = Field(default=365, ge=30, le=3650)
     collect_price_min_usd: int | None = Field(default=None, ge=0)
     collect_price_max_usd: int | None = Field(default=None, ge=1)
-    identity_image_requests_per_run: int = Field(default=100, ge=0, le=100)
     parser_progress_interval_s: float = 2.0
     discovery_ttl_hours: int = 12
     discovery_sample_size: int = 200

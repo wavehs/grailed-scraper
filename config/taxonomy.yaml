@@ -1,0 +1,279 @@
+# Product type taxonomy for grouping-v6: the single dictionary of product types.
+#
+# A listing's type comes from its Grailed `category_path` (`department.subcategory`).
+# - `categories` maps every known path to one type, or to a mixed rule
+#   `{any: [...], fallback: type}` that is refined by title words (first listed type wins).
+# - A path missing here falls back to its department in `departments`.
+# - Title words are written naturally; they are normalized like titles (case, accents,
+#   plurals). Multi-word phrases win over single words ("trucker jacket" over "trucker").
+#   `weak` words only refine a mixed category when no regular word is present.
+# - A clear category whose title names only types from other families and other
+#   sections (a hat titled "pendant") goes to `review` instead of a wrong group.
+#
+# Live check of real paths: `python -m app.cli taxonomy-check` (bounded, one request).
+version: taxonomy-v1
+
+sections:
+  tops: {ru: Верх, en: Tops}
+  bottoms: {ru: Низ, en: Bottoms}
+  outerwear: {ru: Верхняя одежда, en: Outerwear}
+  footwear: {ru: Обувь, en: Footwear}
+  tailoring: {ru: Костюмы, en: Tailoring}
+  dresses: {ru: Платья, en: Dresses}
+  accessories: {ru: Аксессуары, en: Accessories}
+  jewelry: {ru: Украшения, en: Jewelry}
+  bags: {ru: Сумки, en: Bags}
+  other: {ru: Прочее, en: Other}
+
+types:
+  # Tops
+  tshirt: {section: tops, family: top, ru: Футболка, en: T-shirt, words: [tee, tshirt, t shirt, tee shirt, short sleeve, s s tee]}
+  longsleeve: {section: tops, family: top, ru: Лонгслив, en: Long sleeve, words: [longsleeve, long sleeve, l s tee, ls tee]}
+  shirt: {section: tops, family: top, ru: Рубашка, en: Shirt, words: [shirt, button up, button down, buttonup, overshirt, flannel, dress shirt]}
+  polo: {section: tops, family: top, ru: Поло, en: Polo, words: [polo]}
+  tank: {section: tops, family: top, ru: Майка, en: Tank top, words: [tank, tank top, singlet, sleeveless]}
+  jersey: {section: tops, family: top, ru: Джерси, en: Jersey, words: [jersey]}
+  blouse: {section: tops, family: top, ru: Блузка, en: Blouse, words: [blouse]}
+  crop_top: {section: tops, family: top, ru: Кроп-топ, en: Crop top, words: [crop top, cropped top, bralette]}
+  bodysuit: {section: tops, family: top, ru: Боди, en: Bodysuit, words: [bodysuit]}
+  hoodie: {section: tops, family: sweat, ru: Худи, en: Hoodie, words: [hoodie, hoody, hooded sweatshirt, zip up, zipup, zip hoodie]}
+  sweatshirt: {section: tops, family: sweat, ru: Свитшот, en: Sweatshirt, words: [sweatshirt, crewneck, crew neck, crew sweat]}
+  sweat_top: {section: tops, family: sweat, ru: Худи или свитшот, en: Hoodie or sweatshirt}
+  sweater: {section: tops, family: sweat, ru: Свитер, en: Sweater, words: [sweater, knit sweater, cardigan, jumper, knitwear, pullover sweater, turtleneck, mohair sweater], weak: [knit, mohair]}
+  top_other: {section: tops, family: top, ru: Верх · без уточнения, en: Top · unspecified}
+
+  # Bottoms
+  jeans: {section: bottoms, family: legs, ru: Джинсы, en: Jeans, words: [jeans, jean, denim pants], weak: [denim]}
+  pants: {section: bottoms, family: legs, ru: Брюки, en: Pants, words: [pants, pant, trousers, trouser, slacks, chinos, cargos, cargo pants]}
+  sweatpants: {section: bottoms, family: legs, ru: Спортивные брюки, en: Sweatpants, words: [sweatpants, sweats, joggers, jogger, track pants, trackpants]}
+  shorts: {section: bottoms, family: legs, ru: Шорты, en: Shorts, words: [shorts, short pants, jorts]}
+  leggings: {section: bottoms, family: legs, ru: Леггинсы, en: Leggings, words: [leggings, tights]}
+  jumpsuit: {section: bottoms, family: legs, ru: Комбинезон, en: Jumpsuit, words: [jumpsuit, overalls, overall, boiler suit, coveralls]}
+  skirt: {section: bottoms, family: legs, ru: Юбка, en: Skirt, words: [skirt, miniskirt]}
+  swimwear: {section: bottoms, family: legs, ru: Купальники и плавки, en: Swimwear, words: [swim trunks, swimsuit, bikini, swim shorts, boardshorts]}
+  bottom_other: {section: bottoms, family: legs, ru: Низ · без уточнения, en: Bottom · unspecified}
+
+  # Outerwear
+  light_jacket: {section: outerwear, family: jacket, ru: Лёгкая куртка, en: Light jacket, words: [jacket, windbreaker, anorak, track jacket, coach jacket, shell jacket, blouson, work jacket, chore jacket, harrington]}
+  bomber: {section: outerwear, family: jacket, ru: Бомбер, en: Bomber, words: [bomber, ma 1, ma1, flight jacket]}
+  denim_jacket: {section: outerwear, family: jacket, ru: Джинсовая куртка, en: Denim jacket, words: [denim jacket, jean jacket, trucker jacket]}
+  leather_jacket: {section: outerwear, family: jacket, ru: Кожаная куртка, en: Leather jacket, words: [leather jacket, biker jacket, moto jacket, rider jacket, riders jacket, motorcycle jacket]}
+  coat: {section: outerwear, family: jacket, ru: Пальто, en: Coat, words: [coat, overcoat, topcoat, trench, trench coat, peacoat, pea coat, duffle coat]}
+  parka: {section: outerwear, family: jacket, ru: Парка и пуховик, en: Parka & puffer, words: [parka, puffer, down jacket, puffer jacket, down coat]}
+  raincoat: {section: outerwear, family: jacket, ru: Дождевик, en: Raincoat, words: [raincoat, rain jacket, rain coat, mackintosh]}
+  vest: {section: outerwear, family: jacket, ru: Жилет, en: Vest, words: [vest, gilet, waistcoat, puffer vest]}
+  cape: {section: outerwear, family: jacket, ru: Плащ и накидка, en: Cape, words: [cape, cloak, poncho]}
+  fur_coat: {section: outerwear, family: jacket, ru: Шуба, en: Fur coat, words: [fur coat, faux fur coat, shearling coat, mink coat]}
+  outerwear_other: {section: outerwear, family: jacket, ru: Верхняя одежда · без уточнения, en: Outerwear · unspecified}
+
+  # Footwear
+  lowtop_sneakers: {section: footwear, family: sneaker, ru: Кроссовки и кеды (низкие), en: Low-top sneakers, words: [sneaker, sneakers, trainer, trainers, lowtop, low top, low tops]}
+  hitop_sneakers: {section: footwear, family: sneaker, ru: Кроссовки и кеды (высокие), en: High-top sneakers, words: [hitop, hi top, high top, hi tops, high tops, hightop]}
+  boots: {section: footwear, family: shoe, ru: Ботинки и сапоги, en: Boots, words: [boot, boots, chelsea boot, combat boot]}
+  shoes: {section: footwear, family: shoe, ru: Туфли и лоферы, en: Shoes, words: [loafer, loafers, derby, derbies, oxford shoe, brogue, brogues, dress shoe, dress shoes, shoe, shoes, creepers]}
+  sandals: {section: footwear, family: shoe, ru: Сандалии и шлёпанцы, en: Sandals, words: [sandal, sandals, slide, slides, flip flop, flip flops, clog, clogs]}
+  slip_ons: {section: footwear, family: shoe, ru: Слипоны, en: Slip-ons, words: [slip on, slip ons, slipon, slip-on]}
+  heels: {section: footwear, family: shoe, ru: Туфли на каблуке, en: Heels, words: [heel, heels, pump, pumps, stiletto]}
+  flats: {section: footwear, family: shoe, ru: Балетки, en: Flats, words: [flat, flats, ballet flat, ballerina]}
+  mules: {section: footwear, family: shoe, ru: Мюли, en: Mules, words: [mule, mules]}
+  platforms: {section: footwear, family: shoe, ru: Обувь на платформе, en: Platforms, words: [platform, platforms]}
+  footwear_other: {section: footwear, family: shoe, ru: Обувь · без уточнения, en: Footwear · unspecified}
+
+  # Tailoring
+  blazer: {section: tailoring, family: jacket, ru: Пиджак, en: Blazer, words: [blazer, sport coat, sportcoat, suit jacket, tuxedo jacket]}
+  suit: {section: tailoring, family: jacket, ru: Костюм, en: Suit, words: [suit, tuxedo, three piece, two piece suit]}
+  tailoring_other: {section: tailoring, family: jacket, ru: Костюмы · без уточнения, en: Tailoring · unspecified}
+
+  # Dresses
+  dress: {section: dresses, family: dress, ru: Платье, en: Dress, words: [dress, gown, slip dress, maxi dress, mini dress, midi dress]}
+
+  # Accessories
+  hat: {section: accessories, family: hat, ru: Головной убор, en: Hat, words: [hat, hats, cap, caps, beanie, snapback, trucker, trucker hat, trucker cap, bucket hat, balaclava, beret, visor, fitted cap, dad hat]}
+  belt: {section: accessories, family: belt, ru: Ремень, en: Belt, words: [belt, belts]}
+  glasses: {section: accessories, family: eyewear, ru: Очки (оправы), en: Glasses, words: [glasses, eyeglasses, frames, optical, optical frames]}
+  sunglasses: {section: accessories, family: eyewear, ru: Солнцезащитные очки, en: Sunglasses, words: [sunglasses, sunglass, shades, sun glasses]}
+  gloves: {section: accessories, family: gloves, ru: Перчатки, en: Gloves, words: [glove, gloves, mittens]}
+  scarf: {section: accessories, family: scarf, ru: Шарф и платок, en: Scarf, words: [scarf, scarves, bandana, stole, muffler, shawl]}
+  socks_underwear: {section: accessories, family: socks, ru: Носки и бельё, en: Socks & underwear, words: [socks, sock, boxers, boxer briefs, briefs, underwear, bra]}
+  tie: {section: accessories, family: tie, ru: Галстук, en: Tie, words: [tie, necktie, bow tie, bowtie, pocket square, pocketsquare]}
+  wallet: {section: accessories, family: wallet, ru: Кошелёк и картхолдер, en: Wallet, words: [wallet, card holder, cardholder, card case, billfold, coin purse, zip wallet]}
+  keychain: {section: accessories, family: small, ru: Брелок, en: Keychain, words: [keychain, key chain, keyring, key ring, lanyard]}
+  periodical: {section: accessories, family: print, ru: Журналы и книги, en: Periodicals, words: [magazine, book, zine, catalog, lookbook]}
+  hair_accessory: {section: accessories, family: small, ru: Аксессуары для волос, en: Hair accessory, words: [hair clip, hairclip, scrunchie, headband, hair tie]}
+  accessory_other: {section: accessories, family: small, ru: Аксессуары · прочее, en: Accessory · other, words: [lighter, ashtray, sticker, stickers, mug, pillow, blanket, towel, skateboard, airpods case, phone case]}
+
+  # Jewelry
+  ring: {section: jewelry, family: jewelry, ru: Кольцо, en: Ring, words: [ring, rings, signet], weak: [band]}
+  pendant: {section: jewelry, family: jewelry, ru: Подвеска, en: Pendant, words: [pendant, charm, charms, pendent], weak: [necklace]}
+  chain: {section: jewelry, family: jewelry, ru: Цепь и колье, en: Chain & necklace, words: [chain, choker, necklace chain]}
+  bracelet: {section: jewelry, family: jewelry, ru: Браслет, en: Bracelet, words: [bracelet, bangle, anklet], weak: [cuff]}
+  earring: {section: jewelry, family: jewelry, ru: Серьги, en: Earrings, words: [earring, earrings, ear ring, hoop earring, stud earring], weak: [stud, hoop]}
+  watch: {section: jewelry, family: jewelry, ru: Часы, en: Watch, words: [watch, watches, wristwatch]}
+  brooch: {section: jewelry, family: jewelry, ru: Брошь, en: Brooch, words: [brooch, lapel pin], weak: [pin]}
+  cufflinks: {section: jewelry, family: jewelry, ru: Запонки, en: Cufflinks, words: [cufflink, cufflinks, cuff links]}
+  body_jewelry: {section: jewelry, family: jewelry, ru: Пирсинг, en: Body jewelry, words: [piercing, nose ring, belly ring]}
+  jewelry_other: {section: jewelry, family: jewelry, ru: Украшения · без типа, en: Jewelry · untyped}
+
+  # Bags
+  bag: {section: bags, family: bag, ru: Сумка, en: Bag, words: [bag, tote, tote bag, duffle, duffel, crossbody, messenger, clutch, pouch, satchel, handbag, shoulder bag, belt bag, waist bag, fanny pack, sling bag, luggage, suitcase]}
+  backpack: {section: bags, family: bag, ru: Рюкзак, en: Backpack, words: [backpack, rucksack, knapsack]}
+
+  # Service types
+  other: {section: other, family: other, ru: Прочее, en: Other}
+  review: {section: other, family: review, ru: Требует проверки, en: Needs review}
+
+categories:
+  # Menswear
+  tops.short_sleeve_shirts: tshirt
+  tops.long_sleeve_shirts: longsleeve
+  tops.button_ups: shirt
+  tops.polos: polo
+  tops.sweaters_knitwear: sweater
+  tops.sweatshirts_hoodies: {any: [hoodie, sweatshirt], fallback: sweat_top}
+  tops.sleeveless: tank
+  tops.tank_tops_sleeveless: tank
+  tops.jerseys: jersey
+  bottoms.casual_pants: pants
+  bottoms.cropped_pants: pants
+  bottoms.denim: jeans
+  bottoms.leggings: leggings
+  bottoms.jumpsuits: jumpsuit
+  bottoms.overalls_jumpsuits: jumpsuit
+  bottoms.shorts: shorts
+  bottoms.sweatpants_joggers: sweatpants
+  bottoms.swimwear: swimwear
+  outerwear.bombers: bomber
+  outerwear.cloaks_capes: cape
+  outerwear.denim_jackets: denim_jacket
+  outerwear.heavy_coats: {any: [parka, fur_coat, coat], fallback: coat}
+  outerwear.leather_jackets: leather_jacket
+  outerwear.light_jackets: light_jacket
+  outerwear.parkas: parka
+  outerwear.raincoats: raincoat
+  outerwear.vests: vest
+  footwear.boots: boots
+  footwear.leather: shoes
+  footwear.casual_leather_shoes: shoes
+  footwear.formal_shoes: shoes
+  footwear.hitop_sneakers: hitop_sneakers
+  footwear.lowtop_sneakers: lowtop_sneakers
+  footwear.sandals: sandals
+  footwear.slip_ons: slip_ons
+  tailoring.blazers: blazer
+  tailoring.formal_shirting: shirt
+  tailoring.formal_trousers: pants
+  tailoring.suits: suit
+  tailoring.tuxedos: suit
+  tailoring.vests: vest
+  accessories.bags_luggage: {any: [backpack, bag], fallback: bag}
+  accessories.belts: belt
+  accessories.glasses: glasses
+  accessories.gloves_scarves: {any: [gloves, scarf], fallback: accessory_other}
+  accessories.hats: hat
+  accessories.jewelry_watches: {any: [ring, earring, bracelet, watch, cufflinks, brooch, body_jewelry, pendant, chain], fallback: jewelry_other}
+  accessories.wallets: wallet
+  accessories.misc: {any: [keychain, wallet, belt, hat, glasses, sunglasses, gloves, scarf, tie, socks_underwear, bag, backpack, ring, pendant, chain, bracelet, earring, watch, hair_accessory, periodical, accessory_other], fallback: accessory_other}
+  accessories.periodicals: periodical
+  accessories.socks_underwear: socks_underwear
+  accessories.sunglasses: sunglasses
+  accessories.supreme: {any: [keychain, accessory_other], fallback: accessory_other}
+  accessories.ties_pocketsquares: tie
+  accessories.keychains: keychain
+
+  # Womenswear
+  womens_tops.blouses: blouse
+  womens_tops.bodysuits: bodysuit
+  womens_tops.button_ups: shirt
+  womens_tops.crop_tops: crop_top
+  womens_tops.hoodies: hoodie
+  womens_tops.long_sleeve_tops: longsleeve
+  womens_tops.polos: polo
+  womens_tops.short_sleeve_tops: tshirt
+  womens_tops.sweaters: sweater
+  womens_tops.sweatshirts: sweatshirt
+  womens_tops.tank_tops: tank
+  womens_bottoms.jeans: jeans
+  womens_bottoms.joggers: sweatpants
+  womens_bottoms.jumpsuits: jumpsuit
+  womens_bottoms.leggings: leggings
+  womens_bottoms.maxi_skirts: skirt
+  womens_bottoms.midi_skirts: skirt
+  womens_bottoms.mini_skirts: skirt
+  womens_bottoms.pants: pants
+  womens_bottoms.shorts: shorts
+  womens_bottoms.sweatpants: sweatpants
+  womens_outerwear.blazers: blazer
+  womens_outerwear.bombers: bomber
+  womens_outerwear.coats: coat
+  womens_outerwear.denim_jackets: denim_jacket
+  womens_outerwear.down_jackets: parka
+  womens_outerwear.fur_faux_fur: fur_coat
+  womens_outerwear.jackets: light_jacket
+  womens_outerwear.leather_jackets: leather_jacket
+  womens_outerwear.rain_jackets: raincoat
+  womens_outerwear.vests: vest
+  womens_dresses.mini: dress
+  womens_dresses.midi: dress
+  womens_dresses.maxi: dress
+  womens_dresses.gowns: dress
+  womens_footwear.boots: boots
+  womens_footwear.heels: heels
+  womens_footwear.platforms: platforms
+  womens_footwear.mules: mules
+  womens_footwear.flats: flats
+  womens_footwear.hitop_sneakers: hitop_sneakers
+  womens_footwear.lowtop_sneakers: lowtop_sneakers
+  womens_footwear.sandals: sandals
+  womens_footwear.slip_ons: slip_ons
+  womens_accessories.belts: belt
+  womens_accessories.glasses: glasses
+  womens_accessories.gloves: gloves
+  womens_accessories.hair_accessories: hair_accessory
+  womens_accessories.hats: hat
+  womens_accessories.miscellaneous: {any: [keychain, wallet, scarf, gloves, socks_underwear, hair_accessory, periodical, accessory_other], fallback: accessory_other}
+  womens_accessories.scarves: scarf
+  womens_accessories.socks_intimates: socks_underwear
+  womens_accessories.sunglasses: sunglasses
+  womens_accessories.wallets: wallet
+  womens_accessories.watches: watch
+  womens_accessories.keychains: keychain
+  womens_bags_luggage.backpacks: backpack
+  womens_bags_luggage.belt_bags: bag
+  womens_bags_luggage.bucket_bags: bag
+  womens_bags_luggage.clutches: bag
+  womens_bags_luggage.crossbody_bags: bag
+  womens_bags_luggage.handle_bags: bag
+  womens_bags_luggage.hobo_bags: bag
+  womens_bags_luggage.luggage_travel: bag
+  womens_bags_luggage.messengers_satchels: bag
+  womens_bags_luggage.mini_bags: bag
+  womens_bags_luggage.shoulder_bags: bag
+  womens_bags_luggage.toiletry_pouches: bag
+  womens_bags_luggage.tote_bags: bag
+  womens_bags_luggage.other: {any: [backpack, bag, wallet, keychain], fallback: bag}
+  womens_jewelry.body_jewelry: body_jewelry
+  womens_jewelry.bracelets: bracelet
+  womens_jewelry.brooches: brooch
+  womens_jewelry.charms: pendant
+  womens_jewelry.cufflinks: cufflinks
+  womens_jewelry.earrings: earring
+  womens_jewelry.necklaces: {any: [pendant, chain], fallback: chain}
+  womens_jewelry.rings: ring
+
+# Fallback for a category_path that is not listed above (or a listing without one).
+departments:
+  tops: {any: [hoodie, sweatshirt, sweater, longsleeve, tshirt, shirt, polo, tank, jersey], fallback: top_other}
+  womens_tops: {any: [hoodie, sweatshirt, sweater, longsleeve, tshirt, shirt, polo, tank, blouse, crop_top, bodysuit], fallback: top_other}
+  bottoms: {any: [jeans, sweatpants, shorts, leggings, jumpsuit, swimwear, pants], fallback: bottom_other}
+  womens_bottoms: {any: [jeans, sweatpants, shorts, leggings, jumpsuit, skirt, pants], fallback: bottom_other}
+  outerwear: {any: [denim_jacket, leather_jacket, bomber, parka, raincoat, fur_coat, coat, vest, cape, light_jacket], fallback: outerwear_other}
+  womens_outerwear: {any: [denim_jacket, leather_jacket, bomber, parka, raincoat, fur_coat, coat, vest, blazer, light_jacket], fallback: outerwear_other}
+  footwear: {any: [hitop_sneakers, slip_ons, sandals, boots, shoes, lowtop_sneakers], fallback: footwear_other}
+  womens_footwear: {any: [hitop_sneakers, slip_ons, sandals, mules, heels, flats, platforms, boots, shoes, lowtop_sneakers], fallback: footwear_other}
+  tailoring: {any: [blazer, suit, vest, shirt, pants], fallback: tailoring_other}
+  womens_dresses: {any: [dress, skirt], fallback: dress}
+  accessories: {any: [hat, belt, sunglasses, glasses, gloves, scarf, socks_underwear, tie, wallet, keychain, backpack, bag, ring, earring, bracelet, watch, pendant, chain, periodical, accessory_other], fallback: accessory_other}
+  womens_accessories: {any: [hat, belt, sunglasses, glasses, gloves, scarf, socks_underwear, wallet, keychain, watch, hair_accessory, accessory_other], fallback: accessory_other}
+  womens_bags_luggage: {any: [backpack, bag], fallback: bag}
+  womens_jewelry: {any: [ring, earring, bracelet, watch, cufflinks, brooch, body_jewelry, pendant, chain], fallback: jewelry_other}
+  _unknown: {any: [], fallback: other}

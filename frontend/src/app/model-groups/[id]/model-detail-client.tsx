@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   TrendingUp,
 } from 'lucide-react';
+import { GroupEditor } from '@/components/group-editor';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -30,6 +31,7 @@ const pretty = (value: unknown) =>
 export default function ModelDetailClient() {
   const params = useParams<{ id?: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { locale, t } = useI18n();
   const modelId = params?.id || searchParams.get('id') || '';
   const windowDays = searchParams.get('window_days') === '30' ? 30 : 90;
@@ -60,6 +62,12 @@ export default function ModelDetailClient() {
         {t('backToResults')}
       </Link>
       <PageHeader title={data.name} description={`${data.brand} · ${data.category ?? '—'}`} />
+      <GroupEditor
+        groupId={data.id}
+        onChanged={(group) => {
+          if (group.id !== data.id) router.push(`/model-groups/${group.id}`);
+        }}
+      />
       <p className="text-xs text-[var(--text-muted)]">
         {t('modelVersion')}: {data.model_version} · {t('run')} #{data.run_id} · {data.window_days}d
         · {t('inputDigest')}:{' '}

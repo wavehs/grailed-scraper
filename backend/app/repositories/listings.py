@@ -120,6 +120,7 @@ class ListingRepository:
             "brand_id",
             "category",
             "subcategory",
+            "category_path",
             "size_raw",
             "size_normalized",
             "condition_raw",
@@ -142,9 +143,6 @@ class ListingRepository:
             "removed_checked_at",
             "days_on_market",
             "cover_photo_url",
-            "cover_asset_key",
-            "cover_content_sha256",
-            "cover_dhash",
             "photo_urls",
             "designer_names",
             "photo_count",
@@ -157,7 +155,6 @@ class ListingRepository:
             "raw_json",
             "raw_json_purged_at",
             "schema_version",
-            "identity_version",
         )
 
     @staticmethod

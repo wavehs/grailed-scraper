@@ -304,3 +304,33 @@ export type CatalogListing = {
   model_active_count: number;
 };
 export type CatalogListingList = CursorPage<CatalogListing>;
+
+export type TaxonomySection = { id: string; ru: string; en: string };
+export type TaxonomyType = { id: string; section: string; ru: string; en: string };
+export type Taxonomy = { version: string; sections: TaxonomySection[]; types: TaxonomyType[] };
+
+export type GroupStatus = 'confirmed' | 'auto' | 'ignored';
+
+export type GroupSummary = {
+  id: number;
+  brand_id: number;
+  brand: string;
+  product_type: string;
+  slug: string;
+  name: string;
+  aliases: string[];
+  parent_id: number | null;
+  status: GroupStatus;
+  source: string;
+  is_fallback: boolean;
+  listings: number;
+  sold: number;
+  active: number;
+};
+
+export type GroupDetail = GroupSummary & {
+  parent: GroupSummary | null;
+  versions: GroupSummary[];
+};
+
+export type GroupList = { data: GroupSummary[]; total: number };

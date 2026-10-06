@@ -40,17 +40,20 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
         "unmatched_brands",
         "app_settings",
         "listing_model_assignments",
-        "physical_items",
-        "physical_item_members",
-        "identity_matches",
+        "listing_overrides",
+        "brand_stopwords",
+        "model_groups",
     }
     assert required_tables.issubset(set(inspector.get_table_names()))
     assert {"ix_listings_brand_status_sold_at", "ix_listings_status_last_seen_at"}.issubset(
         {index["name"] for index in inspector.get_indexes("listings")}
     )
-    assert {"color", "source_product_id", "cover_dhash", "identity_version"}.issubset(
-        {column["name"] for column in inspector.get_columns("listings")}
+    listing_columns = {column["name"] for column in inspector.get_columns("listings")}
+    assert {"color", "source_product_id", "category_path", "product_type", "relist_of_id"}.issubset(
+        listing_columns
     )
+    assert not {"cover_dhash", "identity_version"} & listing_columns
+    assert not {"identity_matches", "physical_items"} & set(inspector.get_table_names())
     assert {
         "exact_sold_count",
         "median_sold_likes",

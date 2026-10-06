@@ -1,0 +1,8 @@
+models:
+  - {name: Century Denim, types: any}
+  - {name: Boro, types: any}
+  - {name: Kountry, types: any}
+  - {name: Rainbowy, types: any}
+  - {name: Sashiko, types: any}
+  - {name: Okabilly, types: [jeans, pants]}
+  - {name: Monkey Cisco, types: [jeans, pants]}

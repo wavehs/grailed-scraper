@@ -22,27 +22,15 @@ from app.db.models import (
     ScoringSnapshot,
 )
 from app.domain.listings import decimal_to_cents
+from app.services.grouping.policy import load_policy
 from app.services.scoring.calculator import decimal_median
 from app.services.scoring.service import MODEL_VERSION
 
-PRODUCT_TYPE_CATEGORIES = {
-    "footwear": ("footwear", "womens_footwear"),
-    "clothing": (
-        "tops",
-        "outerwear",
-        "bottoms",
-        "tailoring",
-        "womens_tops",
-        "womens_outerwear",
-        "womens_bottoms",
-        "womens_dresses",
-    ),
-    "accessories": (
-        "accessories",
-        "womens_accessories",
-        "womens_bags_luggage",
-        "womens_jewelry",
-    ),
+# Dashboard product-type filter: taxonomy sections behind each coarse bucket.
+PRODUCT_TYPE_SECTIONS = {
+    "footwear": ("footwear",),
+    "clothing": ("tops", "bottoms", "outerwear", "tailoring", "dresses"),
+    "accessories": ("accessories", "jewelry", "bags"),
 }
 
 
@@ -223,7 +211,7 @@ class AnalyticsService:
                     id=group.id,
                     name=group.name,
                     brand_name=group.brand.name,
-                    category=group.category,
+                    category=group.product_type,
                     available_sizes=sorted(sizes),
                     available_conditions=sorted(conditions),
                     sold_count=snapshot.sold_count,
@@ -305,8 +293,8 @@ class AnalyticsService:
             id=group.id,
             name=group.name,
             brand=group.brand.name,
-            category=group.category,
-            group_type=group.group_type,
+            category=group.product_type,
+            group_type=group.status,
             model_version=snapshot.model_version,
             window_days=snapshot.window_days,
             run_id=snapshot.parser_run_id,
@@ -673,12 +661,16 @@ def _search_filter(value: str) -> Any:
     return or_(
         func.lower(ModelGroup.name).contains(term, autoescape=True),
         func.lower(Brand.name).contains(term, autoescape=True),
-        func.lower(func.coalesce(ModelGroup.category, "")).contains(term, autoescape=True),
+        func.lower(ModelGroup.product_type).contains(term, autoescape=True),
     )
 
 
 def _product_type_filter(value: str) -> Any:
-    return func.lower(ModelGroup.category).in_(PRODUCT_TYPE_CATEGORIES[value])
+    sections = PRODUCT_TYPE_SECTIONS[value]
+    types = [
+        item.id for item in load_policy().taxonomy.types.values() if item.section in sections
+    ]
+    return ModelGroup.product_type.in_(types)
 
 
 def _average(values: list[Decimal]) -> Decimal | None:

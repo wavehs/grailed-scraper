@@ -29,7 +29,6 @@ Use the backend venv explicitly (`backend/.venv`, Python 3.11.9). The global `py
 ## Verify before calling a task done
 
 - CI (`.github/workflows/ci.yml`) runs the backend checks (ruff check, mypy, pytest) and the frontend checks (lint, typecheck, test, build). Run the ones covering what you touched.
-- mypy has known errors in `tests/test_identity.py`. Don't add new ones.
 
 ## Gotchas
 

@@ -1,0 +1,4 @@
+models:
+  - {name: Dead End, types: [boots, shoes]}
+  - {name: Drip, types: any}
+  - {name: Object Dyed, types: any}

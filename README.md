@@ -30,7 +30,8 @@ pnpm run test
 pnpm run build
 ```
 
-Source-independent checks do not replace the bounded live canary required by [docs/TESTING.md](docs/TESTING.md).
+Source-independent checks do not replace the bounded live canary required by [docs/TESTING.md](docs/TESTING.md)
+(`python -m app.cli discover`, `canary`, `taxonomy-check`).
 
 ## SQLite operations
 
@@ -38,7 +39,8 @@ Source-independent checks do not replace the bounded live canary required by [do
 python -m app.cli retention
 python -m app.cli retention --apply
 python -m app.cli db-backup
-python -m app.cli market-rebuild
+python -m app.cli regroup
+python -m app.cli grouping-report --brand "Rick Owens"
 python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3
 python -m app.cli db-restore data/backups/grailed-YYYYMMDDTHHMMSSZ.sqlite3 --apply
 ```

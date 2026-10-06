@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getApi, getHealthApi } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type {
   ApiHealth,
   BrandAnalyticsList,
@@ -11,6 +12,9 @@ import type {
   RunList,
   SettingsResponse,
   DashboardProductType,
+  GroupDetail,
+  GroupList,
+  Taxonomy,
 } from '@/lib/types';
 
 export function useApiHealth() {
@@ -148,4 +152,56 @@ export function useSettingsQuery() {
     queryKey: ['settings'],
     queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
   });
+}
+
+export function useTaxonomyQuery() {
+  return useQuery({
+    queryKey: ['taxonomy'],
+    queryFn: ({ signal }) => getApi<Taxonomy>('/grouping/taxonomy', signal),
+    staleTime: Infinity,
+  });
+}
+
+export function useGroupQuery(id: number | null) {
+  return useQuery({
+    queryKey: ['group', id],
+    queryFn: ({ signal }) => getApi<GroupDetail>(`/groups/${id}`, signal),
+    enabled: id !== null,
+  });
+}
+
+export function useGroupsQuery(brandId?: number, productType?: string, linesOnly = false) {
+  return useQuery({
+    queryKey: ['groups', brandId, productType, linesOnly],
+    queryFn: ({ signal }) =>
+      getApi<GroupList>(
+        `/groups?${new URLSearchParams({
+          limit: '500',
+          lines_only: String(linesOnly),
+          ...(brandId ? { brand_id: String(brandId) } : {}),
+          ...(productType ? { product_type: productType } : {}),
+        })}`,
+        signal,
+      ),
+    enabled: brandId !== undefined,
+  });
+}
+
+/** Localized product-type and section names from the taxonomy. */
+export function useTypeNames() {
+  const { locale } = useI18n();
+  const taxonomy = useTaxonomyQuery();
+  const types = new Map((taxonomy.data?.types ?? []).map((item) => [item.id, item]));
+  const sections = new Map((taxonomy.data?.sections ?? []).map((item) => [item.id, item]));
+  return {
+    taxonomy: taxonomy.data,
+    typeName: (id?: string | null) => {
+      const item = id ? types.get(id) : undefined;
+      return item ? item[locale] : (id ?? '—');
+    },
+    sectionName: (id?: string | null) => {
+      const item = id ? sections.get(id) : undefined;
+      return item ? item[locale] : (id ?? '—');
+    },
+  };
 }

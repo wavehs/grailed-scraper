@@ -1,4 +1,4 @@
-"""Database-backed market-v5 scoring with resolved line identity."""
+"""Database-backed market-v5 scoring over grouping-v6 model groups."""
 
 from __future__ import annotations
 
@@ -21,10 +21,8 @@ from app.db.models import (
     ModelGroup,
     ParserRun,
     ParserRunTask,
-    PhysicalItemMember,
     ScoringSnapshot,
 )
-from app.services.identity.service import IDENTITY_VERSION
 from app.services.scoring.calculator import (
     HUNDRED,
     SIX_PLACES,
@@ -142,7 +140,6 @@ class OpportunityScoringService:
                     )
                 )
             )
-            listings = await _canonical_relistings(session, listings)
             assignments, groups = await self._resolved_groups(session, listings, brand_id)
             drafts = _build_drafts(
                 listings=listings,
@@ -188,16 +185,10 @@ class OpportunityScoringService:
         assignments = {
             assignment.listing_id: assignment.model_group_id for assignment, _ in persisted
         }
-        stale = [
-            assignment.listing_id
-            for assignment, _ in persisted
-            if assignment.algorithm_version != IDENTITY_VERSION
-        ]
         missing = sorted(listing_ids - assignments.keys())
-        if stale or missing:
+        if missing:
             raise RuntimeError(
-                "identity_assignment_missing: "
-                f"brand={brand_id} missing={missing[:10]} stale={stale[:10]}"
+                f"grouping_assignment_missing: brand={brand_id} missing={missing[:10]}"
             )
         groups = {group.id: group for _, group in persisted}
         return assignments, groups
@@ -540,42 +531,3 @@ def _variant_value(value: str | None) -> str | None:
 
 def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
-async def _canonical_relistings(
-    session: AsyncSession, listings: Sequence[Listing]
-) -> list[Listing]:
-    """Keep one active/sold row per confirmed same-seller relist component."""
-
-    if not listings:
-        return []
-    listing_ids = {listing.id for listing in listings}
-    brand_ids = {listing.brand_id for listing in listings if listing.brand_id is not None}
-    membership_rows = await session.execute(
-        select(PhysicalItemMember.listing_id, PhysicalItemMember.physical_item_id)
-        .join(Listing, Listing.id == PhysicalItemMember.listing_id)
-        .where(Listing.brand_id.in_(brand_ids))
-    )
-    item_by_listing = {
-        listing_id: physical_item_id
-        for listing_id, physical_item_id in membership_rows.tuples()
-        if listing_id in listing_ids
-    }
-    by_item: dict[int, list[Listing]] = defaultdict(list)
-    result = [listing for listing in listings if listing.id not in item_by_listing]
-    for listing in listings:
-        if item_id := item_by_listing.get(listing.id):
-            by_item[item_id].append(listing)
-    for candidates in by_item.values():
-        result.append(
-            max(
-                candidates,
-                key=lambda item: (
-                    item.status == "sold",
-                    item.status == "active",
-                    _aware(item.created_at or item.first_seen_at),
-                    item.id,
-                ),
-            )
-        )
-    return result

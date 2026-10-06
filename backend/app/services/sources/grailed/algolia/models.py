@@ -52,6 +52,7 @@ class AlgoliaPage:
     hits_per_page: int = 0
     exhaustive_nb_hits: bool = True
     cursor: str | None = None
+    facets: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> AlgoliaPage:
@@ -69,6 +70,7 @@ class AlgoliaPage:
             hits_per_page=_integer(payload.get("hitsPerPage"), len(hits)),
             exhaustive_nb_hits=payload.get("exhaustiveNbHits") is not False,
             cursor=payload.get("cursor") if isinstance(payload.get("cursor"), str) else None,
+            facets=_facets(payload.get("facets")),
         )
 
 
@@ -81,3 +83,17 @@ class FacetValue:
 
 def _integer(value: object, default: int) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def _facets(value: object) -> dict[str, dict[str, int]]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(name): {
+            str(item): count
+            for item, count in counts.items()
+            if isinstance(count, int) and not isinstance(count, bool)
+        }
+        for name, counts in value.items()
+        if isinstance(counts, dict)
+    }
