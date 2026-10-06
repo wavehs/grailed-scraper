@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Grailed Liquidity Analyzer - launcher
 #   start.bat            -> build UI if needed, migrate DB, serve app on :8000
 #   start.bat -Mode dev  -> backend :8000 + Next.js dev server :3000
