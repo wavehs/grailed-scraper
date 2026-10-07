@@ -1,0 +1,2 @@
+recorded_at,checkpoint,commit,dirty,labels_sha256,phrases_sha256,rows,passed,aggregates
+2026-10-07T11:24:11+00:00,0,cd5c214880dae2e7e755073735dd219ab9a9bf1c,1,cbde8c65154253dbfd07c291bb540964500040661e0a811d95cc12727d894165,3daa7a31b439e27e5709da6aa861963afc9f44e5d0a975c71161c29214f37314,571,1,"{""collab_recall"": 0.0, ""model_precision"": 0.524, ""model_precision_strict"": 0.5337, ""none_precision"": 0.7521, ""recall_line"": 0.7899, ""recall_regression"": 1.0}"
