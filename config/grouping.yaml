@@ -1,6 +1,15 @@
-# Word lists for grouping-v6 title normalization (no rules, no thresholds).
+# Word lists for grouping-v7 title normalization and the stability of mined groups.
 # Every entry is normalized like a title: case, accents and plurals do not matter.
-version: grouping-v6
+version: grouping-v7
+
+# Stability of mined groups (thresholds of mining itself are in mining.py, docs/GROUPING.md).
+# An existing auto group is kept while it has keep_ratio × the creation threshold of sellers;
+# a group a full pass no longer derives is retired and deleted after retire_ttl_days.
+# keep_ratio 0.6 (3 sellers of 5) was picked on Balenciaga snapshots 30/90 days apart:
+# 0.4 saves 9-29 lines from retiring but keeps two-seller lines; 0.8 and 1.0 lose far more.
+mining:
+  keep_ratio: 0.6
+  retire_ttl_days: 90
 
 # Spelling variants: the left phrase is replaced by the right one before matching.
 spelling:

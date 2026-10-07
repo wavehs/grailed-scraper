@@ -237,6 +237,8 @@ class ModelGroup(Base):
     # Seeded hint: an ambiguous category without type words takes this model's type.
     infer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     support: Mapped[int | None] = mapped_column(Integer)
+    # An auto group a full pass no longer derives: hidden, kept for the TTL with its id.
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -274,12 +276,26 @@ class ListingOverride(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class BrandStopword(Base):
-    """A phrase the user marked as "not a model" for one brand."""
+class ParentOverride(Base):
+    """A manual "this group belongs to that line" rule; ``parent_id`` NULL makes it a line."""
 
-    __tablename__ = "brand_stopwords"
+    __tablename__ = "parent_overrides"
+
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ModelBlock(Base):
+    """A phrase the user marked as "not a model": never a model, still part of titles."""
+
+    __tablename__ = "model_blocklist"
     __table_args__ = (
-        UniqueConstraint("brand_id", "phrase", name="uq_brand_stopwords_phrase"),
+        UniqueConstraint("brand_id", "phrase", name="uq_model_blocklist_phrase"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

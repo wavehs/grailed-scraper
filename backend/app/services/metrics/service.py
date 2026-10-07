@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
@@ -137,7 +137,14 @@ class MetricsService:
             self._row(key, scope_meta[key], compute_metrics(items, as_of), now)
             for key, items in by_scope.items()
         ]
-        await self._session.execute(delete(GroupMetric).where(GroupMetric.brand_id == brand_id))
+        # Retired groups have no listings now; their last metrics stay frozen (grouping-v7).
+        retired = [group.id for group in groups.values() if group.retired_at is not None]
+        await self._session.execute(
+            delete(GroupMetric).where(
+                GroupMetric.brand_id == brand_id,
+                or_(GroupMetric.group_id.is_(None), GroupMetric.group_id.not_in(retired)),
+            )
+        )
         for start in range(0, len(values), _INSERT_CHUNK):
             await self._session.execute(insert(GroupMetric), values[start : start + _INSERT_CHUNK])
         return len(values), len(raw)

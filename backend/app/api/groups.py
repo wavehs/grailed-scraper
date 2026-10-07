@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.errors import ApiError
 from app.db.models import (
     Brand,
-    BrandStopword,
     Listing,
     ListingModelAssignment,
     ListingOverride,
+    ModelBlock,
     ModelGroup,
+    ParentOverride,
 )
 from app.db.session import get_db
 from app.services.grouping import GroupingService
@@ -151,6 +152,7 @@ async def list_groups(
         statement = statement.where(ModelGroup.status == status)
     else:
         statement = statement.where(ModelGroup.status != "ignored")
+    statement = statement.where(ModelGroup.retired_at.is_(None))
     if lines_only:
         statement = statement.where(ModelGroup.parent_id.is_(None))
     if search.strip():
@@ -249,7 +251,7 @@ async def split_group(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> GroupDetail:
     source = await _group(session, group_id)
-    if source.status == "ignored":
+    if _is_unused(source):
         raise ApiError(409, "group_ignored", "This group is no longer used")
     brand = await session.get(Brand, source.brand_id)
     assert brand is not None
@@ -273,13 +275,15 @@ async def split_group(
         parent_id = source.parent_id or source.id
     now = datetime.now(UTC)
     name = (payload.name or payload.phrase).strip()
-    if existing is not None and existing.status != "ignored":
+    # A tombstone or a retired group is invisible to the user: the phrase is free to reuse.
+    if existing is not None and not _is_unused(existing):
         raise ApiError(409, "group_exists", "A group with this phrase already exists")
     if existing is not None:
         existing.status = "confirmed"
         existing.source = "user"
         existing.name = name
         existing.parent_id = parent_id
+        existing.retired_at = None
         existing.updated_at = now
         created = existing
     else:
@@ -307,16 +311,18 @@ async def mark_not_model(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> GroupSummary:
+    """Forbid the phrase as a model of the brand; titles keep the words (grouping-v7)."""
+
     group = await _editable(session, group_id)
     now = datetime.now(UTC)
     known = set(
         await session.scalars(
-            select(BrandStopword.phrase).where(BrandStopword.brand_id == group.brand_id)
+            select(ModelBlock.phrase).where(ModelBlock.brand_id == group.brand_id)
         )
     )
     for phrase in dict.fromkeys([group.name, *group.aliases]):
         if phrase not in known:
-            session.add(BrandStopword(brand_id=group.brand_id, phrase=phrase, created_at=now))
+            session.add(ModelBlock(brand_id=group.brand_id, phrase=phrase, created_at=now))
     await session.execute(
         update(ModelGroup).where(ModelGroup.parent_id == group.id).values(parent_id=None)
     )
@@ -345,7 +351,7 @@ async def move_listing(
         await _apply(request, session, listing.brand_id)
         return None
     target = await _group(session, payload.group_id)
-    if target.brand_id != listing.brand_id or target.status == "ignored":
+    if target.brand_id != listing.brand_id or _is_unused(target):
         raise ApiError(409, "group_scope", "The group belongs to another brand or is unused")
     if override is None:
         session.add(
@@ -366,19 +372,35 @@ async def _group(session: AsyncSession, group_id: int) -> ModelGroup:
     return group
 
 
+def _is_unused(group: ModelGroup) -> bool:
+    return group.status == "ignored" or group.retired_at is not None
+
+
 async def _editable(session: AsyncSession, group_id: int) -> ModelGroup:
     group = await _group(session, group_id)
     if group.slug == NONE_SLUG:
         raise ApiError(409, "service_group", "The No model group cannot be edited")
-    if group.status == "ignored":
+    if _is_unused(group):
         raise ApiError(409, "group_ignored", "This group is no longer used")
     return group
 
 
 async def _set_parent(session: AsyncSession, group: ModelGroup, parent_id: int | None) -> None:
-    if parent_id is None:
-        group.parent_id = None
-        return
+    """A line change is a rule (``parent_overrides``); it never confirms the group."""
+
+    if parent_id is not None:
+        await _check_parent(session, group, parent_id)
+    override = await session.get(ParentOverride, group.id)
+    if override is None:
+        session.add(
+            ParentOverride(group_id=group.id, parent_id=parent_id, created_at=datetime.now(UTC))
+        )
+    else:
+        override.parent_id = parent_id
+    group.parent_id = parent_id
+
+
+async def _check_parent(session: AsyncSession, group: ModelGroup, parent_id: int) -> None:
     parent = await _editable(session, parent_id)
     if parent.id == group.id:
         raise ApiError(422, "parent_self", "A group cannot be its own line")
@@ -388,12 +410,15 @@ async def _set_parent(session: AsyncSession, group: ModelGroup, parent_id: int |
         raise ApiError(409, "parent_is_version", "A version cannot hold other versions")
     has_versions = await session.scalar(
         select(ModelGroup.id)
-        .where(ModelGroup.parent_id == group.id, ModelGroup.status != "ignored")
+        .where(
+            ModelGroup.parent_id == group.id,
+            ModelGroup.status != "ignored",
+            ModelGroup.retired_at.is_(None),
+        )
         .limit(1)
     )
     if has_versions:
         raise ApiError(409, "group_has_versions", "Move this line's versions first")
-    group.parent_id = parent.id
 
 
 def _lock(request: Request) -> asyncio.Lock:
@@ -460,7 +485,11 @@ async def group_detail_data(session: AsyncSession, group: ModelGroup) -> GroupDe
     versions = list(
         await session.scalars(
             select(ModelGroup)
-            .where(ModelGroup.parent_id == group.id, ModelGroup.status != "ignored")
+            .where(
+                ModelGroup.parent_id == group.id,
+                ModelGroup.status != "ignored",
+                ModelGroup.retired_at.is_(None),
+            )
             .order_by(ModelGroup.name)
         )
     )

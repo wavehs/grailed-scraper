@@ -41,7 +41,8 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
         "app_settings",
         "listing_model_assignments",
         "listing_overrides",
-        "brand_stopwords",
+        "model_blocklist",
+        "parent_overrides",
         "model_groups",
     }
     assert required_tables.issubset(set(inspector.get_table_names()))
@@ -230,7 +231,7 @@ def test_grouping_migrations_tolerate_tables_left_by_startup_create_all(tmp_path
             "VALUES ('X', 'x', '[]', 0, '2026-10-06', '2026-10-06')"
         )
         connection.exec_driver_sql(
-            "INSERT INTO brand_stopwords (brand_id, phrase, created_at) "
+            "INSERT INTO model_blocklist (brand_id, phrase, created_at) "
             "VALUES (1, 'promo', '2026-10-06')"
         )
     engine.dispose()
@@ -240,7 +241,9 @@ def test_grouping_migrations_tolerate_tables_left_by_startup_create_all(tmp_path
     with sqlite3.connect(database_path) as connection:
         brand_columns = {row[1] for row in connection.execute("PRAGMA table_info(brands)")}
         group_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_groups)")}
-        stopwords = connection.execute("SELECT phrase FROM brand_stopwords").fetchall()
+        blocked = connection.execute("SELECT phrase FROM model_blocklist").fetchall()
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
     assert {"grouping_hash", "grouped_at"} <= brand_columns
-    assert "product_type" in group_columns
-    assert stopwords == [("promo",)]
+    assert {"product_type", "retired_at"} <= group_columns
+    assert blocked == [("promo",)]
+    assert "brand_stopwords" not in tables and "parent_overrides" in tables

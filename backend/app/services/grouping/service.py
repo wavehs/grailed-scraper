@@ -4,25 +4,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import Table, bindparam, select, update
+from sqlalchemy import Table, bindparam, delete, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     Brand,
     BrandSourceMap,
-    BrandStopword,
+    GroupMetric,
     Listing,
     ListingModelAssignment,
     ListingOverride,
+    ModelBlock,
     ModelGroup,
+    ParentOverride,
 )
 from app.domain.listings import slugify
 from app.services.grouping.assign import (
@@ -32,12 +35,12 @@ from app.services.grouping.assign import (
     classify_type,
 )
 from app.services.grouping.kinds import NONE_SLUG
-from app.services.grouping.mining import MiningSample, contains, mine_phrases
+from app.services.grouping.mining import MIN_SELLERS, MiningSample, contains, mine_phrases
 from app.services.grouping.normalize import NormalizedTitle, TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy, SeedModel, load_policy
 from app.services.grouping.relists import RelistRow, detect_relists
 
-GROUPING_VERSION = "grouping-v6"
+GROUPING_VERSION = "grouping-v7"
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
 
@@ -54,6 +57,11 @@ class BrandGroupingStats:
     groups_created: int = 0
     mined: int = 0
     relists: int = 0
+    retired: int = 0
+    revived: int = 0
+    deleted: int = 0
+    inherited: int = 0
+    promoted: int = 0
     full: bool = True
     unknown_categories: dict[str, int] = field(default_factory=dict)
 
@@ -69,6 +77,11 @@ class BrandGroupingStats:
             "groups_created": self.groups_created,
             "mined": self.mined,
             "relists": self.relists,
+            "retired": self.retired,
+            "revived": self.revived,
+            "deleted": self.deleted,
+            "inherited": self.inherited,
+            "promoted": self.promoted,
             "full": self.full,
             "unknown_categories": dict(self.unknown_categories),
         }
@@ -87,6 +100,8 @@ class GroupingResult:
                 totals[key] += int(getattr(item, key))
             totals["groups_created"] += item.groups_created
             totals["relists"] += item.relists
+            for key in ("retired", "revived", "deleted", "inherited", "promoted"):
+                totals[key] += int(getattr(item, key))
             unknown.update(item.unknown_categories)
         return {
             "version": GROUPING_VERSION,
@@ -129,9 +144,16 @@ class _Decision:
 class GroupingService:
     """Deterministic grouping; manual rules live in the database and survive regrouping."""
 
-    def __init__(self, session: AsyncSession, policy: GroupingPolicy | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        policy: GroupingPolicy | None = None,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._session = session
         self._policy = policy or load_policy()
+        self._now = clock or (lambda: datetime.now(UTC))
 
     async def regroup(
         self, brand_ids: Iterable[int] | None = None, *, full: bool = False
@@ -149,6 +171,7 @@ class GroupingService:
         stats = BrandGroupingStats(brand_id)
         if brand is None:
             return stats
+        now = self._now()
         rows = await self._rows(brand_id)
         stats.listings = len(rows)
         designers = sorted({name for row in rows for name in row.designers})
@@ -157,23 +180,36 @@ class GroupingService:
                 BrandSourceMap.brand_id == brand_id, BrandSourceMap.rejected_at.is_(None)
             )
         )
-        stopwords = sorted(
+        blocked = sorted(
             await self._session.scalars(
-                select(BrandStopword.phrase).where(BrandStopword.brand_id == brand_id)
+                select(ModelBlock.phrase).where(ModelBlock.brand_id == brand_id)
             )
         )
         terms = list(dict.fromkeys([brand.name, *brand.aliases, *mappings, *designers]))
-        normalizer = TitleNormalizer(
-            self._policy, brand_terms=terms, brand_slug=brand.slug, stopwords=stopwords
-        )
+        normalizer = TitleNormalizer(self._policy, brand_terms=terms, brand_slug=brand.slug)
         groups = {
             group.id: group
             for group in await self._session.scalars(
                 select(ModelGroup).where(ModelGroup.brand_id == brand_id)
             )
         }
+        # Retired groups that end empty again keep their date, so the TTL keeps running.
+        was_retired = {
+            group.id: group.retired_at
+            for group in groups.values()
+            if group.retired_at is not None
+        }
+        parents = {
+            override.group_id: override.parent_id
+            for override in await self._session.scalars(
+                select(ParentOverride)
+                .join(ModelGroup, ModelGroup.id == ParentOverride.group_id)
+                .where(ModelGroup.brand_id == brand_id)
+            )
+        }
         seeds = self._policy.seed_models(brand.slug)
-        stats.groups_created += await self._seed(brand, seeds, groups, normalizer, None)
+        stats.groups_created += await self._seed(brand, seeds, groups, normalizer, None, stats)
+        _apply_parents(groups, parents)
 
         cache: dict[str, NormalizedTitle] = {}
         for row in rows:
@@ -182,11 +218,17 @@ class GroupingService:
             row.normalized = cache[row.title]
             row.new_hash = _input_hash(row)
 
-        rules_hash = self._rules_hash(groups, rows, stopwords, terms)
+        rules_hash = self._rules_hash(groups, rows, blocked, terms, parents)
         incremental = not full and brand.grouping_hash == rules_hash
         stats.full = not incremental
+        protected = _protected(groups, rows, parents)
         weights = Counter(row.group_id for row in rows if row.group_id is not None)
-        dictionary = self._dictionary(groups, normalizer, weights)
+
+        def first(group: ModelGroup) -> bool:
+            # A full pass derives mined groups again; a delta pass only adds to them.
+            return incremental or not _derived(group) or group.id in protected
+
+        dictionary = self._dictionary(groups, normalizer, weights, first)
         taxonomy = self._policy.taxonomy
 
         decisions: dict[int, TypeDecision] = {}
@@ -198,12 +240,15 @@ class GroupingService:
                 key = row.category_path or "—"
                 stats.unknown_categories[key] = stats.unknown_categories.get(key, 0) + 1
         present = {decision.product_type for decision in decisions.values()} - {REVIEW_TYPE}
-        created = await self._seed(brand, seeds, groups, normalizer, present)
+        created = await self._seed(brand, seeds, groups, normalizer, present, stats)
         stats.groups_created += created
-        if created:
-            dictionary = self._dictionary(groups, normalizer, weights)
+        if created or stats.promoted:
+            # New seed groups change the dictionary: the pass becomes a full one, and `first`
+            # must already see it as full when the dictionary is rebuilt.
             incremental = False
             stats.full = True
+            _apply_parents(groups, parents)
+            dictionary = self._dictionary(groups, normalizer, weights, first)
 
         targets = [
             row
@@ -221,17 +266,42 @@ class GroupingService:
             if row.id not in results and row.group_id is not None and row.product_type:
                 results[row.id] = _Decision(row.product_type, row.group_id, row.method or "none")
 
-        mined = await self._mine(brand, rows, results, groups, normalizer)
-        stats.mined = mined
-        if mined:
-            stats.groups_created += mined
-            dictionary = self._dictionary(groups, normalizer, weights)
+        generic_phrases = tuple(
+            tokens for phrase in blocked if (tokens := normalizer.phrase(phrase))
+        )
+        derived: set[int] = set()
+        fresh: set[int] = set()
+        if not incremental or targets:
+            # A delta pass only adds phrases that new or changed listings bring in.
+            derived, fresh = await self._mine(
+                brand,
+                rows,
+                results,
+                groups,
+                normalizer,
+                protected=protected,
+                full=not incremental,
+                generic_phrases=generic_phrases,
+                scope=None if not incremental else {row.id for row in targets},
+            )
+        stats.mined = len(derived)
+        stats.groups_created += len(fresh)
+        if derived:
+            _apply_parents(groups, parents)
+            dictionary = self._dictionary(
+                groups, normalizer, weights, lambda group: first(group) or group.id in derived
+            )
             retry = [row for row in rows if results[row.id].method == "none"]
             again, extra = await self._assign(
                 brand, retry, decisions, dictionary, groups, normalizer
             )
             stats.groups_created += extra
             results.update(again)
+        if not incremental:
+            stats.inherited = await self._inherit(rows, results, groups, fresh, protected)
+        await self._settle(
+            groups, results, protected, now, stats, was_retired, full=not incremental, fresh=fresh
+        )
 
         relists = detect_relists(
             [
@@ -258,8 +328,8 @@ class GroupingService:
                 stats.no_model += 1
             else:
                 stats.with_model += 1
-        brand.grouping_hash = self._rules_hash(groups, rows, stopwords, terms)
-        brand.grouped_at = datetime.now(UTC)
+        brand.grouping_hash = self._rules_hash(groups, rows, blocked, terms, parents)
+        brand.grouped_at = now
         await self._session.flush()
         return stats
 
@@ -321,12 +391,18 @@ class GroupingService:
         groups: dict[int, ModelGroup],
         normalizer: TitleNormalizer,
         present: set[str] | None,
+        stats: BrandGroupingStats,
     ) -> int:
-        """Create missing seed models; ``present`` limits "any" seeds to types in use."""
+        """Create missing seed models; ``present`` limits "any" seeds to types in use.
 
-        existing = {(group.product_type, group.slug) for group in groups.values()}
+        A mined group with the seed phrase becomes the seed and keeps its id: this is how a
+        confirmed model moves from the review list into ``config/models``.
+        """
+
+        existing = {(group.product_type, group.slug): group for group in groups.values()}
         created: list[tuple[ModelGroup, str | None]] = []
-        now = datetime.now(UTC)
+        promoted: list[tuple[ModelGroup, str | None]] = []
+        now = self._now()
         for seed in seeds:
             if seed.types is None:
                 if present is None:
@@ -338,7 +414,18 @@ class GroupingService:
                 types = list(seed.types)
             slug = _slug(normalizer.phrase(seed.name), seed.name)
             for product_type in types:
-                if (product_type, slug) in existing:
+                found = existing.get((product_type, slug))
+                if found is not None:
+                    if _derived(found):
+                        found.status, found.source = "confirmed", "seed"
+                        found.aliases = _merged(
+                            [*seed.aliases[1:], found.name, *found.aliases], seed.name
+                        )
+                        found.name = seed.name
+                        found.infer = seed.infer == product_type
+                        found.retired_at = None
+                        found.updated_at = now
+                        promoted.append((found, seed.parent))
                     continue
                 group = ModelGroup(
                     brand_id=brand.id,
@@ -353,9 +440,10 @@ class GroupingService:
                     updated_at=now,
                 )
                 self._session.add(group)
-                existing.add((product_type, slug))
+                existing[(product_type, slug)] = group
                 created.append((group, seed.parent))
-        if not created:
+        stats.promoted += len(promoted)
+        if not created and not promoted:
             return 0
         await self._session.flush()
         for group, _ in created:
@@ -363,7 +451,7 @@ class GroupingService:
         by_name = {
             (group.product_type, group.name.casefold()): group for group in groups.values()
         }
-        for group, parent_name in created:
+        for group, parent_name in [*created, *promoted]:
             if parent_name:
                 parent = by_name.get((group.product_type, parent_name.casefold()))
                 if parent is not None and parent.id != group.id and parent.parent_id is None:
@@ -376,10 +464,16 @@ class GroupingService:
         groups: dict[int, ModelGroup],
         normalizer: TitleNormalizer,
         weights: Counter[int],
+        include: Callable[[ModelGroup], bool],
     ) -> ModelDictionary:
         entries = []
         for group in groups.values():
-            if group.status == "ignored" or group.slug == NONE_SLUG:
+            if (
+                group.status == "ignored"
+                or group.slug == NONE_SLUG
+                or group.retired_at is not None
+                or not include(group)
+            ):
                 continue
             phrases = tuple(
                 dict.fromkeys(
@@ -448,7 +542,7 @@ class GroupingService:
             method = "fuzzy" if match.fuzzy else "phrase"
             results[row.id] = _Decision(product_type, line.id, method)
         created = 0
-        now = datetime.now(UTC)
+        now = self._now()
         by_slug = {(group.product_type, group.slug): group for group in groups.values()}
         for (product_type, tokens), listing_ids in versions.items():
             slug = _slug(tokens, " ".join(tokens))
@@ -476,6 +570,8 @@ class GroupingService:
                 groups[group.id] = group
                 by_slug[(product_type, slug)] = group
                 created += 1
+            elif group.retired_at is not None:
+                group.retired_at = None
             for listing_id in listing_ids:
                 results[listing_id] = _Decision(product_type, group.id, "version")
         for listing_id, product_type in none_needed.items():
@@ -508,13 +604,32 @@ class GroupingService:
         results: dict[int, _Decision],
         groups: dict[int, ModelGroup],
         normalizer: TitleNormalizer,
-    ) -> int:
+        *,
+        protected: set[int],
+        full: bool,
+        generic_phrases: Sequence[tuple[str, ...]],
+        scope: set[int] | None,
+    ) -> tuple[set[int], set[int]]:
+        """Derive mined groups from "No model" listings; return derived and newly created ids.
+
+        A derived phrase reuses its group (same type and slug, or an alias of it), so ids
+        survive passes; a retired group comes back with its id.
+        """
+
         samples: dict[str, list[MiningSample]] = defaultdict(list)
+        scope_grams: dict[str, set[tuple[str, ...]]] = defaultdict(set)
         for row in rows:
             decision = results[row.id]
             if decision.method != "none":
                 continue
             assert row.normalized is not None
+            if scope is not None and row.id in scope:
+                tokens = row.normalized.tokens
+                scope_grams[decision.product_type].update(
+                    tokens[start : start + size]
+                    for size in range(1, 4)
+                    for start in range(len(tokens) - size + 1)
+                )
             samples[decision.product_type].append(
                 MiningSample(
                     seller=row.seller or f"listing:{row.id}",
@@ -522,10 +637,20 @@ class GroupingService:
                     surfaces=row.normalized.surfaces,
                 )
             )
-        created = 0
-        now = datetime.now(UTC)
+        now = self._now()
+        keep_min = max(1, math.ceil(self._policy.mining.keep_ratio * MIN_SELLERS))
+        derived: set[int] = set()
+        fresh: set[int] = set()
         for product_type, items in sorted(samples.items()):
-            known = [group for group in groups.values() if group.product_type == product_type]
+            in_type = [group for group in groups.values() if group.product_type == product_type]
+            mined_groups = [group for group in in_type if _derived(group)]
+            known = [
+                group
+                for group in in_type
+                if not _derived(group)
+                or group.id in protected
+                or (not full and group.retired_at is None)
+            ]
             excluded = {
                 tokens
                 for group in known
@@ -533,22 +658,65 @@ class GroupingService:
                 if (tokens := normalizer.phrase(value))
             }
             excluded |= {tuple(group.slug.split("-")) for group in known}
+            keep = {
+                tuple(group.slug.split("-"))
+                for group in mined_groups
+                if group.retired_at is None and group.parent_id is None
+            }
             phrases = mine_phrases(
-                items, excluded=excluded, generic=self._policy.words.generic
+                items,
+                excluded=excluded,
+                generic=self._policy.words.generic,
+                generic_phrases=generic_phrases,
+                keep=keep,
+                keep_min_sellers=keep_min,
             )
+            if scope is not None:
+                phrases = [item for item in phrases if item.tokens in scope_grams[product_type]]
+            by_slug = {group.slug: group for group in mined_groups}
+            by_alias: dict[tuple[str, ...], ModelGroup] = {}
+            for group in mined_groups:
+                for value in group.aliases:
+                    if tokens := normalizer.phrase(value):
+                        by_alias.setdefault(tokens, group)
+            taken = {group.slug for group in in_type}
             lines = [
                 (tokens, group)
                 for group in known
                 if group.parent_id is None
                 and group.status != "ignored"
                 and group.slug != NONE_SLUG
+                and group.retired_at is None
                 for tokens in [normalizer.phrase(group.name)]
                 if tokens
             ]
-            new_groups: list[tuple[tuple[str, ...], ModelGroup]] = []
+            touched: list[tuple[tuple[str, ...], ModelGroup]] = []
+            created: list[ModelGroup] = []
             for mined in phrases:
                 slug = _slug(mined.tokens, mined.name)
-                if any(group.slug == slug for group in known):
+                reused = by_slug.get(slug)
+                if reused is None and slug not in taken:
+                    reused = by_alias.get(mined.tokens)
+                if reused is not None and reused.id not in derived:
+                    if reused.slug != slug:
+                        # The rules now spell the phrase differently: keep the id, the old
+                        # phrase stays an alias.
+                        reused.aliases = _merged(
+                            [*reused.aliases, reused.name, reused.slug.replace("-", " ")],
+                            mined.name,
+                        )
+                        reused.slug = slug
+                        reused.name = mined.name
+                        reused.updated_at = now
+                        taken.add(slug)
+                    if reused.retired_at is not None:
+                        reused.retired_at = None
+                    if reused.support != mined.sellers:
+                        reused.support = mined.sellers
+                    derived.add(reused.id)
+                    touched.append((mined.tokens, reused))
+                    continue
+                if slug in taken:
                     continue
                 group = ModelGroup(
                     brand_id=brand.id,
@@ -563,29 +731,157 @@ class GroupingService:
                     updated_at=now,
                 )
                 self._session.add(group)
-                new_groups.append((mined.tokens, group))
-                known.append(group)
-            if not new_groups:
+                created.append(group)
+                taken.add(slug)
+                touched.append((mined.tokens, group))
+            if not touched:
                 continue
             await self._session.flush()
-            candidates = [*lines, *new_groups]
-            for tokens, group in new_groups:
+            fresh |= {group.id for group in created}
+            candidates = [*lines, *touched]
+            for tokens, group in touched:
                 groups[group.id] = group
-                parents = [
+                derived.add(group.id)
+                found = [
                     (len(line_tokens), parent)
                     for line_tokens, parent in candidates
                     if parent is not group and contains(tokens, line_tokens)
                 ]
-                if parents:
-                    group.parent_id = max(parents, key=lambda item: item[0])[1].id
-            for _, group in new_groups:
+                parent_id = max(found, key=lambda item: item[0])[1].id if found else None
+                if group.parent_id != parent_id:
+                    group.parent_id = parent_id
+            for _, group in touched:
                 parent = groups.get(group.parent_id) if group.parent_id else None
                 if parent is not None and parent.parent_id is not None:
                     group.parent_id = parent.parent_id
-            created += len(new_groups)
-        if created:
+        if derived:
             await self._session.flush()
-        return created
+        return derived, fresh
+
+    async def _inherit(
+        self,
+        rows: Sequence[_Row],
+        results: dict[int, _Decision],
+        groups: dict[int, ModelGroup],
+        fresh: set[int],
+        protected: set[int],
+    ) -> int:
+        """A new group that took most listings of a vanished one keeps the old id.
+
+        Rule changes respell phrases ("pander" becomes "xpander"); the group, its links and
+        its metric history should survive that, with the old phrase kept as an alias.
+        """
+
+        if not fresh:
+            return 0
+        now = self._now()
+        used = Counter(decision.group_id for decision in results.values())
+        sources: dict[int, Counter[int]] = defaultdict(Counter)
+        for row in rows:
+            new_id = results[row.id].group_id
+            if new_id in fresh and row.group_id is not None and row.group_id != new_id:
+                sources[new_id][row.group_id] += 1
+        claimed: set[int] = set()
+        inherited = 0
+        for new_id, previous in sorted(sources.items(), key=lambda item: (-used[item[0]], item[0])):
+            new = groups[new_id]
+            for old_id, count in previous.most_common():
+                old = groups.get(old_id)
+                if (
+                    old is None
+                    or old_id in claimed
+                    or old_id in fresh
+                    or old_id in protected
+                    or not _derived(old)
+                    or used[old_id]
+                    or old.product_type != new.product_type
+                ):
+                    continue
+                if count * 2 < used[new_id]:
+                    break
+                claimed.add(old_id)
+                for decision in results.values():
+                    if decision.group_id == new_id:
+                        decision.group_id = old_id
+                for group in groups.values():
+                    if group.parent_id == new_id:
+                        group.parent_id = old_id
+                slug, name, parent_id, support = new.slug, new.name, new.parent_id, new.support
+                aliases = _merged(
+                    [*old.aliases, old.name, old.slug.replace("-", " "), *new.aliases], name
+                )
+                await self._session.delete(new)
+                del groups[new_id]
+                fresh.discard(new_id)
+                await self._session.flush()
+                old.slug, old.name, old.aliases = slug, name, aliases
+                old.parent_id = parent_id if parent_id != old_id else None
+                old.support = support
+                old.retired_at = None
+                old.updated_at = now
+                inherited += 1
+                break
+        if inherited:
+            await self._session.flush()
+        return inherited
+
+    async def _settle(
+        self,
+        groups: dict[int, ModelGroup],
+        results: dict[int, _Decision],
+        protected: set[int],
+        now: datetime,
+        stats: BrandGroupingStats,
+        was_retired: Mapping[int, datetime | None],
+        *,
+        full: bool,
+        fresh: set[int],
+    ) -> None:
+        """Mined groups without listings retire; expired ones are deleted (full pass only).
+
+        A delta pass is additive: it never retires a group that was active before it, it
+        only puts back to rest groups it revived or created that got no listings.
+        """
+
+        used = {decision.group_id for decision in results.values()}
+        used |= {
+            parent
+            for group_id in used
+            if (group := groups.get(group_id)) is not None
+            and (parent := group.parent_id) is not None
+        }
+        ttl = timedelta(days=self._policy.mining.retire_ttl_days)
+        expired: list[ModelGroup] = []
+        for group in groups.values():
+            if not _derived(group) or group.id in protected:
+                continue
+            before = was_retired.get(group.id)
+            if group.id in used:
+                if group.retired_at is not None:
+                    group.retired_at = None
+                if before is not None:
+                    stats.revived += 1
+                continue
+            if before is not None:
+                if group.retired_at != before:
+                    group.retired_at = before
+            elif full or group.id in fresh:
+                group.retired_at = now
+                stats.retired += 1
+            if full and group.retired_at is not None and now - _aware(group.retired_at) >= ttl:
+                expired.append(group)
+        if not expired:
+            return
+        doomed = {group.id for group in expired}
+        for group in groups.values():
+            if group.parent_id in doomed and group.id not in doomed:
+                group.parent_id = None
+        await self._session.execute(delete(GroupMetric).where(GroupMetric.group_id.in_(doomed)))
+        for group in expired:
+            await self._session.delete(group)
+            del groups[group.id]
+        stats.deleted += len(expired)
+        await self._session.flush()
 
     async def _write(
         self,
@@ -593,7 +889,7 @@ class GroupingService:
         results: dict[int, _Decision],
         relists: dict[int, int],
     ) -> int:
-        now = datetime.now(UTC)
+        now = self._now()
         assignment_rows: list[dict[str, Any]] = []
         listing_rows: list[dict[str, Any]] = []
         for row in rows:
@@ -647,14 +943,15 @@ class GroupingService:
         self,
         groups: dict[int, ModelGroup],
         rows: Sequence[_Row],
-        stopwords: Sequence[str],
+        blocked: Sequence[str],
         terms: Sequence[str],
+        parents: Mapping[int, int | None],
     ) -> str:
         payload = {
             "version": GROUPING_VERSION,
             "policy": self._policy.digest,
             "terms": list(terms),
-            "stopwords": list(stopwords),
+            "blocked": list(blocked),
             "groups": sorted(
                 [
                     group.id,
@@ -665,13 +962,61 @@ class GroupingService:
                     group.parent_id,
                     group.status,
                     group.infer,
+                    group.retired_at is not None,
                 ]
                 for group in groups.values()
             ),
             "overrides": sorted([row.id, row.override] for row in rows if row.override),
+            "parents": sorted([key, value] for key, value in parents.items()),
         }
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _derived(group: ModelGroup) -> bool:
+    """Mined groups are derived data: a full pass rebuilds them from listings and rules."""
+
+    return group.status == "auto" and group.source == "mined"
+
+
+def _protected(
+    groups: Mapping[int, ModelGroup], rows: Sequence[_Row], parents: Mapping[int, int | None]
+) -> set[int]:
+    """Mined groups that manual rules point at are never retired (they stay "auto")."""
+
+    ids = {row.override for row in rows if row.override is not None}
+    for group_id, parent_id in parents.items():
+        ids.add(group_id)
+        if parent_id is not None:
+            ids.add(parent_id)
+    for group in groups.values():
+        if group.parent_id is not None and not _derived(group) and group.status != "ignored":
+            ids.add(group.parent_id)
+    return {group_id for group_id in ids if group_id in groups and _derived(groups[group_id])}
+
+
+def _apply_parents(groups: Mapping[int, ModelGroup], parents: Mapping[int, int | None]) -> None:
+    """Manual line changes win over derived parents; invalid ones are skipped."""
+
+    for group_id, parent_id in parents.items():
+        group = groups.get(group_id)
+        if group is None or group.parent_id == parent_id:
+            continue
+        if parent_id is not None:
+            parent = groups.get(parent_id)
+            if (
+                parent is None
+                or parent.id == group.id
+                or parent.product_type != group.product_type
+                or parent.parent_id is not None
+                or parent.status == "ignored"
+            ):
+                continue
+        group.parent_id = parent_id
+
+
+def _merged(values: Iterable[str], name: str) -> list[str]:
+    return [item for item in dict.fromkeys(values) if item and item != name]
 
 
 def _input_hash(row: _Row) -> str:

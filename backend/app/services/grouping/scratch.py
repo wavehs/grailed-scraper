@@ -40,7 +40,17 @@ def make_scratch(source: Path, target: Path, brand_slug: str, *, keep_auto: bool
         brand_id = int(row[0])
         _copy(connection, "brands", "id = ?", (brand_id,), {"grouping_hash": "NULL"})
         _copy(connection, "brand_source_map", "brand_id = ?", (brand_id,))
-        _copy(connection, "brand_stopwords", "brand_id = ?", (brand_id,))
+        source_tables = {
+            row[0] for row in connection.execute("SELECT name FROM src.sqlite_master")
+        }
+        if "model_blocklist" in source_tables:
+            _copy(connection, "model_blocklist", "brand_id = ?", (brand_id,))
+        elif "brand_stopwords" in source_tables:  # a database before grouping-v7
+            connection.execute(
+                "INSERT INTO main.model_blocklist (brand_id, phrase, created_at) "
+                "SELECT brand_id, phrase, created_at FROM src.brand_stopwords WHERE brand_id = ?",
+                (brand_id,),
+            )
         _copy(connection, "listings", "brand_id = ?", (brand_id,), _LISTING_OVERRIDES)
         groups = "brand_id = ?"
         if not keep_auto:
@@ -56,6 +66,14 @@ def make_scratch(source: Path, target: Path, brand_slug: str, *, keep_auto: bool
             "model_group_id IN (SELECT id FROM main.model_groups)",
             (),
         )
+        if "parent_overrides" in source_tables:  # absent in a database before grouping-v7
+            _copy(
+                connection,
+                "parent_overrides",
+                "group_id IN (SELECT id FROM main.model_groups) AND (parent_id IS NULL "
+                "OR parent_id IN (SELECT id FROM main.model_groups))",
+                (),
+            )
         if keep_auto:
             _copy(
                 connection,

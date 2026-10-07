@@ -123,6 +123,8 @@ async def list_trends(
     filters: list[ColumnElement[bool]] = [GroupMetric.scope == level]
     if level == "model":
         filters.append(GroupMetric.is_line.is_(True))
+        # Retired groups keep their frozen metrics but leave the rating.
+        filters.append(ModelGroup.retired_at.is_(None))
         if not include_fallback:
             filters.append(GroupMetric.is_fallback.is_(False))
     ids = [int(value) for value in brand_ids.split(",") if value]
@@ -340,7 +342,11 @@ async def _version_counts(session: AsyncSession, group_ids: list[int]) -> dict[i
     rows = await session.execute(
         select(ModelGroup.parent_id, func.count())
         .join(GroupMetric, GroupMetric.group_id == ModelGroup.id)
-        .where(ModelGroup.parent_id.in_(group_ids), ModelGroup.status != "ignored")
+        .where(
+            ModelGroup.parent_id.in_(group_ids),
+            ModelGroup.status != "ignored",
+            ModelGroup.retired_at.is_(None),
+        )
         .group_by(ModelGroup.parent_id)
     )
     return {int(parent): int(count) for parent, count in rows if parent is not None}

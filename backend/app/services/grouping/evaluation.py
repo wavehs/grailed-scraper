@@ -21,11 +21,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import PROJECT_ROOT
-from app.db.models import Brand, Listing, ListingModelAssignment, ModelGroup
+from app.db.models import Brand, Listing, ListingModelAssignment
 from app.services.grouping.kinds import GroupKind, collab_partner, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
 from app.services.grouping.text import fold, singular
@@ -196,6 +196,7 @@ class GroupView:
     parent_id: int | None
     status: str
     source: str
+    retired: bool = False
 
     @property
     def kind(self) -> GroupKind:
@@ -269,22 +270,31 @@ class Placement:
 
 
 async def load_snapshot(session: AsyncSession, brand_slug: str) -> Snapshot:
-    brand = await session.scalar(select(Brand).where(Brand.slug == brand_slug))
-    if brand is None:
+    """Read one brand; works on databases before and after the grouping-v7 migration."""
+
+    brand_id = await session.scalar(select(Brand.id).where(Brand.slug == brand_slug))
+    if brand_id is None:
         raise RuntimeError(f"Unknown brand {brand_slug}")
+    columns = {row[1] for row in await session.execute(text("PRAGMA table_info(model_groups)"))}
+    retired = "retired_at" if "retired_at" in columns else "NULL"
     groups = {
-        group.id: GroupView(
-            id=group.id,
-            product_type=group.product_type,
-            slug=group.slug,
-            name=group.name,
-            aliases=tuple(group.aliases or ()),
-            parent_id=group.parent_id,
-            status=group.status,
-            source=group.source,
+        row[0]: GroupView(
+            id=row[0],
+            product_type=row[1],
+            slug=row[2],
+            name=row[3],
+            aliases=tuple(json.loads(row[4]) if isinstance(row[4], str) else row[4] or ()),
+            parent_id=row[5],
+            status=row[6],
+            source=row[7],
+            retired=row[8] is not None,
         )
-        for group in await session.scalars(
-            select(ModelGroup).where(ModelGroup.brand_id == brand.id)
+        for row in await session.execute(
+            text(
+                "SELECT id, product_type, slug, name, aliases, parent_id, status, source, "
+                f"{retired} FROM model_groups WHERE brand_id = :brand"
+            ),
+            {"brand": brand_id},
         )
     }
     statement = (
@@ -299,7 +309,7 @@ async def load_snapshot(session: AsyncSession, brand_slug: str) -> Snapshot:
             ListingModelAssignment.model_group_id,
         )
         .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
-        .where(Listing.brand_id == brand.id)
+        .where(Listing.brand_id == brand_id)
     )
     listings = {
         row[0]: ListingView(
@@ -655,7 +665,7 @@ def lost_groups(
     present = {
         (group.product_type, group.slug)
         for group in current.groups.values()
-        if group.kind == "model" and group.status != "ignored"
+        if group.kind == "model" and group.status != "ignored" and not group.retired
     }
     lost: dict[int, list[ListingView]] = defaultdict(list)
     for listing in baseline.listings.values():

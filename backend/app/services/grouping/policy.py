@@ -71,6 +71,14 @@ class WordLists:
 
 
 @dataclass(frozen=True, slots=True)
+class MiningPolicy:
+    """Stability of mined groups: an existing group is kept at a lower threshold."""
+
+    keep_ratio: float = 0.6
+    retire_ttl_days: int = 90
+
+
+@dataclass(frozen=True, slots=True)
 class SeedModel:
     name: str
     aliases: tuple[str, ...]
@@ -85,6 +93,7 @@ class GroupingPolicy:
     words: WordLists
     seeds: dict[str, tuple[SeedModel, ...]] = field(default_factory=dict)
     digest: str = ""
+    mining: MiningPolicy = field(default_factory=MiningPolicy)
 
     def seed_models(self, brand_slug: str | None) -> tuple[SeedModel, ...]:
         return self.seeds.get(brand_slug or "", ())
@@ -102,12 +111,14 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
         digest.update(path.name.encode())
         digest.update(path.read_bytes())
     taxonomy = _taxonomy(_yaml(taxonomy_path))
-    words = _words(_yaml(words_path))
+    words_payload = _yaml(words_path)
+    words = _words(words_payload)
+    mining = _mining(words_payload.get("mining") or {})
     seeds: dict[str, tuple[SeedModel, ...]] = {}
     for path in seed_paths:
         payload = _yaml(path)
         seeds[path.stem] = _seed_models(payload, taxonomy, path.name)
-    return GroupingPolicy(taxonomy, words, seeds, digest.hexdigest())
+    return GroupingPolicy(taxonomy, words, seeds, digest.hexdigest(), mining)
 
 
 def _yaml(path: Path) -> dict[str, Any]:
@@ -197,6 +208,15 @@ def _words(payload: dict[str, Any]) -> WordLists:
         ),
         version_numbers=frozenset(str(value) for value in payload.get("version_numbers", ())),
     )
+
+
+def _mining(payload: dict[str, Any]) -> MiningPolicy:
+    defaults = MiningPolicy()
+    keep_ratio = float(payload.get("keep_ratio", defaults.keep_ratio))
+    ttl = int(payload.get("retire_ttl_days", defaults.retire_ttl_days))
+    if not 0 < keep_ratio <= 1 or ttl < 0:
+        raise ValueError("mining.keep_ratio must be in (0, 1] and retire_ttl_days >= 0")
+    return MiningPolicy(keep_ratio=keep_ratio, retire_ttl_days=ttl)
 
 
 def _seed_models(
