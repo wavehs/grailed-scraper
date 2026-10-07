@@ -1,0 +1,251 @@
+product_type,slug,name,verdict,note
+boots,biker,Biker,borderline,biker boots: boot subtype vs Balenciaga Biker boot
+tshirt,maison,Maison,not_model:brandmark,
+tshirt,back,Back,not_model:detail,back print/logo
+boots,excavator,Excavator,model,
+light_jacket,check,Check,not_model:print,
+boots,striker,Striker,duplicate:Strike,Striker = Strike boot
+hitop_sneakers,3xl,3XL,model,
+belt,large,Large,not_model:size,
+lowtop_sneakers,defender,Defender,model,
+bag,work,Work,model,Classic Work (motorcycle family)
+hitop_sneakers,speed,Speed,model,
+denim_jacket,swing,Swing,borderline,Swing: silhouette name of FW16 denim jacket
+boots,rubber,Rubber,not_model:material,
+light_jacket,style,Style,not_model:template,
+sunglasses,oval,Oval,not_model:optics,
+hitop_sneakers,defender,Defender,model,
+boots,hummer,Hummer,model,
+boots,high,High,not_model:detail,Venom Runway High boots: height
+hoodie,be-different,Be Different,model,
+scarf,monogram,Monogram,not_model:brandmark,
+sandals,cagole,Cagole,model,Le Cagole
+hitop_sneakers,triple,Triple S,model,
+slip_ons,furry,Furry,not_model:material,Furry slide
+tshirt,tape,Tape,duplicate:Tape Type,
+jeans,skinny,Skinny,not_model:fit,
+shirt,cargo,Cargo,not_model:detail,
+tshirt,paris,Paris,not_model:brandmark,
+hoodie,polar-fleece,Polar Fleece,not_model:material,
+tshirt,bebe,Bebe,model,Bebe graphic
+jeans,skater,Skater,not_model:fit,Skater (decision 4)
+backpack,explorer,Explorer,model,
+hoodie,dove,Dove,model,
+boots,lace,Lace,not_model:detail,lace-up
+tshirt,out,Out,not_model:fragment,Inside Out / spell out
+bag,city,City,model,
+sweatpants,ygebb,YGEBB,not_model:collab,Yeezy Gap
+jeans,super,Super,not_model:detail,Super Destroyed
+denim_jacket,hooded,Hooded,not_model:detail,
+hitop_sneakers,runner,Runner,model,
+tshirt,wfp,WFP,model,World Food Programme
+light_jacket,tracksuit,Tracksuit,not_model:subtype,
+hoodie,speedhunter,Speedhunters,model,
+bomber,back,Back,not_model:detail,
+jeans,low,Low,not_model:fit,low waist / low crotch
+shoes,rhino,Rhino,model,
+lowtop_sneakers,triple,Triple S,model,
+hoodie,incognito,Incognito,model,
+lowtop_sneakers,runner,Runner,model,
+jeans,hybrid,Hybrid,borderline,Hybrid cargo/denim construction
+lowtop_sneakers,arena,Arena,model,
+tshirt,unity,Unity,model,Unity (Sports Icon) logo graphic
+lowtop_sneakers,drive,Drive,model,
+bag,part-time,Part Time,model,Part Time (motorcycle family)
+lowtop_sneakers,xpander,Xpander,model,X-Pander
+boots,bulldozer,Bulldozer,model,
+sweatpants,medium,Medium,not_model:size,
+shorts,baggy,Baggy,not_model:fit,
+hoodie,yzy,YZY,not_model:collab,Yeezy Gap
+lowtop_sneakers,paris,Paris,model,Paris sneaker
+hoodie,out,Out,not_model:fragment,Inside Out / spell out / worn out
+hitop_sneakers,arena,Arena,model,
+hoodie,back,Back,not_model:detail,
+hoodie,mud,Mud,not_model:material,mud wash (Gaffer hoodie)
+sandals,sunday,Sunday,model,Sunday mule
+hoodie,rhinestone,Rhinestone,not_model:detail,
+lowtop_sneakers,lace,Lace,not_model:detail,
+light_jacket,sport,Sports,duplicate:3B Sports Icon,
+hoodie,political-campaign,Political Campaign,model,
+tshirt,dove,Dove,model,
+gloves,3b-sport-icon,3B Sports Icon,model,
+boots,rhino,Rhino,model,
+sunglasses,bat,Bat,model,Bat sunglasses
+light_jacket,padded,Padded,not_model:detail,
+sweatpants,sport,Sports,not_model:fragment,Sports Icon family fragment
+belt,bb-signature,BB Signature,not_model:brandmark,BB Signature monogram
+hoodie,engineered,Engineered,not_model:collab,Yeezy Gap
+longsleeve,donda,Donda,model,Donda merch graphic
+hoodie,maison,Maison,not_model:brandmark,
+lowtop_sneakers,track,Track,model,
+tshirt,bb-logo,BB Logo,not_model:brandmark,
+denim_jacket,wash,Wash,not_model:material,wash
+hoodie,campaign,Campaign,duplicate:Political Campaign,
+pants,cargo,Cargo,not_model:detail,
+hoodie,poetic,Poetic,not_model:color,Poetic Black colorway
+tshirt,be-different,Be Different,model,
+denim_jacket,padded,Padded,not_model:detail,
+longsleeve,dove,Dove,model,
+hoodie,unreleased,UNRELEASED,not_model:template,
+hoodie,small,Small,not_model:size,
+hoodie,barbie,Barbie,model,Barbie graphic
+sweatpants,wide,Wide,not_model:fit,
+bag,explorer,Explorer,model,
+pants,four,Four,not_model:detail,four-pocket
+hat,unity,Unity,model,Unity
+belt,o1rshd1-bb,O1Rshd1 BB,not_model:template,SKU
+shirt,techno,Techno,duplicate:I Love Techno,
+tshirt,sport,Sports,not_model:fragment,
+hoodie,love,Love,duplicate:I Love Cats,
+hoodie,world,World,duplicate:World Food Programme,
+boots,toe,Toe,not_model:detail,
+hoodie,medium,Medium,not_model:size,
+slip_ons,pool,Pool,not_model:subtype,pool slide
+tshirt,fortnite,Fortnite,not_model:collab,Fortnite
+hitop_sneakers,lace,Lace,not_model:detail,
+bag,motorcycle,Motorcycle,duplicate:City,Classic Motorcycle
+jeans,baggy,Baggy,not_model:fit,
+lowtop_sneakers,speed,Speed,model,
+lowtop_sneakers,cargo,Cargo,model,Cargo sneaker
+slip_ons,calfskin,Calfskin,not_model:material,
+hat,top-league,Top League,model,Top League
+glasses,dynasty,Dynasty,model,Dynasty sunglasses
+tshirt,emo,EMO,model,EMO graphic tee (Fall 25)
+sweatpants,double,Double,not_model:detail,double waist / layer
+jeans,double,Double,not_model:detail,
+jeans,demna,Demna,not_model:brandmark,
+slip_ons,zero,Zero,model,Zero shoe
+shorts,double,Double,not_model:detail,
+hoodie,unity,Unity,model,Unity
+sunglasses,rectangle,Rectangle,not_model:optics,
+sunglasses,cat,Cat,not_model:optics,
+boots,santiago,Santiago,model,canon Santiag (misspelled)
+hoodie,double,Double,not_model:detail,
+sweatpants,yzy,YZY,not_model:collab,Yeezy Gap
+boots,trooper,Trooper,model,
+lowtop_sneakers,stan-smith,Stan Smith,model,Adidas Stan Smith
+pants,cordura,Cordura,not_model:material,Cordura (Yeezy Gap cargo)
+lowtop_sneakers,tyrex,Tyrex,model,
+jeans,lost-tape,Lost Tape,model,
+hoodie,metal,Metal,model,Metal (tops)
+jeans,wash,Wash,not_model:material,wash
+hoodie,demna,Demna,not_model:brandmark,
+hoodie,tape,Tape,duplicate:Tape Type,
+hoodie,icon,Icon,not_model:fragment,Sports Icon family
+tshirt,campaign,Campaign,duplicate:Political Campaign,
+jeans,straight,Straight,not_model:fit,
+boots,stomper,Stomper,model,
+boots,strike,Strike,model,
+hoodie,surfer,Surfer,model,Surfer graphic
+hoodie,paris,Paris,not_model:brandmark,
+shirt,check,Check,not_model:print,
+hoodie,soccer,Soccer,not_model:style,Soccer (sport style)
+tshirt,metal,Metal,model,Metal
+jeans,flared,Flared,not_model:fit,
+jeans,leg,Leg,not_model:fit,leg (wide/straight leg)
+slip_ons,slipper,Slippers,not_model:subtype,
+tshirt,sporty,Sporty,duplicate:Sporty B,fragment of Sporty B
+leather_jacket,ghesquiere,Ghesquière,not_model:brandmark,designer name
+slip_ons,technoclog,Technoclog,model,
+sweatpants,leg,Leg,not_model:fit,wide leg
+pants,lounge,Lounge,not_model:subtype,
+lowtop_sneakers,pander,Pander,duplicate:X-Pander,
+hoodie,mode,Mode,not_model:brandmark,BB Mode logo
+glasses,cat,Cat,not_model:optics,
+hoodie,wfp,WFP,model,World Food Programme (WFP)
+jeans,mud,Mud,duplicate:Mud Show,
+pants,flared,Flared,not_model:fit,
+hoodie,like,Like,not_model:template,like new / likes
+lowtop_sneakers,10xl,10XL,model,
+tshirt,store,Store,not_model:fragment,"store-exclusive tees, mixed"
+shirt,paris,Paris,not_model:brandmark,
+pants,baggy,Baggy,not_model:fit,
+sweatpants,skater,Skater,not_model:fit,Skater (decision 4)
+boots,steroid,Steroid,model,
+hoodie,britney,Britney,model,Britney graphic
+sunglasses,shield,Shield,not_model:optics,
+longsleeve,second-skin,Second Skin,model,Second Skin (Yeezy Gap)
+accessory_other,harness,Harness,not_model:subtype,
+lowtop_sneakers,zen,Zen,model,
+longsleeve,paris,Paris,not_model:brandmark,Paris (mixed with Paris Moon)
+hat,rammstein-distressed,Rammstein Distressed,not_model:collab,Rammstein
+hat,notch,Notch,not_model:foreign,Notch caps
+pendant,goth,Goth,duplicate:Goth Sword,fragment of Goth Sword
+slip_ons,fur,Fur,not_model:material,
+hoodie,skater,Skater,not_model:style,Skater graffiti (decision 4)
+jeans,bootcut,Bootcut,not_model:fit,
+bag,studded,Studded,not_model:detail,
+boots,bootie,Bootie,not_model:subtype,
+lowtop_sneakers,phantom,Phantom,model,
+longsleeve,dmx,DMX,model,DMX tribute graphic
+hoodie,large,Large,not_model:size,
+hoodie,lipstick,Lipstick,model,Lipstick logo graphic
+hoodie,earth,Earth,duplicate:Planet Earth,fragment of Planet Earth
+hat,baseball,Baseball,not_model:subtype,
+longsleeve,metal,Metal,model,Metal
+hoodie,be-kind,Be Kind,model,
+periodical,demna,Demna,not_model:brandmark,
+hoodie,college,College,model,College graphic
+jeans,mudshow,Mudshow,model,canon Mud Show
+sweatshirt,homme,Homme,not_model:brandmark,
+sweatpants,baggy,Baggy,not_model:fit,
+hoodie,speed,Speed,duplicate:Speedhunters,
+tshirt,love,Love,not_model:fragment,I Love cats/dogs/you
+jeans,japanese,Japanese,not_model:material,
+boots,ankle,Ankle,not_model:subtype,
+tshirt,barbie,Barbie,model,
+hitop_sneakers,paris,Paris,model,Paris sneaker
+tshirt,skater,Skater,not_model:style,Skater graffiti (decision 4)
+sandals,rubber,Rubber,not_model:material,
+tshirt,speed,Speed,duplicate:Speedhunters,
+tshirt,no-seam,No Seam,duplicate:Dove,Dove No Seam
+lowtop_sneakers,3xl,3XL,model,
+sandals,pool,Pool,not_model:subtype,pool slide
+lowtop_sneakers,bouncer,Bouncer,model,
+bag,le-cagole,Le Cagole,model,
+lowtop_sneakers,hampton,Hamptons,model,Hamptons
+shoes,tractor,Tractor,model,
+hoodie,pullover,Pullover,not_model:subtype,
+hoodie,laa,LAA,not_model:template,
+hoodie,tattoo,Tattoo,borderline,Tattoo: print type vs named SS24 graphic
+lowtop_sneakers,speedcat,Speedcat,model,Puma Speedcat
+polo,striped,Striped,not_model:print,
+hitop_sneakers,track,Track,model,
+shirt,striped,Striped,not_model:print,
+sweatpants,sporty,Sporty,duplicate:Sporty B,fragment of Sporty B
+boots,venom,Venom,model,
+hat,sport,Sports,duplicate:3B Sports Icon,
+shoes,arena,Arena,model,
+sandals,track,Track,model,Track sandal
+hoodie,shrunken,Shrunken,not_model:fit,Shrunken (decision 4)
+hat,flame,Flame,model,Flame
+pants,wide,Wide,not_model:fit,
+sweatpants,hybrid,Hybrid,borderline,Hybrid construction
+jersey,soccer,Soccer,not_model:style,Soccer (sport style)
+hoodie,copyright,Copyright,model,Copyright logo graphic
+shirt,button-ups,Button Ups,not_model:subtype,
+belt,bb-logo,BB Logo,not_model:brandmark,
+tshirt,soccer,Soccer,not_model:style,Soccer (sport style)
+hoodie,sinner,Sinners,model,Sinners graphic
+sunglasses,spike,Spike,model,Spike sunglasses
+boots,alaska,Alaska,model,
+jeans,flare,Flare,not_model:fit,
+pants,leg,Leg,not_model:fit,
+hoodie,bebe,Bebe,model,
+shorts,soccer,Soccer,not_model:style,Soccer (sport style)
+pants,double,Double,not_model:detail,
+tshirt,college,College,model,
+tshirt,political-campaign,Political Campaign,model,
+tshirt,world,World,duplicate:World Food Programme,
+sandals,shearling,Shearling,not_model:material,
+sweatpants,planet-earth,Planet Earth,model,
+slip_ons,sunday,Sunday,model,
+parka,swing,Swing,borderline,Swing: silhouette name of FW16 parka
+sandals,furry,Furry,not_model:material,
+light_jacket,paris,Paris,not_model:brandmark,
+bag,travel,Travel,not_model:subtype,
+bag,snake,Snake,model,Yeezy Gap Snake bag
+bag,large,Large,not_model:size,
+jeans,robe,Robe,duplicate:Garde-Robe,
+shorts,cargo,Cargo,not_model:detail,
+sunglasses,mask,Mask,not_model:optics,

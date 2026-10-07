@@ -1,0 +1,8 @@
+files:
+  labels.csv: 1da76b28006808a8387d6ac42ec91f6cefb4ba8b608b83ca490ee213d1e630b2
+  phrases.csv: d74d1d85369423a231b1e6f1658628e0edbaddaf453c85e87839775b9734fd8d
+  canon.csv: 2b1174536201a8bd9383dd914fea4be37708e46bb6e11bf6174b34a637d5bb61
+date: '2026-10-07'
+labeler: Claude (claude-opus-5-5), blind sheets round1, 2026-10-07
+external_check: 'none: decision 7 delegated the top-50 phrase labels and the audit
+  to the same labeler'
