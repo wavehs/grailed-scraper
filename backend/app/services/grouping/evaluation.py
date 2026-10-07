@@ -777,7 +777,11 @@ def load_config(directory: Path) -> EvalConfig:
 
 
 def file_sha256(path: Path) -> str | None:
-    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    """Line endings are normalized: a Windows checkout and CI must agree on the hash."""
+
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def manifest_check(directory: Path) -> dict[str, Any]:
@@ -809,7 +813,8 @@ def seal_manifest(directory: Path, *, labeler: str, external_check: str) -> dict
         "external_check": external_check,
     }
     text = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
-    (directory / "MANIFEST").write_text(text, encoding="utf-8")
+    with (directory / "MANIFEST").open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
     return payload
 
 
@@ -830,7 +835,7 @@ def append_journal(directory: Path, entry: Mapping[str, Any]) -> None:
     path = directory / "holdout_runs.csv"
     exists = path.is_file()
     with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=JOURNAL_COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=JOURNAL_COLUMNS, lineterminator="\n")
         if not exists:
             writer.writeheader()
         writer.writerow({name: entry.get(name, "") for name in JOURNAL_COLUMNS})
@@ -1142,7 +1147,9 @@ def write_sheet(path: Path, columns: Sequence[str], rows: Iterable[Mapping[str, 
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(columns), extrasaction="ignore")
+        writer = csv.DictWriter(
+            handle, fieldnames=list(columns), extrasaction="ignore", lineterminator="\n"
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)

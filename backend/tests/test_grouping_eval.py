@@ -409,3 +409,10 @@ def test_canon_accepts_spellings_but_not_fragments(tmp_path: Path) -> None:
         _label(2, "Political Campaign"), snapshot.placement(2), canon=canon
     )
     assert spelled and not fragment
+
+
+def test_label_hash_ignores_line_endings(tmp_path: Path) -> None:
+    unix, windows = tmp_path / "unix.csv", tmp_path / "windows.csv"
+    unix.write_bytes(b"a,b\n1,2\n")
+    windows.write_bytes(b"a,b\r\n1,2\r\n")
+    assert evaluation.file_sha256(unix) == evaluation.file_sha256(windows)
