@@ -31,13 +31,13 @@ from app.services.grouping.assign import (
     TypeDecision,
     classify_type,
 )
+from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.mining import MiningSample, contains, mine_phrases
 from app.services.grouping.normalize import NormalizedTitle, TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy, SeedModel, load_policy
 from app.services.grouping.relists import RelistRow, detect_relists
 
 GROUPING_VERSION = "grouping-v6"
-NONE_SLUG = "_none"
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
 

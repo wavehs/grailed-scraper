@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,12 +22,18 @@ from app.db.models import (
     SourceCredential,
 )
 from app.db.session import get_database_url
-from app.services.grouping import GroupingService
+from app.services.grouping import GroupingService, evaluation
 from app.services.grouping.policy import load_policy
 from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
-from app.services.operations import backup_database, restore_database, result_dict, retention
+from app.services.operations import (
+    backup_database,
+    restore_database,
+    result_dict,
+    retention,
+    sqlite_path,
+)
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import collection_filters
 from app.services.sources.base.models import RawHit
@@ -359,6 +365,113 @@ async def grouping_report(settings: Settings, brand: str | None) -> dict[str, ob
         await engine.dispose()
 
 
+def _read_only_url(path: Path) -> str:
+    return f"sqlite+aiosqlite:///file:{path.resolve().as_posix()}?mode=ro&uri=true"
+
+
+async def _snapshot(path: Path, brand: str) -> evaluation.Snapshot:
+    if not path.is_file():
+        raise RuntimeError(f"Database {path} does not exist")
+    engine = create_async_engine(_read_only_url(path))
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            return await evaluation.load_snapshot(session, brand)
+    finally:
+        await engine.dispose()
+
+
+def _eval_directory(brand: str, directory: Path | None) -> Path:
+    path = directory or evaluation.EVAL_DIRECTORY / brand
+    if not path.is_dir():
+        raise RuntimeError(f"Eval directory {path} does not exist")
+    return path
+
+
+async def grouping_eval(
+    settings: Settings,
+    *,
+    brand: str,
+    split: evaluation.Split,
+    checkpoint: str | None,
+    strict: bool,
+    baseline_db: Path | None,
+    directory: Path | None = None,
+) -> dict[str, object]:
+    """Read-only: measure the database's grouping against the labels in eval/<brand>/."""
+
+    folder = _eval_directory(brand, directory)
+    config = evaluation.load_config(folder)
+    current = await _snapshot(sqlite_path(settings), brand)
+    baseline = await _snapshot(baseline_db, brand) if baseline_db else None
+    try:
+        report = evaluation.evaluate(
+            config=config,
+            directory=folder,
+            current=current,
+            baseline=baseline,
+            split=split,
+            checkpoint=checkpoint,
+            strict=strict,
+        )
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    result = evaluation.jsonable(report)
+    result["status"] = "ok" if report["passed"] else "failed"
+    return dict(result)
+
+
+async def grouping_eval_sample(
+    settings: Settings,
+    *,
+    brand: str,
+    out: Path,
+    sheets: Sequence[str],
+    sold: int,
+    active: int,
+    top: int,
+    directory: Path | None = None,
+) -> dict[str, object]:
+    """Write blind labeling sheets (no current groups, ranks or counts) into ``out``."""
+
+    folder = _eval_directory(brand, directory)
+    config = evaluation.load_config(folder)
+    snapshot = await _snapshot(sqlite_path(settings), brand)
+    labels_path = folder / "labels.csv"
+    labels = evaluation.load_labels(labels_path) if labels_path.is_file() else []
+    verdicts = evaluation.load_phrases(folder / "phrases.csv")
+    lines = evaluation.rank_lines(snapshot)
+    written: dict[str, int] = {}
+    if "listings" in sheets:
+        rows = evaluation.listing_sheet(
+            snapshot, sold=sold, active=active, exclude=[label.grailed_id for label in labels]
+        )
+        written["listings.csv"] = evaluation.write_sheet(
+            out / "listings.csv", evaluation.SHEET_LISTING_COLUMNS, rows
+        )
+    if "phrases" in sheets:
+        tail = evaluation.tail_sample(
+            lines, after=config.tail_after, size=config.tail_size, seed=config.tail_seed
+        )
+        wanted = [*lines[:top], *tail]
+        rows = evaluation.phrase_sheet(
+            snapshot, wanted, exclude=verdicts.keys(), seed=config.tail_seed
+        )
+        written["phrases.csv"] = evaluation.write_sheet(
+            out / "phrases.csv", evaluation.SHEET_PHRASE_COLUMNS, rows
+        )
+    if "audit" in sheets:
+        listing_rows, phrase_rows = evaluation.audit_sheets(
+            snapshot, lines, labels, verdicts, seed=config.tail_seed + 1
+        )
+        written["audit_listings.csv"] = evaluation.write_sheet(
+            out / "audit_listings.csv", evaluation.SHEET_LISTING_COLUMNS, listing_rows
+        )
+        written["audit_phrases.csv"] = evaluation.write_sheet(
+            out / "audit_phrases.csv", evaluation.SHEET_PHRASE_COLUMNS, phrase_rows
+        )
+    return {"status": "ok", "out": str(out), "written": written}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -397,6 +510,44 @@ def main() -> int:
         "grouping-report", help="grouping quality per brand (offline)"
     )
     report_parser.add_argument("--brand")
+    eval_parser = subparsers.add_parser(
+        "grouping-eval", help="measure grouping against eval/<brand>/ labels (read-only)"
+    )
+    eval_parser.add_argument("--brand", required=True, help="brand slug, e.g. balenciaga")
+    eval_parser.add_argument("--split", choices=("dev", "holdout", "all"), default="dev")
+    eval_parser.add_argument("--checkpoint", help="checkpoint name from eval.yaml")
+    eval_parser.add_argument(
+        "--strict", action="store_true", help="fail on warnings (unlabeled top lines etc.)"
+    )
+    eval_parser.add_argument(
+        "--baseline-db", type=Path, help="database before the change: regression, lost groups"
+    )
+    eval_parser.add_argument("--eval-dir", type=Path)
+    eval_parser.add_argument(
+        "--seal", action="store_true", help="record label sha256 in MANIFEST and exit"
+    )
+    eval_parser.add_argument("--labeler", default="")
+    eval_parser.add_argument("--external-check", default="none")
+    eval_parser.add_argument("--audit-listings", type=Path, help="filled audit listing sheet")
+    eval_parser.add_argument("--audit-phrases", type=Path, help="filled audit phrase sheet")
+    sample_parser = subparsers.add_parser(
+        "grouping-eval-sample", help="blind labeling sheets without current groups"
+    )
+    sample_parser.add_argument("--brand", required=True, help="brand slug, e.g. balenciaga")
+    sample_parser.add_argument("--out", type=Path, help="directory for the sheets")
+    sample_parser.add_argument(
+        "--sheet",
+        action="append",
+        choices=("listings", "phrases", "audit"),
+        help="sheets to write (default: listings and phrases)",
+    )
+    sample_parser.add_argument("--sold", type=int, default=1200)
+    sample_parser.add_argument("--active", type=int, default=300)
+    sample_parser.add_argument("--top", type=int, default=200)
+    sample_parser.add_argument(
+        "--import", dest="import_sheet", type=Path, help="merge a filled sheet into the labels"
+    )
+    sample_parser.add_argument("--eval-dir", type=Path)
     args = parser.parse_args()
     if args.command == "doctor":
         from importlib import metadata
@@ -438,8 +589,52 @@ def main() -> int:
         return _print(regroup(Settings(), full=not args.delta))
     if args.command == "grouping-report":
         return _print(grouping_report(Settings(), args.brand))
+    if args.command == "grouping-eval":
+        folder = args.eval_dir or evaluation.EVAL_DIRECTORY / args.brand
+        if args.seal:
+            sealed = evaluation.seal_manifest(
+                folder, labeler=args.labeler, external_check=args.external_check
+            )
+            return _dump({"status": "ok", **sealed})
+        if args.audit_listings or args.audit_phrases:
+            agreement = evaluation.audit_agreement(folder, args.audit_listings, args.audit_phrases)
+            return _dump({"status": "ok", **evaluation.jsonable(agreement)})
+        return _print(
+            grouping_eval(
+                Settings(),
+                brand=args.brand,
+                split=args.split,
+                checkpoint=args.checkpoint,
+                strict=args.strict,
+                baseline_db=args.baseline_db,
+                directory=args.eval_dir,
+            )
+        )
+    if args.command == "grouping-eval-sample":
+        folder = args.eval_dir or evaluation.EVAL_DIRECTORY / args.brand
+        if args.import_sheet:
+            return _dump({"status": "ok", **evaluation.import_sheet(folder, args.import_sheet)})
+        if args.out is None:
+            parser.error("grouping-eval-sample needs --out or --import")
+        return _print(
+            grouping_eval_sample(
+                Settings(),
+                brand=args.brand,
+                out=args.out,
+                sheets=args.sheet or ("listings", "phrases"),
+                sold=args.sold,
+                active=args.active,
+                top=args.top,
+                directory=args.eval_dir,
+            )
+        )
     parser.error("Unknown command")
     return 2
+
+
+def _dump(result: dict[str, Any]) -> int:
+    print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False, default=str))
+    return 0
 
 
 def _print(job: Coroutine[Any, Any, dict[str, object]]) -> int:

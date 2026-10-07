@@ -22,9 +22,9 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.grouping import GroupingService
+from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.normalize import TitleNormalizer
 from app.services.grouping.policy import load_policy
-from app.services.grouping.service import NONE_SLUG
 from app.services.metrics import MetricsService
 
 router = APIRouter(tags=["groups"])

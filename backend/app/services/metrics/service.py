@@ -13,8 +13,8 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
+from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.policy import REVIEW_TYPE, load_policy
-from app.services.grouping.service import NONE_SLUG
 from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute_metrics
 
 METRICS_VERSION = "metrics-v1"

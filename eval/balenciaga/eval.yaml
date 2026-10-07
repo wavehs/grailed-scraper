@@ -1,0 +1,42 @@
+# grouping-eval protocol for Balenciaga (plan grouping-v7, docs/TESTING.md).
+brand: balenciaga
+# The holdout split is measured only at these checkpoints; every run is journaled.
+checkpoints: ["0", "v7a", "v7b"]
+top: [50, 100, 200]
+# Unlabeled lines up to this rank are a warning, and a failure with --strict.
+strict_top: 100
+# Tail garbage: lines past rank `after`, drawn with replacement in proportion to sales.
+tail: {after: 200, size: 50, seed: 20261007}
+# Lost groups: rows with at least `labeled_from` lost sales must be labeled; real-model
+# losses may not exceed `loss_limit` sales.
+lost: {labeled_from: 10, loss_limit: 60}
+# Sold listings of a collaboration and how many of them have no model at all.
+collab_watch:
+  Yeezy Gap:
+    designers: [Gap, Yeezy, Yeezy Gap, Kanye West]
+    title: [yeezy gap, ygebb, yzy gap, engineered by balenciaga]
+# Pass rule for sampled shares: point meets the target and the 95% Wilson bound is within
+# 5 p.p. of it. "baseline" means "not below the baseline database" (--baseline-db).
+targets:
+  v7a:
+    listings.model_precision: {min: 0.90}
+    listings.recall_line: {min: baseline}
+    listings.recall_regression: {min: 0.97}
+    listings.none_precision: {min: 0.85}
+    top50.garbage_lines: {max: 0.04}
+    top50.garbage_sales: {max: 0.03}
+    collab_watch.Yeezy Gap.none_share: {max: 0.05}
+    lost.loss_sales: {max: 60}
+  v7b:
+    listings.model_precision: {min: 0.90}
+    listings.recall_line: {min: baseline}
+    listings.recall_regression: {min: 0.97}
+    listings.none_precision: {min: 0.85}
+    top50.garbage_lines: {max: 0.04}
+    top50.garbage_sales: {max: 0.03}
+    top50.garbage_dup_lines: {max: 0.04}
+    top50.garbage_dup_sales: {max: 0.03}
+    top100.garbage_dup_lines: {max: 0.08}
+    top100.garbage_dup_sales: {max: 0.03}
+    collab_watch.Yeezy Gap.none_share: {max: 0.05}
+    lost.loss_sales: {max: 60}

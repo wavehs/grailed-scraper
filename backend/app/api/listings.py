@@ -17,7 +17,7 @@ from app.api.errors import ApiError
 from app.db.models import Listing, ListingModelAssignment, ListingPriceHistory, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
-from app.services.grouping.service import NONE_SLUG
+from app.services.grouping.kinds import NONE_SLUG
 
 router = APIRouter(prefix="/listings", tags=["listings"])
 
