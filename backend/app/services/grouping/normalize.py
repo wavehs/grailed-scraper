@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Literal
 
 from rapidfuzz.fuzz import ratio
@@ -19,6 +20,9 @@ _ATTACHED_SIZE = re.compile(
 )
 _BRAND_FUZZY_MIN_CHARS = 6
 _BRAND_FUZZY_SCORE = 85
+# Seller article codes ("o1bcso1str0226"): long tokens whose letters and digits alternate.
+_ARTICLE_MIN_LENGTH = 6
+_ARTICLE_MIN_SWITCHES = 2
 
 LexiconKind = Literal["strong", "weak", "color", "noise", "size", "stop"]
 
@@ -100,7 +104,7 @@ class TitleNormalizer:
                 index += length
                 continue
             token = tokens[index]
-            if not _numeric_noise(token.norm):
+            if not _numeric_noise(token.norm) and not article_code(token.norm):
                 kept.append(token)
             index += 1
         return NormalizedTitle(
@@ -184,6 +188,15 @@ class TitleNormalizer:
             result.append(tokens[index])
             index += 1
         return result
+
+
+def article_code(token: str) -> bool:
+    """A seller's article number is no part of a model name: ``o1bcso1str0226``, ``a1b2c3``."""
+
+    if len(token) < _ARTICLE_MIN_LENGTH or not token.isalnum():
+        return False
+    switches = sum(left.isdigit() != right.isdigit() for left, right in pairwise(token))
+    return switches >= _ARTICLE_MIN_SWITCHES
 
 
 def _numeric_noise(token: str) -> bool:

@@ -643,11 +643,14 @@ def collab_watch_metrics(snapshot: Snapshot, watches: Sequence[CollabWatch]) -> 
                 placement = snapshot.placement(listing.grailed_id)
                 kinds[placement.kind if placement else "none"] += 1
         total = sum(kinds.values())
+        # A description is no model and no collaboration either: sales that fell into
+        # "Baggy" or "Wide Leg" are still sales of the collaboration without a place.
+        bare = kinds["none"] + kinds["descriptor"]
         result[watch.name] = {
             "sales": total,
             "by_kind": dict(kinds),
-            "none_sales": kinds["none"],
-            "none_share": _ratio(kinds["none"], total),
+            "none_sales": bare,
+            "none_share": _ratio(bare, total),
         }
     return result
 
@@ -1343,7 +1346,7 @@ def _coverage(snapshot: Snapshot) -> dict[str, Any]:
     for listing in snapshot.listings.values():
         placement = snapshot.placement(listing.grailed_id)
         assert placement is not None
-        if placement.kind in {"none", "review"} or placement.group is None:
+        if placement.kind in {"none", "descriptor", "review"} or placement.group is None:
             bucket: str = placement.kind
         else:
             bucket = placement.group.status
@@ -1377,7 +1380,11 @@ def _group_counts(snapshot: Snapshot) -> dict[str, Any]:
             used[listing.group_id] += 1
             sold[listing.group_id] += int(listing.sold)
     by_status = Counter(f"{group.status}/{group.source}" for group in snapshot.groups.values())
-    auto = [group for group in snapshot.groups.values() if group.status == "auto"]
+    auto = [
+        group
+        for group in snapshot.groups.values()
+        if group.status == "auto" and group.kind == "model"
+    ]
     seeds = [
         group
         for group in snapshot.groups.values()

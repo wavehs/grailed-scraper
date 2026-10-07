@@ -60,10 +60,16 @@ def mine_phrases(
     occurrences: dict[tuple[str, ...], set[int]] = defaultdict(set)
     surfaces: dict[tuple[str, ...], Counter[str]] = defaultdict(Counter)
     eligible: dict[tuple[str, ...], bool] = {}
+    phrase_lengths = sorted({len(item) for item in phrases})
     for position, sample in enumerate(samples):
         tokens = sample.tokens
+        # "Mock Neck" is a description: neither "Neck" nor a phrase made of two descriptions
+        # ("High Rise" + "Wide Leg" gives "Rise Wide Leg") is counted from this title.
+        mask = _forbidden_mask(tokens, generic, phrases, phrase_lengths)
         for size in range(1, max_words + 1):
             for start in range(len(tokens) - size + 1):
+                if all(mask[start : start + size]):
+                    continue
                 gram = tokens[start : start + size]
                 allowed = eligible.get(gram)
                 if allowed is None:
@@ -95,7 +101,9 @@ def mine_phrases(
         residual = occurrences[gram] - covered
         if sellers(residual) >= threshold(gram):
             accepted.append(gram)
-    ranked = sorted(accepted, key=lambda gram: (-support[gram], gram))[:limit]
+    # The limit cuts the weakest phrases; existing groups go first, so a group at the edge of
+    # the limit does not appear and disappear from pass to pass.
+    ranked = sorted(accepted, key=lambda gram: (gram not in kept, -support[gram], gram))[:limit]
     return [
         MinedPhrase(
             tokens=gram,
@@ -129,6 +137,22 @@ def covered(
                 reachable[end] = True
                 break
     return bool(tokens) and reachable[-1]
+
+
+def _forbidden_mask(
+    tokens: Sequence[str],
+    words: frozenset[str],
+    phrases: frozenset[tuple[str, ...]],
+    lengths: Sequence[int],
+) -> list[bool]:
+    """Token positions that belong to a forbidden word or to a forbidden phrase in the title."""
+
+    mask = [token in words for token in tokens]
+    for size in lengths:
+        for start in range(len(tokens) - size + 1):
+            if tuple(tokens[start : start + size]) in phrases:
+                mask[start : start + size] = [True] * size
+    return mask
 
 
 def _eligible(

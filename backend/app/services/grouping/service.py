@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     Brand,
-    BrandSourceMap,
     GroupMetric,
     Listing,
     ListingModelAssignment,
@@ -34,8 +33,16 @@ from app.services.grouping.assign import (
     TypeDecision,
     classify_type,
 )
-from app.services.grouping.kinds import NONE_SLUG
-from app.services.grouping.mining import MIN_SELLERS, MiningSample, contains, mine_phrases
+from app.services.grouping.brands import brand_normalizer, load_brand_terms
+from app.services.grouping.descriptors import Descriptor, DescriptorIndex
+from app.services.grouping.kinds import NONE_SLUG, is_descriptor_slug
+from app.services.grouping.mining import (
+    MIN_SELLERS,
+    MiningSample,
+    contains,
+    covered,
+    mine_phrases,
+)
 from app.services.grouping.normalize import NormalizedTitle, TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy, SeedModel, load_policy
 from app.services.grouping.relists import RelistRow, detect_relists
@@ -43,6 +50,8 @@ from app.services.grouping.relists import RelistRow, detect_relists
 GROUPING_VERSION = "grouping-v7"
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
+# Listings without a model group: they feed mining and are looked at again when a group appears.
+_NO_MODEL = frozenset({"none", "descriptor"})
 
 
 @dataclass(slots=True)
@@ -53,6 +62,7 @@ class BrandGroupingStats:
     changed: int = 0
     with_model: int = 0
     no_model: int = 0
+    descriptors: int = 0
     review: int = 0
     groups_created: int = 0
     mined: int = 0
@@ -73,6 +83,7 @@ class BrandGroupingStats:
             "changed": self.changed,
             "with_model": self.with_model,
             "no_model": self.no_model,
+            "descriptors": self.descriptors,
             "review": self.review,
             "groups_created": self.groups_created,
             "mined": self.mined,
@@ -96,7 +107,15 @@ class GroupingResult:
         totals = Counter[str]()
         unknown = Counter[str]()
         for item in self.brands:
-            for key in ("listings", "changed", "with_model", "no_model", "review", "mined"):
+            for key in (
+                "listings",
+                "changed",
+                "with_model",
+                "no_model",
+                "descriptors",
+                "review",
+                "mined",
+            ):
                 totals[key] += int(getattr(item, key))
             totals["groups_created"] += item.groups_created
             totals["relists"] += item.relists
@@ -175,18 +194,14 @@ class GroupingService:
         rows = await self._rows(brand_id)
         stats.listings = len(rows)
         designers = sorted({name for row in rows for name in row.designers})
-        mappings = await self._session.scalars(
-            select(BrandSourceMap.source_designer_name).where(
-                BrandSourceMap.brand_id == brand_id, BrandSourceMap.rejected_at.is_(None)
-            )
-        )
+        terms = await load_brand_terms(self._session, brand, designers)
         blocked = sorted(
             await self._session.scalars(
                 select(ModelBlock.phrase).where(ModelBlock.brand_id == brand_id)
             )
         )
-        terms = list(dict.fromkeys([brand.name, *brand.aliases, *mappings, *designers]))
-        normalizer = TitleNormalizer(self._policy, brand_terms=terms, brand_slug=brand.slug)
+        normalizer = brand_normalizer(self._policy, brand, terms)
+        descriptors = self._policy.descriptor_index(brand.slug)
         groups = {
             group.id: group
             for group in await self._session.scalars(
@@ -282,6 +297,7 @@ class GroupingService:
                 protected=protected,
                 full=not incremental,
                 generic_phrases=generic_phrases,
+                descriptors=descriptors,
                 scope=None if not incremental else {row.id for row in targets},
             )
         stats.mined = len(derived)
@@ -291,14 +307,26 @@ class GroupingService:
             dictionary = self._dictionary(
                 groups, normalizer, weights, lambda group: first(group) or group.id in derived
             )
-            retry = [row for row in rows if results[row.id].method == "none"]
+            retry = [row for row in rows if results[row.id].method in _NO_MODEL]
             again, extra = await self._assign(
                 brand, retry, decisions, dictionary, groups, normalizer
             )
             stats.groups_created += extra
             results.update(again)
+        # Order of placement: model (above), then collaboration, then description, then "No model".
+        stats.groups_created += await self._describe(brand, rows, results, groups, descriptors)
         if not incremental:
-            stats.inherited = await self._inherit(rows, results, groups, fresh, protected)
+            generic_words = self._policy.words.generic
+            blocked_phrases = frozenset(generic_phrases)
+
+            def forbidden(product_type: str, tokens: Sequence[str]) -> bool:
+                return covered(
+                    tokens, generic_words, blocked_phrases | descriptors.phrases(product_type)
+                )
+
+            stats.inherited = await self._inherit(
+                rows, results, groups, fresh, protected, normalizer, forbidden
+            )
         await self._settle(
             groups, results, protected, now, stats, was_retired, full=not incremental, fresh=fresh
         )
@@ -326,6 +354,8 @@ class GroupingService:
                 stats.review += 1
             elif method == "none":
                 stats.no_model += 1
+            elif method == "descriptor":
+                stats.descriptors += 1
             else:
                 stats.with_model += 1
         brand.grouping_hash = self._rules_hash(groups, rows, blocked, terms, parents)
@@ -423,6 +453,9 @@ class GroupingService:
                         )
                         found.name = seed.name
                         found.infer = seed.infer == product_type
+                        # The seed file owns the hierarchy: a line the miner once put above
+                        # the group must not stay protected as its parent.
+                        found.parent_id = None
                         found.retired_at = None
                         found.updated_at = now
                         promoted.append((found, seed.parent))
@@ -471,6 +504,7 @@ class GroupingService:
             if (
                 group.status == "ignored"
                 or group.slug == NONE_SLUG
+                or is_descriptor_slug(group.slug)
                 or group.retired_at is not None
                 or not include(group)
             ):
@@ -597,6 +631,72 @@ class GroupingService:
             results[listing_id] = _Decision(product_type, bucket.id, method)
         return results, created
 
+    async def _describe(
+        self,
+        brand: Brand,
+        rows: Sequence[_Row],
+        results: dict[int, _Decision],
+        groups: dict[int, ModelGroup],
+        descriptors: DescriptorIndex,
+    ) -> int:
+        """Listings still without a model go to the group of the description in their title.
+
+        A description is no model, so this runs after mining: "Neck Logo" is found first and
+        only the rest ("Baggy", "Wide Leg") is described. Groups are created on demand,
+        one per phrase and product type; ``ignored`` ones are tombstones and stay empty.
+        """
+
+        existing = {(group.product_type, group.slug): group for group in groups.values()}
+        wanted: dict[tuple[str, str], tuple[Descriptor, list[int]]] = {}
+        for row in rows:
+            decision = results[row.id]
+            if decision.method != "none":
+                continue
+            assert row.normalized is not None
+            match = descriptors.find(decision.product_type, row.normalized.tokens)
+            if match is None:
+                continue
+            key = (decision.product_type, match.descriptor.slug)
+            if key in existing and existing[key].status == "ignored":
+                continue
+            wanted.setdefault(key, (match.descriptor, []))[1].append(row.id)
+        now = self._now()
+        created = 0
+        for (product_type, slug), (descriptor, _) in wanted.items():
+            group = existing.get((product_type, slug))
+            if group is None:
+                group = ModelGroup(
+                    brand_id=brand.id,
+                    product_type=product_type,
+                    slug=slug,
+                    name=descriptor.name,
+                    aliases=descriptor.aliases,
+                    status="auto",
+                    source="system",
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._session.add(group)
+                existing[(product_type, slug)] = group
+                created += 1
+            else:
+                if group.retired_at is not None:
+                    group.retired_at = None
+                if group.name != descriptor.name or group.aliases != descriptor.aliases:
+                    group.name, group.aliases, group.updated_at = (
+                        descriptor.name,
+                        descriptor.aliases,
+                        now,
+                    )
+        if wanted:
+            await self._session.flush()
+        for (product_type, slug), (_, row_ids) in wanted.items():
+            group = existing[(product_type, slug)]
+            groups[group.id] = group
+            for row_id in row_ids:
+                results[row_id] = _Decision(product_type, group.id, "descriptor")
+        return created
+
     async def _mine(
         self,
         brand: Brand,
@@ -608,6 +708,7 @@ class GroupingService:
         protected: set[int],
         full: bool,
         generic_phrases: Sequence[tuple[str, ...]],
+        descriptors: DescriptorIndex,
         scope: set[int] | None,
     ) -> tuple[set[int], set[int]]:
         """Derive mined groups from "No model" listings; return derived and newly created ids.
@@ -618,9 +719,10 @@ class GroupingService:
 
         samples: dict[str, list[MiningSample]] = defaultdict(list)
         scope_grams: dict[str, set[tuple[str, ...]]] = defaultdict(set)
+        bulk = self._wholesale_sellers(rows)
         for row in rows:
             decision = results[row.id]
-            if decision.method != "none":
+            if decision.method not in _NO_MODEL:
                 continue
             assert row.normalized is not None
             if scope is not None and row.id in scope:
@@ -630,6 +732,8 @@ class GroupingService:
                     for size in range(1, 4)
                     for start in range(len(tokens) - size + 1)
                 )
+            if row.seller in bulk:
+                continue
             samples[decision.product_type].append(
                 MiningSample(
                     seller=row.seller or f"listing:{row.id}",
@@ -642,7 +746,11 @@ class GroupingService:
         derived: set[int] = set()
         fresh: set[int] = set()
         for product_type, items in sorted(samples.items()):
-            in_type = [group for group in groups.values() if group.product_type == product_type]
+            in_type = [
+                group
+                for group in groups.values()
+                if group.product_type == product_type and not is_descriptor_slug(group.slug)
+            ]
             mined_groups = [group for group in in_type if _derived(group)]
             known = [
                 group
@@ -667,7 +775,8 @@ class GroupingService:
                 items,
                 excluded=excluded,
                 generic=self._policy.words.generic,
-                generic_phrases=generic_phrases,
+                # A phrase made only of descriptions is no model, in this product type.
+                generic_phrases=(*generic_phrases, *descriptors.phrases(product_type)),
                 keep=keep,
                 keep_min_sellers=keep_min,
             )
@@ -758,6 +867,15 @@ class GroupingService:
             await self._session.flush()
         return derived, fresh
 
+    def _wholesale_sellers(self, rows: Sequence[_Row]) -> set[str]:
+        """Sellers whose volume (policy ``wholesale_listings``) keeps them out of mining."""
+
+        limit = self._policy.mining.wholesale_listings
+        if limit is None:
+            return set()
+        counts = Counter(row.seller for row in rows if row.seller)
+        return {seller for seller, count in counts.items() if count >= limit}
+
     async def _inherit(
         self,
         rows: Sequence[_Row],
@@ -765,11 +883,15 @@ class GroupingService:
         groups: dict[int, ModelGroup],
         fresh: set[int],
         protected: set[int],
+        normalizer: TitleNormalizer,
+        forbidden: Callable[[str, Sequence[str]], bool],
     ) -> int:
         """A new group that took most listings of a vanished one keeps the old id.
 
         Rule changes respell phrases ("pander" becomes "xpander"); the group, its links and
         its metric history should survive that, with the old phrase kept as an alias.
+        A phrase the rules now forbid ("Wide Leg" became a description) is no spelling of
+        anything: it is not inherited and never kept as an alias, or it would be a model again.
         """
 
         if not fresh:
@@ -795,6 +917,7 @@ class GroupingService:
                     or not _derived(old)
                     or used[old_id]
                     or old.product_type != new.product_type
+                    or forbidden(old.product_type, normalizer.phrase(old.name))
                 ):
                     continue
                 if count * 2 < used[new_id]:
@@ -807,9 +930,13 @@ class GroupingService:
                     if group.parent_id == new_id:
                         group.parent_id = old_id
                 slug, name, parent_id, support = new.slug, new.name, new.parent_id, new.support
-                aliases = _merged(
-                    [*old.aliases, old.name, old.slug.replace("-", " "), *new.aliases], name
-                )
+                aliases = [
+                    item
+                    for item in _merged(
+                        [*old.aliases, old.name, old.slug.replace("-", " "), *new.aliases], name
+                    )
+                    if not forbidden(old.product_type, normalizer.phrase(item))
+                ]
                 await self._session.delete(new)
                 del groups[new_id]
                 fresh.discard(new_id)
@@ -853,7 +980,7 @@ class GroupingService:
         ttl = timedelta(days=self._policy.mining.retire_ttl_days)
         expired: list[ModelGroup] = []
         for group in groups.values():
-            if not _derived(group) or group.id in protected:
+            if not (_derived(group) or _described(group)) or group.id in protected:
                 continue
             before = was_retired.get(group.id)
             if group.id in used:
@@ -977,6 +1104,12 @@ def _derived(group: ModelGroup) -> bool:
     """Mined groups are derived data: a full pass rebuilds them from listings and rules."""
 
     return group.status == "auto" and group.source == "mined"
+
+
+def _described(group: ModelGroup) -> bool:
+    """Descriptor groups are system-made too: they retire when no title needs them."""
+
+    return group.status == "auto" and is_descriptor_slug(group.slug)
 
 
 def _protected(

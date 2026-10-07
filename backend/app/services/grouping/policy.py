@@ -11,6 +11,13 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from app.core.config import PROJECT_ROOT
+from app.services.grouping.descriptors import (
+    BRAND_CLASS,
+    Descriptor,
+    DescriptorIndex,
+    check_unique,
+    parse_descriptors,
+)
 from app.services.grouping.text import phrase
 
 CONFIG_DIRECTORY = PROJECT_ROOT / "config"
@@ -76,6 +83,8 @@ class MiningPolicy:
 
     keep_ratio: float = 0.6
     retire_ttl_days: int = 90
+    # Sellers with at least this many listings in the brand do not vote for new models.
+    wholesale_listings: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,9 +103,17 @@ class GroupingPolicy:
     seeds: dict[str, tuple[SeedModel, ...]] = field(default_factory=dict)
     digest: str = ""
     mining: MiningPolicy = field(default_factory=MiningPolicy)
+    # Phrases that describe a listing but are no model: shared by all brands, or one brand's.
+    descriptors: tuple[Descriptor, ...] = ()
+    brand_descriptors: dict[str, tuple[Descriptor, ...]] = field(default_factory=dict)
 
     def seed_models(self, brand_slug: str | None) -> tuple[SeedModel, ...]:
         return self.seeds.get(brand_slug or "", ())
+
+    def descriptor_index(self, brand_slug: str | None) -> DescriptorIndex:
+        return DescriptorIndex(
+            (*self.descriptors, *self.brand_descriptors.get(brand_slug or "", ()))
+        )
 
 
 @lru_cache(maxsize=4)
@@ -114,11 +131,24 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
     words_payload = _yaml(words_path)
     words = _words(words_payload)
     mining = _mining(words_payload.get("mining") or {})
+    descriptors = parse_descriptors(
+        words_payload.get("descriptors") or {}, taxonomy.types, words_path.name
+    )
     seeds: dict[str, tuple[SeedModel, ...]] = {}
+    brand_descriptors: dict[str, tuple[Descriptor, ...]] = {}
     for path in seed_paths:
         payload = _yaml(path)
         seeds[path.stem] = _seed_models(payload, taxonomy, path.name)
-    return GroupingPolicy(taxonomy, words, seeds, digest.hexdigest(), mining)
+        # A brand's own marks (paris, maison, demna...) are descriptors of the brandmark class.
+        marks = parse_descriptors(
+            payload.get("generic") or (), taxonomy.types, path.name, klass=BRAND_CLASS
+        )
+        if marks:
+            check_unique((*descriptors, *marks), taxonomy.types, path.name)
+            brand_descriptors[path.stem] = marks
+    return GroupingPolicy(
+        taxonomy, words, seeds, digest.hexdigest(), mining, descriptors, brand_descriptors
+    )
 
 
 def _yaml(path: Path) -> dict[str, Any]:
@@ -216,7 +246,14 @@ def _mining(payload: dict[str, Any]) -> MiningPolicy:
     ttl = int(payload.get("retire_ttl_days", defaults.retire_ttl_days))
     if not 0 < keep_ratio <= 1 or ttl < 0:
         raise ValueError("mining.keep_ratio must be in (0, 1] and retire_ttl_days >= 0")
-    return MiningPolicy(keep_ratio=keep_ratio, retire_ttl_days=ttl)
+    wholesale = payload.get("wholesale_listings", defaults.wholesale_listings)
+    if wholesale is not None and int(wholesale) < 1:
+        raise ValueError("mining.wholesale_listings must be empty or >= 1")
+    return MiningPolicy(
+        keep_ratio=keep_ratio,
+        retire_ttl_days=ttl,
+        wholesale_listings=int(wholesale) if wholesale is not None else None,
+    )
 
 
 def _seed_models(

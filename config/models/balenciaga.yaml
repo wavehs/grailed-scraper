@@ -15,5 +15,29 @@ models:
   - {name: Le Cagole, aliases: [cagole], types: [bag]}
   - {name: Hourglass, types: [bag]}
   - {name: City, types: [bag]}
-  - {name: Political Campaign, types: any}
-  - {name: Speedhunters, types: any}
+  - {name: Political Campaign, aliases: [campaign], types: any}
+  - {name: Speedhunters, aliases: [speed hunters], types: any}
+  # Real models that a brand mark or a description would otherwise cut: Paris is a model only
+  # for sneakers (docs/GROUPING.md §0, rule 2), Cargo for sneakers, Metal for tops.
+  - {name: Paris, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Cargo, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Metal, types: [hoodie, tshirt, longsleeve]}
+  # Fragments that no rule can lift to their line: Mud (a wash), Trompe (a word).
+  - {name: Mud Show, aliases: [mudshow], types: any}
+  - {name: Trompe L'Oeil, aliases: [trompe, trompe loeil, tromp loeil, trompe l oeil], types: any}
+
+# Marks of the brand: never a model on their own, a description of the brandmark class.
+# A seed above still wins (Paris sneakers), titles keep these words ("Paris Moon", "Neck Logo").
+generic:
+  - paris
+  - maison
+  - homme
+  - demna
+  - gvasalia
+  - ghesquiere
+  - nicolas
+  - bal
+  - poetic
+  - BB
+  - BB Signature
+  - BB Mode

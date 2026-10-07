@@ -13,6 +13,16 @@ models:
     parent: Track              # optional: the line this model is a version of
 ```
 
+An optional `generic` list holds the marks of the brand (`paris`, `maison`, `demna`…): phrases
+that are never a model of this brand on their own, only a description of the `brandmark`
+class. A seed of the same name still wins for its own types (`Paris` for sneakers).
+
+```yaml
+generic:
+  - paris
+  - bb signature
+```
+
 These seeds were written from known product names, not from mined live data. After the
 first live collection, review `python -m app.cli grouping-report --brand <name>` and the
 "auto" groups in the UI, then add confirmed names here.

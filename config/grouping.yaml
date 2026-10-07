@@ -1,4 +1,4 @@
-# Word lists for grouping-v7 title normalization and the stability of mined groups.
+# Word lists for grouping-v7 title normalization, descriptions and the stability of mined groups.
 # Every entry is normalized like a title: case, accents and plurals do not matter.
 version: grouping-v7
 
@@ -7,6 +7,8 @@ version: grouping-v7
 # a group a full pass no longer derives is retired and deleted after retire_ttl_days.
 # keep_ratio 0.6 (3 sellers of 5) was picked on Balenciaga snapshots 30/90 days apart:
 # 0.4 saves 9-29 lines from retiring but keeps two-seller lines; 0.8 and 1.0 lose far more.
+# wholesale_listings: N (off by default) keeps sellers with >= N listings of the brand out of
+# mining; it needs seller identity and does nothing in the "none" privacy mode.
 mining:
   keep_ratio: 0.6
   retire_ttl_days: 90
@@ -197,6 +199,240 @@ generic:
   - relaxed
   - slim
   - regular
+
+# Descriptions (docs/GROUPING.md §0, rule 3): phrases that describe a listing and are no model.
+# A phrase made only of such words is never mined as a model, and a listing that has no model
+# but has one of them goes to the group of that description ("Baggy · Pants", slug _desc-baggy).
+# Titles keep the words: "Neck Logo" is still found, and a seed or a confirmed group can make
+# any of them a model (Paris sneakers). An entry is a phrase or {name, aliases, only_types,
+# except_types}; the scope is a taxonomy type id. Do not list words the title normalizer drops
+# (colors, noise, product-type words such as "crew neck", "denim"); a test checks that.
+# A lone "neck" is not listed: Chrome Hearts has a model "Neck Logo".
+descriptors:
+  fit:
+    - baggy
+    - {name: Wide Leg, aliases: [wideleg]}
+    - wide
+    - Straight Leg
+    - straight
+    - skinny
+    - tapered
+    - {name: Flared, aliases: [flare]}
+    - bootcut
+    - Bell Bottom
+    - slim
+    - relaxed
+    - {name: Oversized, aliases: [oversize]}
+    - boxy
+    - loose
+    - regular
+    - cropped
+    - fitted
+    - skater
+    - shrunken
+    - slouchy
+    - cocoon
+    - {name: Mini, only_types: [skirt, dress, shorts]}
+    - Low Rise
+    - High Rise
+    - Mid Rise
+    - {name: Leg, only_types: &bottoms [jeans, pants, sweatpants, shorts, leggings, skirt, jumpsuit, bottom_other, swimwear]}
+    - {name: Low, only_types: *bottoms}
+  size:
+    - small
+    - medium
+    - large
+    - xsmall
+    - xlarge
+    - Extra Small
+    - Extra Large
+    - petite
+  material:
+    - leather
+    - suede
+    - nylon
+    - cotton
+    - wool
+    - cashmere
+    - silk
+    - linen
+    - canvas
+    - mesh
+    - fleece
+    - Polar Fleece
+    - polyester
+    - velvet
+    - satin
+    - corduroy
+    - fur
+    - furry
+    - Faux Fur
+    - shearling
+    - sherpa
+    - fabric
+    - rubber
+    - calfskin
+    - lambskin
+    - cowhide
+    - patent
+    - Faux Leather
+    - Vegan Leather
+    - cordura
+    - {name: Gore Tex, aliases: [goretex]}
+    - ripstop
+    - terry
+    - French Terry
+    - tweed
+    - twill
+    - poplin
+    - organza
+    - tulle
+    - neoprene
+    - spandex
+    - lycra
+    - sterling
+    - mud
+    - wash
+    - washed
+    - Acid Wash
+    - Stone Wash
+    - {name: Japanese, only_types: [jeans, pants, denim_jacket, shorts]}
+  print:
+    - print
+    - printed
+    - graphic
+    - {name: Striped, aliases: [stripe]}
+    - {name: Check, aliases: [checked, checkered]}
+    - plaid
+    - tartan
+    - Animal Print
+    - floral
+    - paisley
+    - Polka Dot
+    - houndstooth
+    - graffiti
+    - letter
+    - portrait
+    - All Over
+    - allover
+    - aop
+    - pattern
+    - patterned
+    - solid
+    - plain
+    - text
+    - slogan
+    - typography
+    - Photo Print
+  detail:
+    - {name: Hooded, aliases: [hood]}
+    - {name: Zip, aliases: [zipper, zipped]}
+    - button
+    - Lace Up
+    - lace
+    - pocket
+    - cargo
+    - Four Pocket
+    - {name: Four, only_types: [jeans, pants, sweatpants, shorts]}
+    - padded
+    - quilted
+    - lined
+    - reversible
+    - studded
+    - rhinestone
+    - {name: Embroidered, aliases: [embroidery]}
+    - patch
+    - applique
+    - sequin
+    - beaded
+    - fringe
+    - pleated
+    - ruffle
+    - belted
+    - Mock Neck
+    - {name: V Neck, aliases: [vneck]}
+    - collar
+    - collared
+    - Half Zip
+    - Quarter Zip
+    - Full Zip
+    - snap
+    - velcro
+    - drawstring
+    - elastic
+    - distressed
+    - destroyed
+    - ripped
+    - frayed
+    - embossed
+    - hardware
+    - cut
+    - Raw Hem
+    - Cut Out
+    - double
+    - back
+    - {name: Super, only_types: [jeans, pants, denim_jacket, shorts]}
+    - {name: Toe, only_types: &footwear [lowtop_sneakers, hitop_sneakers, boots, shoes, sandals, slip_ons, heels, flats, mules, platforms, footwear_other]}
+    - {name: Pointed Toe, only_types: *footwear}
+    - {name: Square Toe, only_types: *footwear}
+    - {name: Round Toe, only_types: *footwear}
+    - {name: Open Toe, only_types: *footwear}
+    - {name: High, only_types: [boots]}
+  optics:
+    - {name: Cat Eye, aliases: [cateye], only_types: &eyewear [sunglasses, glasses]}
+    - {name: Cat, only_types: *eyewear}
+    - {name: Aviator, only_types: *eyewear}
+    - {name: Shield, only_types: *eyewear}
+    - {name: Rimless, only_types: *eyewear}
+    - {name: Oval, only_types: *eyewear}
+    - {name: Rectangle, aliases: [rectangular], only_types: *eyewear}
+    - {name: Round, only_types: *eyewear}
+    - {name: Square, only_types: *eyewear}
+    - {name: Wayfarer, only_types: *eyewear}
+    - {name: Mask, only_types: *eyewear}
+    - {name: Wrap, only_types: *eyewear}
+    - {name: Browline, only_types: *eyewear}
+    - {name: Clubmaster, only_types: *eyewear}
+    - {name: Half Rim, only_types: *eyewear}
+    - {name: Semi Rimless, only_types: *eyewear}
+    - {name: Geometric, only_types: *eyewear}
+  subtype:
+    - {name: Baseball, only_types: [hat]}
+    - {name: Slipper, only_types: [slip_ons, sandals, shoes, mules, footwear_other]}
+    - {name: Pool, only_types: [slip_ons, sandals]}
+    - {name: Pullover, only_types: [hoodie, sweatshirt, sweat_top, sweater]}
+    - {name: Lounge, only_types: [pants, sweatpants, shorts, bottom_other]}
+    - {name: Bootie, aliases: [booties], only_types: [boots]}
+    - {name: Ankle, only_types: [boots]}
+    - {name: Chelsea, only_types: [boots]}
+    - {name: Combat, only_types: [boots]}
+    - {name: Travel, only_types: [bag, backpack]}
+    - harness
+    - tracksuit
+  style:
+    - casual
+    - sport
+    - {name: Gothic, aliases: [goth]}
+    - Y2K
+    - punk
+    - streetwear
+    - military
+    - preppy
+    - minimalist
+    - athletic
+    - retro
+    - grunge
+    - western
+    - varsity
+    - soccer
+    - football
+    - basketball
+    - golf
+    - ski
+    - skiwear
+  brandmark:
+    - logo
+    - monogram
 
 # Colors; brand-specific color names live under brand_colors.
 colors:

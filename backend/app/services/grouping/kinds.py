@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.policy import REVIEW_TYPE
 
 NONE_SLUG = "_none"
 # Service groups keep a leading underscore so mined phrases can never collide with them.
 COLLAB_PREFIX = "_collab-"
-DESCRIPTOR_PREFIX = "_desc-"
 
 GroupKind = Literal["model", "descriptor", "collab", "none", "review"]
 
@@ -24,6 +24,10 @@ def group_kind(slug: str, product_type: str) -> GroupKind:
     if slug.startswith(DESCRIPTOR_PREFIX):
         return "descriptor"
     return "model"
+
+
+def is_descriptor_slug(slug: str) -> bool:
+    return slug.startswith(DESCRIPTOR_PREFIX)
 
 
 def collab_partner(slug: str) -> str | None:

@@ -23,8 +23,8 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.grouping import GroupingService
-from app.services.grouping.kinds import NONE_SLUG
-from app.services.grouping.normalize import TitleNormalizer
+from app.services.grouping.brands import brand_normalizer, load_brand_terms
+from app.services.grouping.kinds import NONE_SLUG, is_descriptor_slug
 from app.services.grouping.policy import load_policy
 from app.services.metrics import MetricsService
 
@@ -255,9 +255,9 @@ async def split_group(
         raise ApiError(409, "group_ignored", "This group is no longer used")
     brand = await session.get(Brand, source.brand_id)
     assert brand is not None
-    tokens = TitleNormalizer(
-        load_policy(), brand_terms=[brand.name, *brand.aliases], brand_slug=brand.slug
-    ).phrase(payload.phrase)
+    # The same normalizer as regrouping: designers and confirmed Grailed names are removed too.
+    normalizer = brand_normalizer(load_policy(), brand, await load_brand_terms(session, brand))
+    tokens = normalizer.phrase(payload.phrase)
     if not tokens:
         raise ApiError(
             422, "phrase_empty", "The phrase has only brand, type, color or size words"
@@ -271,7 +271,12 @@ async def split_group(
         )
     )
     parent_id: int | None = None
-    if payload.as_version and source.slug != NONE_SLUG:
+    # A service group ("No model", a description) is never the parent of a line.
+    if (
+        payload.as_version
+        and source.slug != NONE_SLUG
+        and not is_descriptor_slug(source.slug)
+    ):
         parent_id = source.parent_id or source.id
     now = datetime.now(UTC)
     name = (payload.name or payload.phrase).strip()
@@ -380,6 +385,8 @@ async def _editable(session: AsyncSession, group_id: int) -> ModelGroup:
     group = await _group(session, group_id)
     if group.slug == NONE_SLUG:
         raise ApiError(409, "service_group", "The No model group cannot be edited")
+    if is_descriptor_slug(group.slug):
+        raise ApiError(409, "service_group", "A description group cannot be edited")
     if _is_unused(group):
         raise ApiError(409, "group_ignored", "This group is no longer used")
     return group

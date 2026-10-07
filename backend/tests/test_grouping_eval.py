@@ -197,6 +197,20 @@ def test_phrase_metrics_tail_and_lost_groups() -> None:
     assert lost["loss_sales"] == 1 and lost["rows"][0]["name"] == "Campaign"
 
 
+def test_collab_watch_counts_a_description_as_a_sale_without_a_place() -> None:
+    """Hiding Yeezy Gap sales in "Baggy" must not pass the "no model" target."""
+
+    snapshot = _snapshot({})
+    for grailed_id, group_id in {1: 6, 2: 7, 3: 5, 4: 1}.items():
+        snapshot.listings[grailed_id] = ListingView(
+            grailed_id, "sold", "x", None, ("Gap",), "bag", None, group_id
+        )
+    watch = evaluation.CollabWatch("Yeezy Gap", frozenset({"gap"}), ("yeezy gap",))
+    result = evaluation.collab_watch_metrics(snapshot, [watch])["Yeezy Gap"]
+    assert result["by_kind"] == {"collab": 1, "descriptor": 1, "none": 1, "model": 1}
+    assert (result["none_sales"], result["none_share"]) == (2, 0.5)
+
+
 def test_targets_use_points_and_wilson_bounds() -> None:
     values = {"a": Share(950, 1000), "b": Share(9, 10), "c": 0.02, "d": Share(5, 10)}
     results = evaluation.check_targets(
@@ -280,7 +294,7 @@ async def _database(path: Path) -> Settings:
             for index in range(1, 9)
         ]
         rows += [
-            _listing(20 + index, "Balenciaga Baggy Jeans", "bottoms.denim", f"b{index}", True)
+            _listing(20 + index, "Balenciaga Moon Club Jeans", "bottoms.denim", f"b{index}", True)
             for index in range(6)
         ]
         rows.append(_listing(40, "Balenciaga Hoodie", "tops.sweatshirts_hoodies", "h", True))
@@ -308,7 +322,7 @@ async def test_grouping_eval_end_to_end_on_a_fixture_database(tmp_path: Path) ->
     shares = report["listings"]["shares"]  # type: ignore[index]
     assert shares["recall_line"]["point"] == 1.0
     assert report["status"] == "ok"
-    # "Baggy" is mined as a model today: unlabeled in the top lines is only a warning…
+    # "Moon Club" is mined as a model: unlabeled in the top lines is only a warning…
     assert any("unlabeled" in item for item in report["warnings"])  # type: ignore[attr-defined]
     strict = await grouping_eval(
         settings, brand="balenciaga", split="dev", checkpoint=None, strict=True,

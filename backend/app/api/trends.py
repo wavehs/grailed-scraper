@@ -16,6 +16,7 @@ from app.api.groups import GroupDetail, group_detail_data
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
+from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.policy import REVIEW_TYPE
 
 router = APIRouter(prefix="/trends", tags=["trends"])
@@ -111,6 +112,7 @@ async def list_trends(
     new_only: bool = False,
     min_sales: Annotated[int, Query(ge=0, le=10_000)] = 0,
     include_fallback: bool = False,
+    include_descriptors: bool = False,
     search: Annotated[str, Query(max_length=200)] = "",
     sort: SortKey = "trend",
     desc: bool = True,
@@ -127,6 +129,9 @@ async def list_trends(
         filters.append(ModelGroup.retired_at.is_(None))
         if not include_fallback:
             filters.append(GroupMetric.is_fallback.is_(False))
+        if not include_descriptors:
+            # Descriptions ("Baggy", "Wide Leg") are no models: hidden unless asked for.
+            filters.append(~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
     ids = [int(value) for value in brand_ids.split(",") if value]
     if ids:
         filters.append(GroupMetric.brand_id.in_(ids))
