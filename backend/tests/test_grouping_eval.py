@@ -387,3 +387,25 @@ async def _load(settings: Settings) -> Snapshot:
             return await evaluation.load_snapshot(session, "balenciaga")
     finally:
         await engine.dispose()
+
+
+def test_canon_accepts_spellings_but_not_fragments(tmp_path: Path) -> None:
+    path = tmp_path / "canon.csv"
+    path.write_text(
+        "canon,aliases\nLe Cagole,Cagole\nPolitical Campaign,Politixal Campaign\n",
+        encoding="utf-8",
+    )
+    canon = evaluation.load_canon(path)
+    cagole = _group(9, "Cagole")
+    snapshot = Snapshot(
+        "balenciaga",
+        {3: _group(3, "Campaign"), 9: cagole},
+        {1: _view(1, 9), 2: _view(2, 3)},
+    )
+    spelled = evaluation.line_correct(
+        _label(1, "Le Cagole"), snapshot.placement(1), canon=canon
+    )
+    fragment = evaluation.line_correct(
+        _label(2, "Political Campaign"), snapshot.placement(2), canon=canon
+    )
+    assert spelled and not fragment

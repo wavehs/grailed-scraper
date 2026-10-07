@@ -31,6 +31,8 @@ from app.services.grouping.policy import REVIEW_TYPE
 from app.services.grouping.text import fold, singular
 
 EVAL_DIRECTORY = PROJECT_ROOT / "eval"
+# Files sealed in MANIFEST: the labels and the accepted spellings of canonical models.
+LABEL_FILES = ("labels.csv", "phrases.csv", "canon.csv")
 LABEL_COLUMNS = ("grailed_id", "gold_type", "gold_model", "gold_collab", "borderline", "note")
 PHRASE_COLUMNS = ("product_type", "slug", "name", "verdict", "note")
 JOURNAL_COLUMNS = (
@@ -360,18 +362,51 @@ def _round(value: float | None) -> float | None:
 # --- Listing metrics --------------------------------------------------------------------
 
 
-def line_correct(label: Label, placement: Placement | None, *, strict: bool = False) -> bool:
+Canon = Mapping[str, frozenset[str]]
+
+
+def load_canon(path: Path) -> dict[str, frozenset[str]]:
+    """``canon.csv``: a canonical model and its accepted spellings (rule 6), never fragments."""
+
+    canon: dict[str, frozenset[str]] = {}
+    if not path.is_file():
+        return canon
+    with path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            names = [row["canon"], *(item for item in row["aliases"].split("|") if item.strip())]
+            keys = frozenset(key for name in names for key in name_keys(name))
+            for key in keys:
+                canon[key] = keys
+    return canon
+
+
+def gold_keys(name: str, canon: Canon | None = None) -> frozenset[str]:
+    keys = name_keys(name)
+    for key in keys:
+        if canon and key in canon:
+            return canon[key]
+    return keys
+
+
+def line_correct(
+    label: Label,
+    placement: Placement | None,
+    *,
+    strict: bool = False,
+    canon: Canon | None = None,
+) -> bool:
     if placement is None or placement.kind != "model" or label.gold.kind != "model":
         return False
     gold = label.gold.leaf if strict else label.gold.line
     keys = placement.leaf_keys if strict else placement.line_keys
-    return bool(name_keys(gold or "") & keys)
+    return bool(gold_keys(gold or "", canon) & keys)
 
 
 def listing_metrics(
     labels: Sequence[Label],
     current: Snapshot,
     baseline: Snapshot | None = None,
+    canon: Canon | None = None,
 ) -> dict[str, Any]:
     """Shares over labeled listings; borderline rows are reported apart (docs/TESTING.md)."""
 
@@ -389,12 +424,15 @@ def listing_metrics(
         placement = current.placement(label.grailed_id)
         assert placement is not None
         is_model = label.gold.kind == "model"
-        correct = line_correct(label, placement)
+        correct = line_correct(label, placement, canon=canon)
         if placement.kind == "review":
             review += 1
         if placement.kind == "model" and not label.collab_only:
             count("model_precision", correct)
-            count("model_precision_strict", line_correct(label, placement, strict=True))
+            count(
+                "model_precision_strict",
+                line_correct(label, placement, strict=True, canon=canon),
+            )
         if is_model:
             count("recall_line", correct)
         if placement.kind in {"none", "descriptor"}:
@@ -413,7 +451,9 @@ def listing_metrics(
             )
         if label.gold_type:
             count("type_agreement", label.gold_type == placement.product_type)
-        if baseline is not None and line_correct(label, baseline.placement(label.grailed_id)):
+        if baseline is not None and line_correct(
+            label, baseline.placement(label.grailed_id), canon=canon
+        ):
             count("recall_regression", correct)
     shares = {name: Share(*values) for name, values in sorted(counters.items())}
     borderline = [label for label in usable if label.borderline]
@@ -747,10 +787,11 @@ def manifest_check(directory: Path) -> dict[str, Any]:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
         recorded = loaded if isinstance(loaded, dict) else {}
     files = recorded.get("files") or {}
-    actual = {name: file_sha256(directory / name) for name in ("labels.csv", "phrases.csv")}
+    actual = {name: file_sha256(directory / name) for name in LABEL_FILES}
     return {
         "labels_sha256": actual["labels.csv"],
         "phrases_sha256": actual["phrases.csv"],
+        "canon_sha256": actual["canon.csv"],
         "manifest": path.is_file(),
         "matches": bool(files) and all(files.get(name) == value for name, value in actual.items()),
         "labeler": recorded.get("labeler"),
@@ -761,7 +802,7 @@ def manifest_check(directory: Path) -> dict[str, Any]:
 def seal_manifest(directory: Path, *, labeler: str, external_check: str) -> dict[str, Any]:
     payload = {
         "files": {
-            name: file_sha256(directory / name) for name in ("labels.csv", "phrases.csv")
+            name: file_sha256(directory / name) for name in LABEL_FILES
         },
         "date": datetime.now(UTC).date().isoformat(),
         "labeler": labeler,
@@ -892,11 +933,13 @@ def evaluate(
         raise ValueError("--split holdout needs --checkpoint")
     if checkpoint is not None and checkpoint not in config.checkpoints:
         raise ValueError(f"Unknown checkpoint {checkpoint!r}; eval.yaml lists {config.checkpoints}")
-    labels = load_labels(directory / "labels.csv")
+    labels_path = directory / "labels.csv"
+    labels = load_labels(labels_path) if labels_path.is_file() else []
     selected = [
         label for label in labels if split == "all" or split_of(label.grailed_id) == split
     ]
     verdicts = load_phrases(directory / "phrases.csv")
+    canon = load_canon(directory / "canon.csv")
     lines = rank_lines(current)
     phrases: dict[str, Any] = {
         f"top{size}": phrase_metrics(lines, verdicts, size) for size in config.top
@@ -910,7 +953,7 @@ def evaluate(
         "split": split,
         "checkpoint": checkpoint,
         "manifest": manifest_check(directory),
-        "listings": listing_metrics(selected, current, baseline),
+        "listings": listing_metrics(selected, current, baseline, canon),
         "phrases": phrases,
         "collab_watch": collab_watch_metrics(current, config.watches),
         "lost": (
@@ -924,7 +967,7 @@ def evaluate(
     if baseline is not None:
         baseline_values = {
             f"listings.{name}": share
-            for name, share in listing_metrics(selected, baseline)["shares"].items()
+            for name, share in listing_metrics(selected, baseline, canon=canon)["shares"].items()
         }
         report["baseline_listings"] = {
             name.removeprefix("listings."): share for name, share in baseline_values.items()
@@ -1169,6 +1212,7 @@ def audit_agreement(
     """Agreement of a blind second pass with the committed labels (target: 90%)."""
 
     result: dict[str, Any] = {}
+    canon = load_canon(directory / "canon.csv")
     if listing_sheet_path is not None:
         labels = {label.grailed_id: label for label in load_labels(directory / "labels.csv")}
         hits = total = 0
@@ -1188,7 +1232,7 @@ def audit_agreement(
                     borderline=(row.get("borderline") or "0").strip() == "1",
                 )
                 total += 1
-                if _same_label(label, other):
+                if _same_label(label, other, canon):
                     hits += 1
                 else:
                     disagreements.append(
@@ -1229,13 +1273,13 @@ def audit_agreement(
     return result
 
 
-def _same_label(left: Label, right: Label) -> bool:
+def _same_label(left: Label, right: Label, canon: Canon | None = None) -> bool:
     if left.gold.kind != right.gold.kind and not (
         {left.gold.kind, right.gold.kind} <= {"none", "descriptor"}
     ):
         return False
     if left.gold.kind == "model" and not (
-        name_keys(left.gold.line or "") & name_keys(right.gold.line or "")
+        gold_keys(left.gold.line or "", canon) & gold_keys(right.gold.line or "", canon)
     ):
         return False
     return _partner_key(left.collab) == _partner_key(right.collab)
