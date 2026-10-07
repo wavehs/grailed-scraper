@@ -416,3 +416,23 @@ def test_label_hash_ignores_line_endings(tmp_path: Path) -> None:
     unix.write_bytes(b"a,b\n1,2\n")
     windows.write_bytes(b"a,b\r\n1,2\r\n")
     assert evaluation.file_sha256(unix) == evaluation.file_sha256(windows)
+
+
+async def test_baseline_report_compares_with_a_scratch_copy(tmp_path: Path) -> None:
+    from app.cli import grouping_baseline_report
+
+    settings = await _database(tmp_path / "base.db")
+    directory = tmp_path / "eval" / "balenciaga"
+    _write_eval_dir(directory, [{"grailed_id": "1", "gold_model": "Triple S"}])
+    (directory / "codesigners.csv").write_text(
+        "designer,class,partner,note\nGap,collab,Yeezy Gap,\n", encoding="utf-8"
+    )
+    report = await grouping_baseline_report(
+        settings, brand="balenciaga", scratch_db=None, directory=directory
+    )
+    history = report["history"]
+    assert history["assignment_agreement"] == 1.0  # type: ignore[index]
+    assert history["only_current_with_listings"] == 0  # type: ignore[index]
+    coverage = report["coverage"]
+    assert coverage["listings"] == 15 and coverage["sales"] == 11  # type: ignore[index]
+    assert report["bulk_sellers"]["sellers"] == 0  # type: ignore[index]

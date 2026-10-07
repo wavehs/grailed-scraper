@@ -1295,3 +1295,221 @@ def _same_label(left: Label, right: Label, canon: Canon | None = None) -> bool:
 def _label_text(label: Label) -> str:
     gold = label.gold.leaf if label.gold.kind == "model" else label.gold.kind
     return f"{gold} | {label.collab}" if label.collab else str(gold)
+
+
+# --- Baseline report --------------------------------------------------------------------
+
+BULK_SELLER_LISTINGS = 1000
+
+
+def baseline_report(
+    current: Snapshot,
+    scratch: Snapshot | None,
+    verdicts: Mapping[tuple[str, str], Verdict],
+    config: EvalConfig,
+    codesigner_labels: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Step-0 numbers with their formulas: coverage, history, garbage, sellers, designers."""
+
+    report: dict[str, Any] = {
+        "coverage": _coverage(current),
+        "groups": _group_counts(current),
+        "garbage_extrapolation": _garbage_extrapolation(current, verdicts, config),
+        "bulk_sellers": _bulk_sellers(current),
+        "codesigners": _codesigners(current, codesigner_labels or {}),
+    }
+    if scratch is not None:
+        report["history"] = _history(current, scratch)
+    return report
+
+
+def _coverage(snapshot: Snapshot) -> dict[str, Any]:
+    listings: Counter[str] = Counter()
+    sales: Counter[str] = Counter()
+    for listing in snapshot.listings.values():
+        placement = snapshot.placement(listing.grailed_id)
+        assert placement is not None
+        if placement.kind in {"none", "review"} or placement.group is None:
+            bucket: str = placement.kind
+        else:
+            bucket = placement.group.status
+        listings[bucket] += 1
+        sales[bucket] += int(listing.sold)
+    total_listings = sum(listings.values())
+    total_sales = sum(sales.values())
+    return {
+        "listings": total_listings,
+        "sales": total_sales,
+        "by_status": {
+            name: {
+                "listings": listings[name],
+                "listings_share": _ratio(listings[name], total_listings),
+                "sales": sales[name],
+                "sales_share": _ratio(sales[name], total_sales),
+            }
+            for name in sorted(listings)
+        },
+        # "No model" excludes review; the second figure adds it (the 18.5% / 19.5% gap).
+        "no_model_sales_share": _ratio(sales["none"], total_sales),
+        "no_model_with_review_sales_share": _ratio(sales["none"] + sales["review"], total_sales),
+    }
+
+
+def _group_counts(snapshot: Snapshot) -> dict[str, Any]:
+    used: Counter[int] = Counter()
+    sold: Counter[int] = Counter()
+    for listing in snapshot.listings.values():
+        if listing.group_id is not None:
+            used[listing.group_id] += 1
+            sold[listing.group_id] += int(listing.sold)
+    by_status = Counter(f"{group.status}/{group.source}" for group in snapshot.groups.values())
+    auto = [group for group in snapshot.groups.values() if group.status == "auto"]
+    seeds = [
+        group
+        for group in snapshot.groups.values()
+        if group.status == "confirmed" and group.source == "seed"
+    ]
+    return {
+        "by_status_source": dict(sorted(by_status.items())),
+        "auto": len(auto),
+        "auto_empty": sum(1 for group in auto if not used[group.id]),
+        "auto_without_sales": sum(1 for group in auto if not sold[group.id]),
+        "seed_confirmed": len(seeds),
+        "seed_confirmed_empty": sum(1 for group in seeds if not used[group.id]),
+    }
+
+
+def _history(current: Snapshot, scratch: Snapshot) -> dict[str, Any]:
+    """Which assignments and auto groups depend on past passes rather than on the rules."""
+
+    def key(snapshot: Snapshot, group_id: int | None) -> tuple[str, str] | None:
+        group = snapshot.groups.get(group_id) if group_id is not None else None
+        return (group.product_type, group.slug) if group else None
+
+    same = 0
+    for listing in current.listings.values():
+        other = scratch.listings.get(listing.grailed_id)
+        if other is not None and key(current, listing.group_id) == key(scratch, other.group_id):
+            same += 1
+    used = {listing.group_id for listing in current.listings.values()}
+    current_auto = {
+        (group.product_type, group.slug): group
+        for group in current.groups.values()
+        if group.status == "auto"
+    }
+    scratch_auto = {
+        (group.product_type, group.slug)
+        for group in scratch.groups.values()
+        if group.status == "auto"
+    }
+    only_current = [group for slug, group in current_auto.items() if slug not in scratch_auto]
+    return {
+        "assignment_agreement": _ratio(same, len(current.listings)),
+        "current_auto": len(current_auto),
+        "scratch_auto": len(scratch_auto),
+        "in_both": len(set(current_auto) & scratch_auto),
+        "only_current_empty": sum(1 for group in only_current if group.id not in used),
+        "only_current_with_listings": sum(1 for group in only_current if group.id in used),
+        "only_scratch": len(scratch_auto - set(current_auto)),
+    }
+
+
+def _garbage_extrapolation(
+    snapshot: Snapshot, verdicts: Mapping[tuple[str, str], Verdict], config: EvalConfig
+) -> dict[str, Any]:
+    """Garbage share of sales = labeled head lines + tail estimate × tail sales."""
+
+    lines = rank_lines(snapshot)
+    head = lines[: config.tail_after]
+    head_sales = sum(item.sales for item in head)
+    tail_sales = sum(item.sales for item in lines[config.tail_after :])
+
+    def head_sum(kind: str) -> int:
+        return sum(
+            item.sales
+            for item in head
+            if item.key in verdicts and verdicts[item.key].kind == kind
+        )
+
+    head_garbage = head_sum("not_model")
+    head_duplicate = head_sum("duplicate")
+    tail = tail_metrics(
+        tail_sample(lines, after=config.tail_after, size=config.tail_size, seed=config.tail_seed),
+        verdicts,
+    )
+    tail_share = tail["garbage_sales"].point or 0.0
+    tail_dup_share = (tail["garbage_dup_sales"].point or 0.0) - tail_share
+    model_sales = head_sales + tail_sales
+    all_sales = sum(1 for listing in snapshot.listings.values() if listing.sold)
+    garbage = round(head_garbage + tail_share * tail_sales)
+    duplicate = round(head_duplicate + tail_dup_share * tail_sales)
+    return {
+        "formula": "(head garbage sales + tail garbage share × tail sales) / sales",
+        "head_lines": len(head),
+        "head_sales": head_sales,
+        "head_garbage_sales": head_garbage,
+        "head_duplicate_sales": head_duplicate,
+        "head_unlabeled_sales": sum(item.sales for item in head if item.key not in verdicts),
+        "tail_sales": tail_sales,
+        "tail_garbage_share": tail["garbage_sales"],
+        "tail_duplicate_share": round(tail_dup_share, 4),
+        "model_sales": model_sales,
+        "all_sales": all_sales,
+        "garbage_share_of_model_sales": _ratio(garbage, model_sales),
+        "garbage_share_of_all_sales": _ratio(garbage, all_sales),
+        "duplicate_share_of_all_sales": _ratio(duplicate, all_sales),
+    }
+
+
+def _bulk_sellers(snapshot: Snapshot) -> dict[str, Any]:
+    """Aggregates only: seller identities never leave this function."""
+
+    listings: Counter[str] = Counter()
+    sales: Counter[str] = Counter()
+    for listing in snapshot.listings.values():
+        if listing.seller:
+            listings[listing.seller] += 1
+            sales[listing.seller] += int(listing.sold)
+    bulk = {seller for seller, count in listings.items() if count >= BULK_SELLER_LISTINGS}
+    bulk_listings = sum(listings[seller] for seller in bulk)
+    bulk_sales = sum(sales[seller] for seller in bulk)
+    total_listings = sum(listings.values())
+    total_sales = sum(sales.values())
+    return {
+        "threshold_listings": BULK_SELLER_LISTINGS,
+        "sellers": len(bulk),
+        "listings_share": _ratio(bulk_listings, total_listings),
+        "sales_share": _ratio(bulk_sales, total_sales),
+        "sell_through_bulk": _ratio(bulk_sales, bulk_listings),
+        "sell_through_others": _ratio(total_sales - bulk_sales, total_listings - bulk_listings),
+    }
+
+
+def _codesigners(snapshot: Snapshot, labels: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Every co-designer of the brand's listings with its manual class (codesigners.csv)."""
+
+    listings: Counter[str] = Counter()
+    sales: Counter[str] = Counter()
+    brand = fold(snapshot.brand.replace("-", " "))
+    for listing in snapshot.listings.values():
+        for name in set(listing.designers):
+            if fold(name) == brand:
+                continue
+            listings[name] += 1
+            sales[name] += int(listing.sold)
+    return [
+        {
+            "designer": name,
+            "listings": count,
+            "sales": sales[name],
+            "class": labels.get(fold(name), "unlabeled"),
+        }
+        for name, count in sorted(listings.items(), key=lambda item: (-sales[item[0]], -item[1]))
+    ]
+
+
+def load_codesigners(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        return {fold(row["designer"]): row["class"].strip() for row in csv.DictReader(handle)}

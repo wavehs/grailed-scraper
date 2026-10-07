@@ -24,6 +24,7 @@ from app.db.models import (
 from app.db.session import get_database_url
 from app.services.grouping import GroupingService, evaluation
 from app.services.grouping.policy import load_policy
+from app.services.grouping.scratch import make_scratch
 from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
@@ -420,6 +421,40 @@ async def grouping_eval(
     return dict(result)
 
 
+async def grouping_baseline_report(
+    settings: Settings,
+    *,
+    brand: str,
+    scratch_db: Path | None,
+    directory: Path | None = None,
+) -> dict[str, object]:
+    """Read-only step-0 numbers; a from-scratch regroup runs on a light copy, not the database."""
+
+    folder = _eval_directory(brand, directory)
+    config = evaluation.load_config(folder)
+    source = sqlite_path(settings)
+    current = await _snapshot(source, brand)
+    if scratch_db is None:
+        scratch_db = source.parent / "cache" / "eval" / f"scratch-{brand}.db"
+        make_scratch(source, scratch_db, brand, keep_auto=False)
+        engine = create_async_engine(f"sqlite+aiosqlite:///{scratch_db.as_posix()}")
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                await GroupingService(session).regroup(full=True)
+                await session.commit()
+        finally:
+            await engine.dispose()
+    scratch = await _snapshot(scratch_db, brand)
+    report = evaluation.baseline_report(
+        current,
+        scratch,
+        evaluation.load_phrases(folder / "phrases.csv"),
+        config,
+        evaluation.load_codesigners(folder / "codesigners.csv"),
+    )
+    return {"status": "ok", "scratch_db": str(scratch_db), **evaluation.jsonable(report)}
+
+
 async def grouping_eval_sample(
     settings: Settings,
     *,
@@ -530,6 +565,12 @@ def main() -> int:
     eval_parser.add_argument("--external-check", default="none")
     eval_parser.add_argument("--audit-listings", type=Path, help="filled audit listing sheet")
     eval_parser.add_argument("--audit-phrases", type=Path, help="filled audit phrase sheet")
+    eval_parser.add_argument(
+        "--baseline-report", action="store_true", help="step-0 numbers with their formulas"
+    )
+    eval_parser.add_argument(
+        "--scratch-db", type=Path, help="regrouped from-scratch copy (default: build one)"
+    )
     sample_parser = subparsers.add_parser(
         "grouping-eval-sample", help="blind labeling sheets without current groups"
     )
@@ -596,6 +637,15 @@ def main() -> int:
                 folder, labeler=args.labeler, external_check=args.external_check
             )
             return _dump({"status": "ok", **sealed})
+        if args.baseline_report:
+            return _print(
+                grouping_baseline_report(
+                    Settings(),
+                    brand=args.brand,
+                    scratch_db=args.scratch_db,
+                    directory=args.eval_dir,
+                )
+            )
         if args.audit_listings or args.audit_phrases:
             agreement = evaluation.audit_agreement(folder, args.audit_listings, args.audit_phrases)
             return _dump({"status": "ok", **evaluation.jsonable(agreement)})
