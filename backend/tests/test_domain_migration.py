@@ -247,3 +247,66 @@ def test_grouping_migrations_tolerate_tables_left_by_startup_create_all(tmp_path
     assert {"product_type", "retired_at"} <= group_columns
     assert blocked == [("promo",)]
     assert "brand_stopwords" not in tables and "parent_overrides" in tables
+
+
+def test_fetch_tier_migration_recovers_from_legacy_tiers_and_failed_attempt(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    backend_root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    database_path = tmp_path / "legacy-tier.db"
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.attributes["database_url"] = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+    command.upgrade(config, "20261006_0016")
+
+    observed = datetime(2026, 10, 6, tzinfo=UTC)
+    engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+    listings_0016 = Table("listings", MetaData(), autoload_with=engine)
+    with Session(engine) as session:
+        session.execute(
+            insert(listings_0016).values(
+                source="grailed",
+                grailed_id=88,
+                status="active",
+                url="https://example.test/88",
+                title="Legacy Item",
+                brand_name_raw="Rick Owens",
+                price=Decimal("100.00"),
+                currency_original="USD",
+                likes_count=0,
+                sold_at_is_estimated=False,
+                first_seen_at=observed,
+                last_seen_at=observed,
+                photo_urls=[],
+                photo_count=0,
+                seller_identity_mode="none",
+                quality_flags=[],
+                fetch_tier="T2",
+                raw_json={},
+                schema_version=1,
+            )
+        )
+        session.commit()
+    # A previous failed batch rebuild leaves its copy behind on SQLite, and databases
+    # built by the old startup create_all have no search index.
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE _alembic_tmp_listings (id INTEGER)")
+        for trigger in ("listings_fts_ai", "listings_fts_ad", "listings_fts_au"):
+            connection.exec_driver_sql(f"DROP TRIGGER {trigger}")
+        connection.exec_driver_sql("DROP TABLE listings_fts")
+    engine.dispose()
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        leftovers = connection.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE '_alembic_tmp_%'"
+        ).fetchall()
+        tier, flags = connection.execute(
+            "SELECT fetch_tier, quality_flags FROM listings"
+        ).fetchone()
+        matches = connection.execute(
+            "SELECT rowid FROM listings_fts WHERE listings_fts MATCH 'legacy*'"
+        ).fetchall()
+    assert leftovers == []
+    assert matches == [(1,)]
+    assert tier == "T1"
+    assert json.loads(flags) == ["legacy_fetch_tier_T2"]
