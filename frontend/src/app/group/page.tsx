@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Clock3, ExternalLink, PackageCheck, Percent, ShoppingBag, TrendingUp } from 'lucide-react';
-import { GroupEditor, MoveListing, groupLabel } from '@/components/group-editor';
+import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } from '@/components/group-editor';
 import { WeeklyCharts } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -61,7 +61,8 @@ function GroupCard() {
         }
       />
       <div className="flex flex-wrap gap-1">
-        {group.status === 'auto' && <Badge variant="warning">{t('autoGroup')}</Badge>}
+        {group.status === 'auto' && !isServiceGroup(group) && <Badge variant="warning">{t('autoGroup')}</Badge>}
+        <GroupKindBadge kind={group.kind} />
         {metrics?.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
       </div>
 
@@ -265,7 +266,7 @@ function ListingTable({
                     <ExternalLink size={12} />
                   </a>
                   <p className="text-xs text-[var(--text-muted)]">
-                    {[row.group_name, row.size, row.color].filter(Boolean).join(' · ')}
+                    {[row.group_name && groupLabel({ name: row.group_name, is_fallback: row.kind === 'none', kind: row.kind }, t), row.size, row.color].filter(Boolean).join(' · ')}
                     {row.relisted && ` · ${t('relisted')}`}
                   </p>
                 </TableCell>

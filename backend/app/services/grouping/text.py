@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -91,11 +91,20 @@ class PhraseIndex(Generic[T]):
         bucket.sort(key=lambda item: -len(item[0]))
 
     def longest_at(self, tokens: Sequence[str], start: int) -> tuple[int, T] | None:
+        # Kept as a plain loop: titles are normalized with it word by word.
         for key, payload in self._by_first.get(tokens[start], ()):
             end = start + len(key)
             if end <= len(tokens) and tuple(tokens[start:end]) == key:
                 return len(key), payload
         return None
+
+    def matches_at(self, tokens: Sequence[str], start: int) -> Iterator[tuple[int, T]]:
+        """Every phrase that starts at ``start``, longest first."""
+
+        for key, payload in self._by_first.get(tokens[start], ()):
+            end = start + len(key)
+            if end <= len(tokens) and tuple(tokens[start:end]) == key:
+                yield len(key), payload
 
     def __bool__(self) -> bool:
         return bool(self._by_first)

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { groupLabel } from '@/components/group-editor';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -151,7 +152,7 @@ export default function ListingsPage() {
                         className="text-[var(--accent)] hover:underline"
                         href={`/group?id=${item.model_group_id}`}
                       >
-                        {item.is_fallback ? t('noModel') : item.model_name}
+                        {groupLabel({ name: item.model_name ?? '', is_fallback: item.is_fallback, kind: item.kind }, t)}
                       </Link>
                     ) : (
                       '—'

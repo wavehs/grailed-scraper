@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Search } from 'lucide-react';
-import { RegroupButton, groupLabel } from '@/components/group-editor';
+import { GroupKindBadge, RegroupButton, groupLabel, isServiceGroup } from '@/components/group-editor';
 import { Sparkline } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useBrandsQuery, useTrendsQuery, useTypeNames } from '@/lib/queries';
-import type { TrendFilters, TrendLevel, TrendRow, TrendSort } from '@/lib/types';
+import type { NoModelShare, TrendFilters, TrendLevel, TrendRow, TrendSort } from '@/lib/types';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 
 const STORAGE_KEY = 'gla-trend-filters';
@@ -28,6 +28,7 @@ const DEFAULT_FILTERS: TrendFilters = {
   newOnly: false,
   minSales: 0,
   search: '',
+  descriptors: false,
   sort: 'trend',
   desc: true,
 };
@@ -112,6 +113,7 @@ export default function TrendsPage() {
         description={t('trendsIntro')}
         actions={
           <>
+            <NoModelLine share={trends.data?.no_model} window={filters.window} />
             {trends.data?.computed_at && (
               <span className="text-xs text-[var(--text-muted)]">
                 {t('updatedAt')}: {formatDate(trends.data.computed_at, locale)}
@@ -251,6 +253,16 @@ export default function TrendsPage() {
             <input type="checkbox" checked={filters.newOnly} onChange={(event) => update({ newOnly: event.target.checked })} />
             {t('newOnly')}
           </label>
+          {filters.level === 'model' && (
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]" title={t('showDescriptorsHelp')}>
+              <input
+                type="checkbox"
+                checked={filters.descriptors}
+                onChange={(event) => update({ descriptors: event.target.checked })}
+              />
+              {t('showDescriptors')}
+            </label>
+          )}
           <span className="ml-auto flex items-center gap-1">
             <select aria-label={t('sortBy')} value={filters.sort} onChange={(event) => update({ sort: event.target.value as TrendSort })}>
               {SORTS.map(([value, label]) => (
@@ -346,7 +358,7 @@ function TrendTableRow({
     .replace('{share}', formatPercent(row.sell_through_30d));
   const title =
     row.scope === 'model'
-      ? `${row.brand} · ${groupLabel({ name: row.name ?? '', is_fallback: row.is_fallback }, t)} · ${typeName(row.product_type)}`
+      ? `${row.brand} · ${groupLabel({ name: row.name ?? '', is_fallback: row.is_fallback, kind: row.kind }, t)} · ${typeName(row.product_type)}`
       : row.scope === 'type'
         ? `${row.brand} · ${typeName(row.product_type)}`
         : row.brand;
@@ -364,7 +376,8 @@ function TrendTableRow({
           </button>
         )}
         <span className="mt-0.5 flex flex-wrap gap-1">
-          {row.status === 'auto' && <Badge variant="warning">{t('autoGroup')}</Badge>}
+          {row.status === 'auto' && !isServiceGroup(row) && <Badge variant="warning">{t('autoGroup')}</Badge>}
+          <GroupKindBadge kind={row.kind} />
           {row.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
           {row.versions > 0 && (
             <Badge variant="muted">
@@ -416,5 +429,23 @@ function TrendTableRow({
         </p>
       </TableCell>
     </TableRow>
+  );
+}
+
+/** The share of "No model" in the scope: of sales in the window, or of listings without sales. */
+function NoModelLine({ share, window }: { share?: NoModelShare; window: number }) {
+  const { t } = useI18n();
+  if (!share) return null;
+  const bySales = share.sold_share !== null;
+  const value = bySales ? share.sold_share : share.listings_share;
+  if (value === null) return null;
+  const help = (bySales ? t('noModelShareSales') : t('noModelShareListings'))
+    .replace('{part}', String(bySales ? share.sold : share.listings))
+    .replace('{total}', String(bySales ? share.total_sold : share.total_listings))
+    .replace('{days}', String(window));
+  return (
+    <span className="text-xs tabular-nums text-[var(--text-secondary)]" title={help}>
+      {t('noModel')}: {formatPercent(value)}
+    </span>
   );
 }

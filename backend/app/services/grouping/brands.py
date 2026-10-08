@@ -39,4 +39,9 @@ async def load_brand_terms(
 def brand_normalizer(
     policy: GroupingPolicy, brand: Brand, terms: Iterable[str]
 ) -> TitleNormalizer:
-    return TitleNormalizer(policy, brand_terms=terms, brand_slug=brand.slug)
+    """Whitelisted collaborations ("Engineered by Balenciaga") are brand terms too."""
+
+    partners = [term for collab in policy.brand_collabs(brand.slug) for term in collab.terms]
+    return TitleNormalizer(
+        policy, brand_terms=dict.fromkeys([*terms, *partners]), brand_slug=brand.slug
+    )

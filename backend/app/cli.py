@@ -23,9 +23,9 @@ from app.db.models import (
 )
 from app.db.session import get_database_url
 from app.services.grouping import GroupingService, evaluation
-from app.services.grouping.kinds import is_descriptor_slug
+from app.services.grouping.kinds import is_collab_slug, is_descriptor_slug, is_service_slug
 from app.services.grouping.policy import load_policy
-from app.services.grouping.reports import descriptor_report
+from app.services.grouping.reports import collab_report, descriptor_report
 from app.services.grouping.scratch import make_scratch
 from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
@@ -303,12 +303,18 @@ async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]
 
 
 async def grouping_report(
-    settings: Settings, brand: str | None, *, descriptors: bool = False
+    settings: Settings,
+    brand: str | None,
+    *,
+    descriptors: bool = False,
+    collabs: bool = False,
 ) -> dict[str, object]:
     """Offline grouping quality: model coverage, mixed-type check and top groups per brand.
 
     ``descriptors`` adds the description groups, the phrases the dictionary cut off from
-    mining (with their sales) and the seeds that share words with descriptions.
+    mining (with their sales) and the seeds that share words with descriptions. ``collabs``
+    adds, per whitelisted collaboration, the listings whose Grailed designers name it but
+    which are neither in its line nor in a model.
     """
 
     engine = create_async_engine(get_database_url(settings))
@@ -344,6 +350,9 @@ async def grouping_report(
                 described = sum(
                     row[5] for row in rows if is_descriptor_slug(row[2]) and row[3] != "review"
                 )
+                collab = sum(
+                    row[5] for row in rows if is_collab_slug(row[2]) and row[3] != "review"
+                )
                 review = sum(row[5] for row in rows if row[3] == "review")
                 mixed = await session.scalar(
                     select(func.count())
@@ -361,17 +370,18 @@ async def grouping_report(
                     (
                         row
                         for row in rows
-                        if row[2] != "_none" and not is_descriptor_slug(row[2])
+                        if not is_service_slug(row[2])
                     ),
                     key=lambda row: -row[5],
                 )[:15]
-                with_model = total - none - described - review
+                with_model = total - none - described - collab - review
                 entry: dict[str, object] = {
                     "listings": total,
                     "with_model": with_model,
                     "with_model_share": round(with_model / total, 3) if total else 0,
                     "no_model": none,
                     "descriptor": described,
+                    "collab": collab,
                     "review": review,
                     "mixed_type_assignments": int(mixed or 0),
                     "top_groups": [
@@ -381,6 +391,8 @@ async def grouping_report(
                 }
                 if descriptors:
                     entry.update(await descriptor_report(session, load_policy(), item))
+                if collabs:
+                    entry.update(await collab_report(session, load_policy(), item))
                 report[item.name] = entry
         return {"status": "ok", "brands": report}
     finally:
@@ -571,6 +583,12 @@ def main() -> int:
         action="store_true",
         help="add description groups, phrases cut off from mining and seed clashes",
     )
+    report_parser.add_argument(
+        "--collabs",
+        action="store_true",
+        help="add listings whose designers name a whitelisted collab but that sit outside "
+        "its line and every model",
+    )
     eval_parser = subparsers.add_parser(
         "grouping-eval", help="measure grouping against eval/<brand>/ labels (read-only)"
     )
@@ -655,7 +673,11 @@ def main() -> int:
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
     if args.command == "grouping-report":
-        return _print(grouping_report(Settings(), args.brand, descriptors=args.descriptors))
+        return _print(
+            grouping_report(
+                Settings(), args.brand, descriptors=args.descriptors, collabs=args.collabs
+            )
+        )
     if args.command == "grouping-eval":
         folder = args.eval_dir or evaluation.EVAL_DIRECTORY / args.brand
         if args.seal:

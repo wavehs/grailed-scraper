@@ -134,6 +134,7 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (filters.newOnly) params.set('new_only', 'true');
   if (filters.minSales) params.set('min_sales', String(filters.minSales));
   if (filters.search.trim()) params.set('search', filters.search.trim());
+  if (filters.descriptors) params.set('include_descriptors', 'true');
   return params;
 }
 
