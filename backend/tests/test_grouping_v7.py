@@ -1,4 +1,5 @@
-"""grouping-v7 step 1: mined groups are derived data with stable ids (docs/GROUPING.md)."""
+"""grouping-v7 steps 1 and 4: mined groups are derived data with stable ids, and a mined
+version belongs only to the line it starts with (docs/GROUPING.md)."""
 
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.main import app
 from app.services.grouping import GroupingService
+from app.services.grouping.mining import MiningSample, mine_phrases, parent_line
 from app.services.grouping.policy import GroupingPolicy, load_policy
 from app.services.grouping.service import BrandGroupingStats
 
@@ -489,3 +491,110 @@ def test_split_takes_over_the_phrase_of_a_retired_group(tmp_path: Path) -> None:
     assert taken is not None and taken.id == moon.id
     assert (taken.status, taken.source, taken.retired_at) == ("confirmed", "user", None)
     asyncio.run(engine.dispose())
+
+
+# Step 4: the line rule.
+
+MODIFIERS = frozenset({"mini", "mega"})
+
+
+def _lines(*names: str) -> list[tuple[tuple[str, ...], str]]:
+    return [(tuple(name.split()), name) for name in names]
+
+
+def _samples(title: str, sellers: int, prefix: str) -> list[MiningSample]:
+    tokens = tuple(title.split())
+    return [MiningSample(f"{prefix}{index}", tokens, tokens) for index in range(sellers)]
+
+
+def test_the_parent_is_the_longest_line_that_starts_the_phrase() -> None:
+    lines = _lines("dove", "dove no", "no seam", "robe", "leg")
+
+    assert parent_line(("dove", "no", "seam"), lines, MODIFIERS) == "dove no"
+    assert parent_line(("garde", "robe"), lines, MODIFIERS) is None
+    assert parent_line(("wide", "leg"), lines, MODIFIERS) is None
+    assert parent_line(("no", "seam"), lines, MODIFIERS) is None
+
+
+def test_leading_protected_modifiers_are_skipped() -> None:
+    for lines in (_lines("city", "mini"), _lines("mini", "city")):
+        assert parent_line(("mini", "city"), lines, MODIFIERS) == "city"
+        assert parent_line(("mega", "mini", "city"), lines, MODIFIERS) == "city"
+    assert parent_line(("mega", "mini", "city"), _lines("mini city"), MODIFIERS) == "mini city"
+    assert parent_line(("mini",), _lines("mini"), MODIFIERS) is None
+    assert parent_line(("city", "mini"), _lines("mini"), MODIFIERS) is None
+
+
+def test_mining_reports_the_sellers_of_a_phrase_outside_longer_names() -> None:
+    samples = _samples("falcon ridge", 12, "r") + _samples("falcon", 5, "f")
+    samples += _samples("kestrel wing club", 6, "w") + _samples("kestrel", 10, "k")
+
+    phrases = {item.tokens: item for item in mine_phrases(samples)}
+
+    falcon, kestrel = phrases[("falcon",)], phrases[("kestrel",)]
+    assert (falcon.sellers, falcon.own, falcon.fragment) == (17, 5, True)
+    assert (kestrel.sellers, kestrel.own, kestrel.fragment) == (16, 10, False)
+    assert not phrases[("falcon", "ridge")].fragment
+
+
+async def test_a_phrase_hangs_under_the_line_it_starts_with(tmp_path: Path) -> None:
+    listings = _tees(100, "Chrome Hearts Dove No Seam Tee", 6, "d")
+    listings += _tees(200, "Chrome Hearts No Seam Tee", 6, "n")
+    listings += _tees(300, "Chrome Hearts Dove Tee", 10, "o")
+    engine, factory = await _database(tmp_path, listings)
+    await _regroup(factory, T0)
+
+    version = await _group(factory, "dove-no-seam")
+    dove = await _group(factory, "dove")
+    no_seam = await _group(factory, "no-seam")
+    assert version is not None and dove is not None and no_seam is not None
+    # The old rule took the longest phrase inside: "No Seam", a line of its own.
+    assert version.parent_id == dove.id
+    assert no_seam.parent_id is None and dove.parent_id is None
+    await engine.dispose()
+
+
+async def test_a_line_inside_the_phrase_is_no_parent(tmp_path: Path) -> None:
+    listings = _tees(100, "Chrome Hearts Saturn Kestrel Tee", 6, "s")
+    listings += _tees(200, "Chrome Hearts Kestrel Tee", 6, "k")
+    engine, factory = await _database(tmp_path, listings)
+    await _regroup(factory, T0)
+
+    saturn = await _group(factory, "saturn-kestrel")
+    kestrel = await _group(factory, "kestrel")
+    assert saturn is not None and kestrel is not None
+    assert saturn.parent_id is None and kestrel.parent_id is None
+    await engine.dispose()
+
+
+async def test_a_fragment_line_is_no_parent(tmp_path: Path) -> None:
+    listings = _tees(100, "Chrome Hearts Falcon Ridge Tee", 12, "r")
+    listings += _tees(200, "Chrome Hearts Falcon Tee", 5, "f")
+    engine, factory = await _database(tmp_path, listings)
+    first = await _regroup(factory, T0)
+
+    ridge = await _group(factory, "falcon-ridge")
+    assert ridge is not None and await _group(factory, "falcon") is not None
+    assert ridge.parent_id is None
+    second = await _regroup(factory, T0 + timedelta(days=1))
+    assert (first.mined, second.changed, second.retired) == (2, 0, 0)
+    await engine.dispose()
+
+
+async def test_a_parent_override_still_wins_over_the_line_rule(tmp_path: Path) -> None:
+    listings = _tees(100, "Chrome Hearts Saturn Kestrel Tee", 6, "s")
+    listings += _tees(200, "Chrome Hearts Kestrel Tee", 6, "k")
+    engine, factory = await _database(tmp_path, listings)
+    await _regroup(factory, T0)
+    saturn = await _group(factory, "saturn-kestrel")
+    kestrel = await _group(factory, "kestrel")
+    assert saturn is not None and kestrel is not None
+    async with factory() as session:
+        session.add(ParentOverride(group_id=saturn.id, parent_id=kestrel.id, created_at=T0))
+        await session.commit()
+
+    await _regroup(factory, T0 + timedelta(days=1))
+
+    line = await _group(factory, "saturn-kestrel")
+    assert line is not None and line.parent_id == kestrel.id and line.status == "auto"
+    await engine.dispose()

@@ -40,15 +40,18 @@ from app.services.grouping.kinds import NONE_SLUG, is_collab_slug, is_descriptor
 from app.services.grouping.mining import (
     MIN_SELLERS,
     MiningSample,
-    contains,
     covered,
     mine_phrases,
+    parent_line,
 )
 from app.services.grouping.normalize import NormalizedTitle, TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy, SeedModel, load_policy
 from app.services.grouping.relists import RelistRow, detect_relists
 
 GROUPING_VERSION = "grouping-v7"
+# Raised when a code change moves listings or lines: the rules hash changes, so the next pass
+# is a full one. 4: a mined version hangs only under the line it starts with.
+_RULES_REVISION = 4
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
 # Listings without a model group: they feed mining and are looked at again when a group appears.
@@ -865,6 +868,7 @@ class GroupingService:
             ]
             touched: list[tuple[tuple[str, ...], ModelGroup]] = []
             created: list[ModelGroup] = []
+            fragments: list[ModelGroup] = []
             for mined in phrases:
                 slug = _slug(mined.tokens, mined.name)
                 reused = by_slug.get(slug)
@@ -888,6 +892,8 @@ class GroupingService:
                         reused.support = mined.sellers
                     derived.add(reused.id)
                     touched.append((mined.tokens, reused))
+                    if mined.fragment:
+                        fragments.append(reused)
                     continue
                 if slug in taken:
                     continue
@@ -907,20 +913,28 @@ class GroupingService:
                 created.append(group)
                 taken.add(slug)
                 touched.append((mined.tokens, group))
+                if mined.fragment:
+                    fragments.append(group)
             if not touched:
                 continue
             await self._session.flush()
             fresh |= {group.id for group in created}
-            candidates = [*lines, *touched]
+            # A fragment ("Speed" of "Speed Hunters") is no line for anything to hang under.
+            fragment_ids = {group.id for group in fragments}
+            candidates = [
+                (tokens, group) for tokens, group in [*lines, *touched]
+                if group.id not in fragment_ids
+            ]
+            modifiers = self._policy.words.protected_modifiers
             for tokens, group in touched:
                 groups[group.id] = group
                 derived.add(group.id)
-                found = [
-                    (len(line_tokens), parent)
-                    for line_tokens, parent in candidates
-                    if parent is not group and contains(tokens, line_tokens)
-                ]
-                parent_id = max(found, key=lambda item: item[0])[1].id if found else None
+                parent = parent_line(
+                    tokens,
+                    [(line, other) for line, other in candidates if other is not group],
+                    modifiers,
+                )
+                parent_id = parent.id if parent is not None else None
                 if group.parent_id != parent_id:
                     group.parent_id = parent_id
             for _, group in touched:
@@ -1140,6 +1154,7 @@ class GroupingService:
     ) -> str:
         payload = {
             "version": GROUPING_VERSION,
+            "revision": _RULES_REVISION,
             "policy": self._policy.digest,
             "terms": list(terms),
             "blocked": list(blocked),

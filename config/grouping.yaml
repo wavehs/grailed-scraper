@@ -505,6 +505,6 @@ size_tokens: [xxs, xs, xl, xxl, xxxl, 2xl, 4xl, 5xl, os, osfa, one size]
 size_letters: [s, m, l, small, medium, large, xsmall, xlarge]
 
 # Kept modifiers that make a listing a version inside a line ("Mega Geobasket").
-protected_modifiers: [double, triple, mega, jumbo, tiny, baby, mini, micro, big, super, ultra]
+protected_modifiers: [double, triple, mega, jumbo, giant, tiny, baby, mini, micro, big, super, ultra]
 # Version numbers right after a model ("Track 2", "Speed 3"); larger numbers are sizes.
 version_numbers: [2, 3, 4]

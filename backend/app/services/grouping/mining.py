@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 MIN_SELLERS = 5
 MAX_WORDS = 3
@@ -12,6 +13,11 @@ MAX_PHRASES = 1000
 # A longer phrase is a name only if most uses of its shorter part come with it
 # ("neck logo" vs "neck"), not an incidental pairing ("geobasket mainline").
 COLLOCATION_SHARE = 0.5
+# A phrase is a fragment if most of its sellers use it only inside longer names ("Speed" of
+# "Speed Hunters", "World" of "World Food Programme"): it never becomes a parent line.
+FRAGMENT_SHARE = 0.5
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +35,12 @@ class MinedPhrase:
     name: str
     sellers: int
     listings: int
+    # Sellers who use the phrase outside the longer known and accepted phrases.
+    own: int = 0
+
+    @property
+    def fragment(self) -> bool:
+        return self.own < FRAGMENT_SHARE * self.sellers
 
 
 def mine_phrases(
@@ -93,14 +105,16 @@ def mine_phrases(
     # Known phrases cover their own sub-phrases ("crimes de" inside "crimes de lamour").
     known = [gram for gram in blocked if gram in occurrences]
     accepted: list[tuple[str, ...]] = []
+    own: dict[tuple[str, ...], int] = {}
     for gram in candidates:
         covered: set[int] = set()
         for longer in (*known, *accepted):
             if _contains(longer, gram):
                 covered |= occurrences[longer]
-        residual = occurrences[gram] - covered
-        if sellers(residual) >= threshold(gram):
+        residual = sellers(occurrences[gram] - covered)
+        if residual >= threshold(gram):
             accepted.append(gram)
+            own[gram] = residual
     # The limit cuts the weakest phrases; existing groups go first, so a group at the edge of
     # the limit does not appear and disappear from pass to pass.
     ranked = sorted(accepted, key=lambda gram: (gram not in kept, -support[gram], gram))[:limit]
@@ -110,9 +124,40 @@ def mine_phrases(
             name=_display(surfaces[gram].most_common(1)[0][0]),
             sellers=support[gram],
             listings=len(occurrences[gram]),
+            own=own[gram],
         )
         for gram in ranked
     ]
+
+
+def parent_line(
+    tokens: Sequence[str],
+    lines: Iterable[tuple[tuple[str, ...], T]],
+    modifiers: frozenset[str] = frozenset(),
+) -> T | None:
+    """The line a mined phrase is a version of: the longest line that starts the phrase.
+
+    Leading protected modifiers are skipped ("Mini City" is a version of City). A line inside
+    the phrase is no parent: "Garde Robe" is not a Robe, "Wide Leg" is not a Leg.
+    """
+
+    phrase = tuple(tokens)
+    starts = [0]
+    while starts[-1] < len(phrase) - 1 and phrase[starts[-1]] in modifiers:
+        starts.append(starts[-1] + 1)
+    # The longest line wins; at equal length, the one after more modifiers ("Mini City" is a
+    # version of City even if "Mini" is a line).
+    best: tuple[tuple[int, int], T] | None = None
+    for line_tokens, line in lines:
+        size = len(line_tokens)
+        if size >= len(phrase):
+            continue
+        for start in reversed(starts):
+            rank = (size, start)
+            if phrase[start : start + size] == line_tokens and (best is None or rank > best[0]):
+                best = (rank, line)
+                break
+    return best[1] if best else None
 
 
 def contains(longer: Sequence[str], shorter: Sequence[str]) -> bool:
