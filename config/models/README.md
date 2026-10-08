@@ -29,7 +29,9 @@ no model but whose title names the partner (`name`) or one of its `aliases` goes
 descriptions and "No model". Names and aliases are matched like titles (folded, respelled)
 and are also brand terms, so their words never stay in a title as model words ("engineered"
 from "Engineered by Balenciaga"). `designers` are Grailed designer names (default: the name);
-they never place a listing and only feed `grouping-report --collabs`. A phrase may belong to
+they never place a listing and only feed `grouping-report --collabs`. `only_sections` limits a
+partner to taxonomy sections (Crocs: `footwear`), and `not_before` lists words that cancel a
+match right after the phrase ("croc embossed" is leather, not Crocs). A phrase may belong to
 one collaboration only. The file is part of the policy digest, so editing the list regroups
 the brand in full.
 
@@ -38,7 +40,10 @@ collabs:
   - name: Yeezy Gap
     aliases: [yeezy gap, ygebb, yzy gap, engineered by balenciaga]
     designers: [Gap, Yeezy, Yeezy Gap, Kanye West]
-  - {name: Crocs, designers: [Crocs]}
+  - name: Crocs
+    designers: [Crocs]
+    only_sections: [footwear]
+    not_before: [embossed, effect, leather]
 ```
 
 These seeds were written from known product names, not from mined live data. After the

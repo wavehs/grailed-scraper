@@ -35,6 +35,8 @@ class NormalizedTitle:
     surfaces: tuple[str, ...]
     strong_types: tuple[str, ...]
     weak_types: tuple[str, ...]
+    # Folded and respelled words before brand removal: collaboration names are brand terms.
+    spelled: tuple[str, ...] = ()
 
     @property
     def text(self) -> str:
@@ -86,6 +88,7 @@ class TitleNormalizer:
 
     def normalize(self, title: str) -> NormalizedTitle:
         tokens = self._spell(words(title))
+        spelled = tuple(item.norm for item in tokens)
         tokens = self._remove_brand(tokens)
         tokens = self._remove_sizes(tokens)
         kept: list[Word] = []
@@ -112,6 +115,7 @@ class TitleNormalizer:
             surfaces=tuple(item.surface for item in kept),
             strong_types=tuple(strong),
             weak_types=tuple(weak),
+            spelled=spelled,
         )
 
     def phrase(self, text: str) -> tuple[str, ...]:

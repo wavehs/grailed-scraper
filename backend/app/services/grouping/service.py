@@ -319,9 +319,7 @@ class GroupingService:
             stats.groups_created += extra
             results.update(again)
         # Order of placement: model (above), then collaboration, then description, then "No model".
-        stats.groups_created += await self._collaborate(
-            brand, rows, results, groups, collabs, normalizer
-        )
+        stats.groups_created += await self._collaborate(brand, rows, results, groups, collabs)
         stats.groups_created += await self._describe(brand, rows, results, groups, descriptors)
         if not incremental:
             generic_words = self._policy.words.generic
@@ -684,7 +682,6 @@ class GroupingService:
         results: dict[int, _Decision],
         groups: dict[int, ModelGroup],
         collabs: CollabIndex,
-        normalizer: TitleNormalizer,
     ) -> int:
         """Listings still without a model go to the line of the collaboration in their title.
 
@@ -696,15 +693,13 @@ class GroupingService:
         if not collabs.collabs:
             return 0
         existing = {(group.product_type, group.slug): group for group in groups.values()}
-        spelled: dict[str, tuple[str, ...]] = {}
         wanted: dict[tuple[str, str], tuple[Collab, list[int]]] = {}
         for row in rows:
             decision = results[row.id]
             if decision.method != "none":
                 continue
-            if row.title not in spelled:
-                spelled[row.title] = normalizer.spelled(row.title)
-            collab = collabs.find(spelled[row.title])
+            assert row.normalized is not None
+            collab = collabs.find(row.normalized.spelled, decision.product_type)
             if collab is None:
                 continue
             key = (decision.product_type, collab.slug)

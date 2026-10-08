@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +27,13 @@ class Collab:
     name: str
     aliases: tuple[str, ...]
     designers: frozenset[str]  # folded Grailed designer names
+    # Product types the partner makes (from ``only_sections``); empty means every type.
+    only_types: frozenset[str] = frozenset()
+    # Words that cancel a match right after the phrase: "croc embossed" is no Crocs item.
+    not_before: tuple[str, ...] = ()
+
+    def applies(self, product_type: str) -> bool:
+        return not self.only_types or product_type in self.only_types
 
     @property
     def slug(self) -> str:
@@ -51,28 +58,53 @@ class CollabIndex:
     ) -> None:
         self.collabs = tuple(collabs)
         self._index: PhraseIndex[Collab] = PhraseIndex()
+        self._stops: dict[str, frozenset[str]] = {}
         for collab in self.collabs:
             for term in collab.terms:
                 self._index.add(spell(term), collab)
+            self._stops[collab.slug] = frozenset(
+                token for word in collab.not_before for token in spell(word)
+            )
 
-    def find(self, tokens: Sequence[str]) -> Collab | None:
-        """The longest phrase in the title tokens; the leftmost one wins a tie."""
+    def find(self, tokens: Sequence[str], product_type: str) -> Collab | None:
+        """The longest phrase in the title tokens; the leftmost one wins a tie.
+
+        A partner limited to other types, or a phrase followed by one of its ``not_before``
+        words, does not count.
+        """
 
         if not self._index or not tokens:
             return None
         best: tuple[int, Collab] | None = None
         for start in range(len(tokens)):
-            hit = self._index.longest_at(tokens, start)
+            # A cancelled phrase gives way to a shorter one at the same word.
+            hit = next(
+                (
+                    (length, collab)
+                    for length, collab in self._index.matches_at(tokens, start)
+                    if self._counts(collab, tokens, start + length, product_type)
+                ),
+                None,
+            )
             if hit is not None and (best is None or hit[0] > best[0]):
                 best = hit
         return best[1] if best else None
 
+    def _counts(
+        self, collab: Collab, tokens: Sequence[str], after: int, product_type: str
+    ) -> bool:
+        if not collab.applies(product_type):
+            return False
+        return after >= len(tokens) or tokens[after] not in self._stops[collab.slug]
 
-def parse_collabs(entries: Iterable[Any], source: str) -> tuple[Collab, ...]:
-    """Read ``[entry...]``: a name, or ``{name, aliases, designers}``.
 
-    ``designers`` defaults to the name. A phrase names one collaboration, otherwise the line
-    of a title would be ambiguous.
+def parse_collabs(
+    entries: Iterable[Any], source: str, sections: Mapping[str, Iterable[str]] | None = None
+) -> tuple[Collab, ...]:
+    """Read ``[entry...]``: a name, or ``{name, aliases, designers, only_sections, not_before}``.
+
+    ``designers`` defaults to the name. ``sections`` maps a taxonomy section to its types. A
+    phrase names one collaboration, otherwise the line of a title would be ambiguous.
     """
 
     result: list[Collab] = []
@@ -80,6 +112,8 @@ def parse_collabs(entries: Iterable[Any], source: str) -> tuple[Collab, ...]:
     slugs: set[str] = set()
     for raw in entries:
         entry = {"name": raw} if isinstance(raw, str) else dict(raw)
+        if not entry.get("name"):
+            raise ValueError(f"{source}: a collaboration entry has no name")
         name = str(entry["name"]).strip()
         aliases = tuple(
             item
@@ -89,7 +123,11 @@ def parse_collabs(entries: Iterable[Any], source: str) -> tuple[Collab, ...]:
         designers = frozenset(
             fold(str(value)).strip() for value in entry.get("designers") or (name,)
         )
-        collab = Collab(name, aliases, designers)
+        only_types = _section_types(entry.get("only_sections") or (), sections or {}, name, source)
+        not_before = tuple(str(value).strip() for value in entry.get("not_before") or ())
+        if any(not phrase(value) for value in not_before):
+            raise ValueError(f"{source}: collaboration {name!r} has an empty not_before word")
+        collab = Collab(name, aliases, designers, only_types, not_before)
         if not partner_key(name):
             raise ValueError(f"{source}: collaboration {name!r} has no words")
         if collab.slug in slugs:
@@ -106,3 +144,16 @@ def parse_collabs(entries: Iterable[Any], source: str) -> tuple[Collab, ...]:
                 )
         result.append(collab)
     return tuple(result)
+
+
+def _section_types(
+    names: Iterable[Any], sections: Mapping[str, Iterable[str]], name: str, source: str
+) -> frozenset[str]:
+    result: set[str] = set()
+    for section in (str(value) for value in names):
+        if section not in sections:
+            raise ValueError(
+                f"{source}: collaboration {name!r} refers to unknown section {section!r}"
+            )
+        result.update(sections[section])
+    return frozenset(result)

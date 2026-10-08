@@ -143,6 +143,9 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
     seeds: dict[str, tuple[SeedModel, ...]] = {}
     brand_descriptors: dict[str, tuple[Descriptor, ...]] = {}
     collabs: dict[str, tuple[Collab, ...]] = {}
+    sections: dict[str, list[str]] = {}
+    for product_type in taxonomy.types.values():
+        sections.setdefault(product_type.section, []).append(product_type.id)
     for path in seed_paths:
         payload = _yaml(path)
         seeds[path.stem] = _seed_models(payload, taxonomy, path.name)
@@ -154,7 +157,7 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
             check_unique((*descriptors, *marks), taxonomy.types, path.name)
             brand_descriptors[path.stem] = marks
         # Collaborations: the file is part of the digest, so a change regroups the brand.
-        partners = parse_collabs(payload.get("collabs") or (), path.name)
+        partners = parse_collabs(payload.get("collabs") or (), path.name, sections)
         if partners:
             collabs[path.stem] = partners
     return GroupingPolicy(

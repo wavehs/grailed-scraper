@@ -27,7 +27,7 @@ from app.db.session import get_db
 from app.main import app
 from app.services.grouping import GroupingService, evaluation
 from app.services.grouping.brands import brand_normalizer
-from app.services.grouping.collabs import parse_collabs
+from app.services.grouping.collabs import CollabIndex, parse_collabs
 from app.services.grouping.kinds import collab_partner, group_kind
 from app.services.grouping.policy import GroupingPolicy, load_policy
 from app.services.grouping.reports import collab_report
@@ -39,6 +39,19 @@ T0 = datetime(2026, 10, 1, tzinfo=UTC)
 HOODIES = "tops.sweatshirts_hoodies"
 SWEATPANTS = "bottoms.sweatpants_joggers"
 YEEZY = "_collab-yeezy-gap"
+YEEZY_ALIASES = {
+    "yeezy gap",
+    "ygebb",
+    "yzy gap",
+    "engineered by balenciaga",
+    "yeezy x gap",
+    "yzy x gap",
+    "gap x yeezy",
+    "yezzy gap",
+    "yeezygap",
+    "engineered balenciaga",
+    "engineered by balanciaga",
+}
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +75,7 @@ def test_the_whitelist_is_the_collab_class_of_the_codesigners_list(policy: Group
         assert designers <= collabs[name].designers, name
     yeezy = collabs["Yeezy Gap"]
     assert yeezy.designers == {"gap", "yeezy", "yeezy gap", "kanye west"}
-    assert set(yeezy.aliases) == {"yeezy gap", "ygebb", "yzy gap", "engineered by balenciaga"}
+    assert set(yeezy.aliases) == YEEZY_ALIASES
 
 
 def test_a_collab_slug_round_trips_with_the_eval_partner_key(policy: GroupingPolicy) -> None:
@@ -83,12 +96,61 @@ def test_a_phrase_names_one_collaboration() -> None:
         )
     with pytest.raises(ValueError, match="no words"):
         parse_collabs([{"name": "!!"}], "test.yaml")
+    with pytest.raises(ValueError, match="no name"):
+        parse_collabs([{"aliases": ["ygebb"]}], "test.yaml")
+    with pytest.raises(ValueError, match="unknown section"):
+        parse_collabs([{"name": "Crocs", "only_sections": ["shoes"]}], "test.yaml", {})
     (plain,) = parse_collabs(["Crocs"], "test.yaml")
     assert (plain.name, plain.designers, plain.slug) == (
         "Crocs",
         frozenset({"crocs"}),
         "_collab-crocs",
     )
+    assert plain.only_types == frozenset() and plain.not_before == ()
+
+
+@pytest.mark.parametrize(
+    ("title", "product_type", "expected"),
+    [
+        ("Balenciaga Pool Crocs Slide Sandals", "sandals", "Crocs"),
+        ("Balenciaga Croc Rainboot", "boots", "Crocs"),
+        ("Balenciaga Hourglass Croc Embossed Bag", "bag", None),
+        ("Balenciaga Hourglass Small Croc", "bag", None),
+        ("Strike Lace-up Boot 20 mm Croc Leather", "boots", None),
+        ("Balenciaga Groupie BB Sandal in Green Croc-Embossed", "sandals", None),
+        ("cozy bb croc-effect leather mule", "mules", None),
+        # A cancelled partner leaves the title to the next phrase.
+        ("Gucci x Balenciaga Croc Embossed Hacker Loafers", "shoes", "Gucci"),
+        ("Yeezy Gap Engineered Balenciaga Dove Hoodie", "hoodie", "Yeezy Gap"),
+        ("Balenciaga Under Armor Logo Tee", "tshirt", "Under Armour"),
+    ],
+)
+def test_crocs_is_footwear_and_never_croc_leather(
+    policy: GroupingPolicy, title: str, product_type: str, expected: str | None
+) -> None:
+    brand = Brand(name="Balenciaga", slug="balenciaga", aliases=[])
+    normalizer = brand_normalizer(policy, brand, ["Balenciaga"])
+    index = CollabIndex(policy.brand_collabs("balenciaga"), normalizer.spelled)
+    found = index.find(normalizer.normalize(title).spelled, product_type)
+    assert (found.name if found else None) == expected
+
+
+def test_a_cancelled_phrase_gives_way_to_a_shorter_one() -> None:
+    def spell(text: str) -> tuple[str, ...]:
+        return tuple(text.lower().split())
+
+    partners = parse_collabs(
+        [{"name": "Acme", "aliases": ["acme pro"], "not_before": ["skin"]}, "Other"], "test.yaml"
+    )
+    index = CollabIndex(partners, spell)
+
+    def name(*tokens: str) -> str | None:
+        found = index.find(tokens, "bag")
+        return found.name if found else None
+
+    assert name("acme", "pro", "skin") == "Acme"  # "acme pro" is cancelled, "acme" is not
+    assert name("acme", "skin", "other") == "Other"
+    assert name("acme", "skin") is None
 
 
 def test_collaboration_names_are_brand_terms(policy: GroupingPolicy) -> None:
@@ -265,7 +327,7 @@ async def test_a_collaboration_without_a_model_gets_its_line(tmp_path: Path) -> 
     line, method = await _placed(factory, 100)
     assert (line.slug, line.product_type, line.name) == (YEEZY, "hoodie", "Yeezy Gap")
     assert (line.status, line.source, line.parent_id, method) == ("auto", "system", None, "collab")
-    assert set(line.aliases) == {"yeezy gap", "ygebb", "yzy gap", "engineered by balenciaga"}
+    assert set(line.aliases) == YEEZY_ALIASES
     assert group_kind(line.slug, line.product_type) == "collab"
     assert (await _placed(factory, 200))[0].id == line.id
     assert await _group(factory, "engineered") is None  # never mined as a model

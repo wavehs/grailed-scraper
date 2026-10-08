@@ -116,10 +116,15 @@ neck», «denim», «waist»); тест это проверяет. Одиноч�
 подтверждённая группа по-прежнему может сделать любое из них моделью (Paris у кроссовок).
 
 **Белый список коллабораций** — список `collabs` в `config/models/<бренд>.yaml` (формат в
-`config/models/README.md`): `{name, aliases, designers}`. У Balenciaga это строки класса
-`collab` из `eval/balenciaga/codesigners.csv`: Yeezy Gap (алиасы `yeezy gap`, `ygebb`,
-`yzy gap`, `engineered by balenciaga`), Adidas, Under Armour, Crocs, Puma, Gucci, Lamborghini
-(не подтверждена), eBay, PlayStation, Vibram, The Simpsons, NBA, Colette, 10 Corso Como. Имя и
+`config/models/README.md`): `{name, aliases, designers, only_sections, not_before}`. У
+Balenciaga это строки класса `collab` из `eval/balenciaga/codesigners.csv`: Yeezy Gap (алиасы
+`yeezy gap`, `ygebb`, `yzy gap`, `engineered by balenciaga` и написания из заголовков: `yeezy x
+gap`, `gap x yeezy`, `yezzy gap`, `engineered balenciaga`…), Adidas, Under Armour (`under
+armor`), Crocs, Puma, Gucci, Lamborghini (не подтверждена), eBay, PlayStation, Vibram, The
+Simpsons, NBA, Colette, 10 Corso Como. «Crocs» после свёртки множественного числа — «croc», то
+есть и кожа «под крокодила» (сумки Hourglass, «Croc-Embossed»). Поэтому у Crocs
+`only_sections: [footwear]` и `not_before: [embossed, effect, leather, print, skin, pattern]`:
+совпадение, за которым идёт такое слово, не считается. Имя и
 алиасы коллаборации входят в термины бренда (шаг 3 выше): «engineered» из «Engineered by
 Balenciaga» не остаётся в заголовке и моделью не становится. `designers` (имена дизайнеров
 Grailed) объявление никуда не ставят — по ним только строится подсказка
@@ -176,7 +181,9 @@ id, через API не правится (409 `service_group`) и линейко
 3. Иначе — коллаборация: имя или алиас партнёра из белого списка (§2) в заголовке (самая
    длинная фраза, при равенстве левая). Поиск идёт по словам заголовка до удаления терминов
    бренда (свёртка и варианты написания те же), ведь имена коллабораций сами — термины
-   бренда. Объявление идёт в `_collab-<партнёр>` своего типа, `method = collab`. Поле
+   бренда. Совпадение не считается, если тип объявления вне `only_sections` партнёра или
+   сразу за фразой стоит слово из `not_before`; тогда ищется следующая фраза. Объявление
+   идёт в `_collab-<партнёр>` своего типа, `method = collab`. Поле
    `designers` объявления не учитывается: «Gap» в дизайнерах без «Yeezy Gap» в заголовке
    коллаб-линейку не даёт.
 4. Иначе — описание: самая длинная фраза словаря описаний (§2) в заголовке, при равенстве

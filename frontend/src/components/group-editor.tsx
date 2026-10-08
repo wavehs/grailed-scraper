@@ -10,12 +10,44 @@ import { ErrorState, LoadingState, Notice } from '@/components/states';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useGroupQuery, useGroupsQuery, useTypeNames } from '@/lib/queries';
-import type { GroupDetail, GroupSummary } from '@/lib/types';
+import type { GroupDetail, GroupKind, GroupSummary } from '@/lib/types';
 
 type Mode = 'rename' | 'merge' | 'split' | 'line' | 'not-model' | null;
 
-export function groupLabel(group: Pick<GroupSummary, 'name' | 'is_fallback'>, t: (key: string) => string) {
-  return group.is_fallback ? t('noModel') : group.name;
+type LabelledGroup = Pick<GroupSummary, 'name' | 'is_fallback'> & { kind?: GroupKind | null };
+
+/** A collaboration line stores the partner name; it reads "Yeezy Gap · no model". */
+export function groupLabel(group: LabelledGroup, t: (key: string) => string) {
+  if (group.is_fallback) return t('noModel');
+  if (group.kind === 'collab') return `${group.name} · ${t('collabNoModel')}`;
+  return group.name;
+}
+
+/**
+ * "No model", a description and a collaboration line are service groups: the API refuses to
+ * rename, confirm, merge, re-parent or reject them, or to use them as a merge target or parent.
+ * Splitting a model out of them and moving listings into them stay allowed.
+ */
+export function isServiceGroup(group: Pick<GroupSummary, 'is_fallback'> & { kind?: GroupKind | null }) {
+  return group.is_fallback || group.kind === 'descriptor' || group.kind === 'collab';
+}
+
+const KIND_BADGES: Partial<Record<GroupKind, { label: string; variant: 'muted' | 'info' | 'warning' }>> = {
+  descriptor: { label: 'kindDescriptor', variant: 'muted' },
+  collab: { label: 'kindCollab', variant: 'info' },
+  review: { label: 'kindReview', variant: 'warning' },
+};
+
+/** A badge for groups that are not model lines; a model and "No model" need none. */
+export function GroupKindBadge({ kind }: { kind?: GroupKind | null }) {
+  const { t } = useI18n();
+  const badge = kind ? KIND_BADGES[kind] : undefined;
+  if (!badge) return null;
+  return (
+    <Badge variant={badge.variant} className="whitespace-nowrap">
+      <span title={t(`${badge.label}Help`)}>{t(badge.label)}</span>
+    </Badge>
+  );
 }
 
 /** Manual group edits; every edit is stored as a rule and the brand is regrouped. */
@@ -68,8 +100,9 @@ export function GroupEditor({
   if (group.isLoading) return <LoadingState />;
   if (!group.data) return <ErrorState error={group.error} retry={() => group.refetch()} />;
   const data = group.data;
+  const service = isServiceGroup(data);
   const others = (siblings.data?.data ?? []).filter(
-    (item) => item.id !== data.id && !item.is_fallback,
+    (item) => item.id !== data.id && !isServiceGroup(item),
   );
   const lines = others.filter((item) => item.parent_id === null);
   const open = (next: Mode) => {
@@ -78,7 +111,7 @@ export function GroupEditor({
     setTarget(next === 'line' ? String(data.parent_id ?? '') : '');
     setPhrase('');
     setSplitName('');
-    setAsVersion(!data.is_fallback);
+    setAsVersion(!service);
   };
   const ready =
     (mode === 'rename' && name.trim() && name.trim() !== data.name) ||
@@ -96,9 +129,10 @@ export function GroupEditor({
         <span className="text-sm text-[var(--text-primary)]">
           {data.brand} · {groupLabel(data, t)} · {typeName(data.product_type)}
         </span>
-        {data.status === 'auto' && <Badge variant="warning">{t('autoGroup')}</Badge>}
+        {data.status === 'auto' && !service && <Badge variant="warning">{t('autoGroup')}</Badge>}
+        <GroupKindBadge kind={data.kind} />
       </div>
-      {data.status === 'auto' && (
+      {data.status === 'auto' && !service && (
         <p className="text-xs text-[var(--text-muted)]">{t('autoGroupHelp')}</p>
       )}
       {Boolean(data.aliases.length) && (
@@ -115,12 +149,12 @@ export function GroupEditor({
       {mutation.error && <ErrorState error={mutation.error} />}
 
       <div className="flex flex-wrap gap-2">
-        {!data.is_fallback && (
+        {!service && (
           <Button size="sm" variant="secondary" icon={<Pencil size={14} />} onClick={() => open('rename')}>
             {t('groupRename')}
           </Button>
         )}
-        {data.status === 'auto' && (
+        {data.status === 'auto' && !service && (
           <Button
             size="sm"
             variant="success"
@@ -134,7 +168,7 @@ export function GroupEditor({
             {t('groupConfirm')}
           </Button>
         )}
-        {!data.is_fallback && (
+        {!service && (
           <Button size="sm" variant="secondary" icon={<GitMerge size={14} />} onClick={() => open('merge')}>
             {t('groupMerge')}
           </Button>
@@ -142,12 +176,12 @@ export function GroupEditor({
         <Button size="sm" variant="secondary" icon={<Scissors size={14} />} onClick={() => open('split')}>
           {t('groupSplit')}
         </Button>
-        {!data.is_fallback && !data.versions.length && (
+        {!service && !data.versions.length && (
           <Button size="sm" variant="secondary" icon={<Split size={14} />} onClick={() => open('line')}>
             {t('groupLine')}
           </Button>
         )}
-        {!data.is_fallback && (
+        {!service && (
           <Button size="sm" variant="danger" icon={<Ban size={14} />} onClick={() => open('not-model')}>
             {t('groupNotModel')}
           </Button>
@@ -201,7 +235,7 @@ export function GroupEditor({
                   onChange={(e) => setSplitName(e.target.value)}
                 />
               </label>
-              {!data.is_fallback && (
+              {!service && (
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={asVersion} onChange={(e) => setAsVersion(e.target.checked)} />
                   {t('groupSplitAsVersion')}

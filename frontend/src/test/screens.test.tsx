@@ -36,7 +36,11 @@ const brand = {
   ],
 };
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  // Trends keep their filters for the session; each test starts from the defaults.
+  window.sessionStorage.clear();
+});
 
 describe('stage 10 screens', () => {
   it('shows trends of every brand and filters by type, window and price', async () => {
@@ -116,6 +120,130 @@ describe('stage 10 screens', () => {
       expect(fetchMock.mock.calls.some(([input]) => String(input).includes('level=brand'))).toBe(
         true,
       ),
+    );
+  });
+
+  it('marks description and collab lines, toggles descriptions and shows the no-model share', async () => {
+    const base = {
+      scope: 'model',
+      brand_id: 1,
+      brand: 'Balenciaga',
+      product_type: 'hoodie',
+      section: 'tops',
+      status: 'confirmed',
+      is_fallback: false,
+      versions: 0,
+      listings: 10,
+      sold: 3,
+      sold_7d: 1,
+      sold_30d: 3,
+      sold_prev_30d: 1,
+      sold_90d: 5,
+      growth: '3.0000',
+      speed: null,
+      trend_score: '10.00',
+      median_days_to_sell: null,
+      sell_through_30d: '0.300000',
+      median_price: 40000,
+      price_change: null,
+      active_now: 7,
+      new_listings_14d: 0,
+      is_new: false,
+      first_seen_at: null,
+      weekly_sales: Array(12).fill(0),
+    };
+    const rows = [
+      { ...base, scope_key: 'model:1', group_id: 1, name: 'Track', kind: 'model' },
+      { ...base, scope_key: 'model:2', group_id: 2, name: 'Yeezy Gap', kind: 'collab' },
+    ];
+    const descriptor = {
+      ...base,
+      scope_key: 'model:3',
+      group_id: 3,
+      name: 'Baggy',
+      kind: 'descriptor',
+    };
+    const noModel = {
+      listings: 1,
+      total_listings: 4,
+      sold: 1,
+      total_sold: 3,
+      listings_share: '0.2500',
+      sold_share: '0.3333',
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, id: 1, name: 'Balenciaga' }] });
+      if (url.endsWith('/grouping/taxonomy'))
+        return json({
+          version: 'taxonomy-v1',
+          sections: [{ id: 'tops', ru: 'Верх', en: 'Tops' }],
+          types: [{ id: 'hoodie', section: 'tops', ru: 'Худи', en: 'Hoodie' }],
+        });
+      if (url.includes('/trends?')) {
+        const data = url.includes('include_descriptors=true') ? [...rows, descriptor] : rows;
+        return json({
+          data,
+          total: data.length,
+          computed_at: '2026-10-01T12:00:00Z',
+          no_model: noModel,
+        });
+      }
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    const collab = await screen.findByRole('link', {
+      name: 'Balenciaga · Yeezy Gap · no model · Hoodie',
+    });
+    expect(within(collab.closest('td') as HTMLElement).getByText('collab')).toBeInTheDocument();
+    const model = screen.getByRole('link', { name: 'Balenciaga · Track · Hoodie' });
+    expect(
+      within(model.closest('td') as HTMLElement).queryByText('collab'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No model: 33.3%')).toHaveAttribute(
+      'title',
+      '1 of 3 sales in 30 d have no model.',
+    );
+    const toggle = screen.getByRole('checkbox', { name: 'Show descriptions' });
+    expect(toggle).not.toBeChecked();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('include_descriptors')),
+    ).toBe(false);
+    await userEvent.click(toggle);
+    const baggy = await screen.findByRole('link', { name: 'Balenciaga · Baggy · Hoodie' });
+    expect(within(baggy.closest('td') as HTMLElement).getByText('description')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('include_descriptors=true')),
+    ).toBe(true);
+  });
+
+  it('falls back to the listings share when the window has no sales', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/trends?'))
+          return json({
+            data: [],
+            total: 0,
+            computed_at: '2026-10-01T12:00:00Z',
+            no_model: {
+              listings: 1,
+              total_listings: 4,
+              sold: 0,
+              total_sold: 0,
+              listings_share: '0.2500',
+              sold_share: null,
+            },
+          });
+        return json({ data: [] });
+      }),
+    );
+    renderApp(<TrendsPage />);
+    expect(await screen.findByText('No model: 25.0%')).toHaveAttribute(
+      'title',
+      'No sales in the window: 1 of 4 listings have no model.',
     );
   });
 
@@ -268,8 +396,13 @@ describe('stage 10 screens', () => {
         });
       if (url.includes('/groups?'))
         return json({
-          data: [group, { ...group, id: 8, name: 'Neck Logo Tee', status: 'confirmed' }],
-          total: 2,
+          data: [
+            group,
+            { ...group, id: 8, name: 'Neck Logo Tee', status: 'confirmed' },
+            { ...group, id: 10, slug: '_desc-baggy', name: 'Baggy', kind: 'descriptor' },
+            { ...group, id: 11, slug: '_collab-yeezy-gap', name: 'Yeezy Gap', kind: 'collab' },
+          ],
+          total: 4,
         });
       if (url.endsWith('/groups/7') && init?.method === 'PATCH')
         return json({ ...group, status: 'confirmed' });
@@ -290,11 +423,72 @@ describe('stage 10 screens', () => {
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ status: 'confirmed' });
     });
     await userEvent.click(screen.getByRole('button', { name: 'Merge into…' }));
-    await userEvent.selectOptions(await screen.findByLabelText('Merge into…'), '8');
+    const targets = await screen.findByLabelText('Merge into…');
+    // A description or collaboration line is never a merge target.
+    await waitFor(() =>
+      expect(
+        within(targets)
+          .getAllByRole('option')
+          .map((item) => item.getAttribute('value')),
+      ).toEqual(['', '8']),
+    );
+    await userEvent.selectOptions(targets, '8');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ id: 8 })));
     const merge = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/merge'));
     expect(JSON.parse(String(merge?.[1]?.body))).toEqual({ target_id: 8 });
+  });
+
+  it('labels a collab line, marks its kind and offers no service-group edits', async () => {
+    const group = {
+      id: 9,
+      brand_id: 1,
+      brand: 'Balenciaga',
+      product_type: 'hoodie',
+      slug: '_collab-yeezy-gap',
+      name: 'Yeezy Gap',
+      aliases: ['yeezy gap'],
+      parent_id: null,
+      status: 'auto',
+      source: 'collab',
+      is_fallback: false,
+      kind: 'collab',
+      listings: 6,
+      sold: 2,
+      active: 4,
+      parent: null,
+      versions: [],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/grouping/taxonomy'))
+          return json({
+            version: 'taxonomy-v1',
+            sections: [],
+            types: [{ id: 'hoodie', section: 'tops', ru: 'Худи', en: 'Hoodie' }],
+          });
+        if (url.includes('/groups?')) return json({ data: [group], total: 1 });
+        if (url.endsWith('/groups/9')) return json(group);
+        return json({});
+      }),
+    );
+    renderApp(<GroupEditor groupId={9} />);
+    expect(
+      await screen.findByText('Balenciaga · Yeezy Gap · no model · Hoodie'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('collab')).toHaveAttribute(
+      'title',
+      'A collaboration without a model, e.g. “Yeezy Gap · no model”.',
+    );
+    // The API answers 409 service_group to these edits, so they are not offered.
+    for (const name of ['Rename', 'Confirm', 'Merge into…', 'Change line…', 'Not a model'])
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    expect(screen.queryByText('auto')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Split out a model…' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Split out a model…' }));
+    expect(screen.queryByLabelText('A version of this model')).not.toBeInTheDocument();
   });
 
   it('lists catalog listings with model links, filters and cursor pages', async () => {

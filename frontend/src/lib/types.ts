@@ -194,6 +194,7 @@ export type CatalogListing = {
   model_group_id?: number;
   model_name?: string;
   is_fallback: boolean;
+  kind: GroupKind | null;
   model_sold_count: number;
   model_active_count: number;
 };
@@ -204,6 +205,9 @@ export type TaxonomyType = { id: string; section: string; ru: string; en: string
 export type Taxonomy = { version: string; sections: TaxonomySection[]; types: TaxonomyType[] };
 
 export type GroupStatus = 'confirmed' | 'auto' | 'ignored';
+/** model: a model line; descriptor: a description such as "Baggy"; collab: a collaboration
+ * without a model; none: "No model"; review: the type needs review. */
+export type GroupKind = 'model' | 'descriptor' | 'collab' | 'none' | 'review';
 
 export type GroupSummary = {
   id: number;
@@ -217,6 +221,7 @@ export type GroupSummary = {
   status: GroupStatus;
   source: string;
   is_fallback: boolean;
+  kind: GroupKind;
   listings: number;
   sold: number;
   active: number;
@@ -243,6 +248,8 @@ export type TrendRow = {
   name: string | null;
   status: GroupStatus | null;
   is_fallback: boolean;
+  /** Set on model rows; null on type and brand rows. */
+  kind: GroupKind | null;
   versions: number;
   listings: number;
   sold: number;
@@ -264,7 +271,22 @@ export type TrendRow = {
   weekly_sales: number[];
 };
 
-export type TrendList = { data: TrendRow[]; total: number; computed_at: string | null };
+/** "No model" against the whole scope; shares are decimal strings, null when the total is 0. */
+export type NoModelShare = {
+  listings: number;
+  total_listings: number;
+  sold: number;
+  total_sold: number;
+  listings_share: string | null;
+  sold_share: string | null;
+};
+
+export type TrendList = {
+  data: TrendRow[];
+  total: number;
+  computed_at: string | null;
+  no_model: NoModelShare;
+};
 
 export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
 
@@ -282,6 +304,7 @@ export type TrendListing = {
   color: string | null;
   group_id: number | null;
   group_name: string | null;
+  kind: GroupKind | null;
   relisted: boolean;
 };
 
@@ -309,6 +332,8 @@ export type TrendFilters = {
   newOnly: boolean;
   minSales: number;
   search: string;
+  /** Show description groups ("Baggy · jeans"); the API hides them by default. */
+  descriptors: boolean;
   sort: TrendSort;
   desc: boolean;
 };

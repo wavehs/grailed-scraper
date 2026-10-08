@@ -48,11 +48,17 @@ generic:
 # designer names) only feed `grouping-report --collabs`; they never place a listing.
 collabs:
   - name: Yeezy Gap
-    aliases: [yeezy gap, ygebb, yzy gap, engineered by balenciaga]
+    aliases: [yeezy gap, ygebb, yzy gap, engineered by balenciaga, yeezy x gap, yzy x gap,
+      gap x yeezy, yezzy gap, yeezygap, engineered balenciaga, engineered by balanciaga]
     designers: [Gap, Yeezy, Yeezy Gap, Kanye West]
   - {name: Adidas, designers: [Adidas]}
-  - {name: Under Armour, designers: [Under Armour]}
-  - {name: Crocs, designers: [Crocs]}
+  - {name: Under Armour, aliases: [under armor], designers: [Under Armour]}
+  # "Crocs" folds to "croc", the word for croc-embossed leather: only footwear, never
+  # "croc embossed" and the like.
+  - name: Crocs
+    designers: [Crocs]
+    only_sections: [footwear]
+    not_before: [embossed, effect, leather, print, skin, pattern]
   - {name: Puma, designers: [Puma]}
   - {name: Gucci, designers: [Gucci]}
   # Unverified collaboration (codesigners.csv note); kept on the list until labels say otherwise.
