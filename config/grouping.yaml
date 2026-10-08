@@ -9,6 +9,7 @@ version: grouping-v7
 # 0.4 saves 9-29 lines from retiring but keeps two-seller lines; 0.8 and 1.0 lose far more.
 # wholesale_listings: N (off by default) keeps sellers with >= N listings of the brand out of
 # mining; it needs seller identity and does nothing in the "none" privacy mode.
+# Measured on Balenciaga dev at 500: no less garbage, more lost sales, so it stays off.
 mining:
   keep_ratio: 0.6
   retire_ttl_days: 90
