@@ -41,3 +41,26 @@ generic:
   - BB
   - BB Signature
   - BB Mode
+
+# Collaborations (class `collab` of eval/balenciaga/codesigners.csv). A listing without a model
+# whose title names the partner or an alias goes to the line `_collab-<partner>` of its type.
+# The names are brand terms, so they never stay in titles as model words. `designers` (Grailed
+# designer names) only feed `grouping-report --collabs`; they never place a listing.
+collabs:
+  - name: Yeezy Gap
+    aliases: [yeezy gap, ygebb, yzy gap, engineered by balenciaga]
+    designers: [Gap, Yeezy, Yeezy Gap, Kanye West]
+  - {name: Adidas, designers: [Adidas]}
+  - {name: Under Armour, designers: [Under Armour]}
+  - {name: Crocs, designers: [Crocs]}
+  - {name: Puma, designers: [Puma]}
+  - {name: Gucci, designers: [Gucci]}
+  # Unverified collaboration (codesigners.csv note); kept on the list until labels say otherwise.
+  - {name: Lamborghini, designers: [Lamborghini]}
+  - {name: eBay, designers: [eBay]}
+  - {name: PlayStation, designers: [Playstation]}
+  - {name: Vibram, designers: [Vibram]}
+  - {name: The Simpsons, aliases: [simpsons], designers: [The Simpsons]}
+  - {name: NBA, designers: [NBA]}
+  - {name: Colette, designers: [Colette]}
+  - {name: 10 Corso Como, designers: [10 Corso Como]}

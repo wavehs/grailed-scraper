@@ -17,7 +17,7 @@ from app.api.errors import ApiError
 from app.db.models import Listing, ListingModelAssignment, ListingPriceHistory, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
-from app.services.grouping.kinds import NONE_SLUG
+from app.services.grouping.kinds import NONE_SLUG, GroupKind, group_kind
 
 router = APIRouter(prefix="/listings", tags=["listings"])
 
@@ -73,6 +73,8 @@ class CatalogRow(BaseModel):
     model_group_id: int | None
     model_name: str | None
     is_fallback: bool
+    # The kind of the listing's group: model, descriptor, collab, none or review.
+    kind: GroupKind | None
     model_sold_count: int
     model_active_count: int
 
@@ -204,6 +206,7 @@ async def listing_catalog(
                 model_group_id=group.id if group else None,
                 model_name=group.name if group else None,
                 is_fallback=bool(group and group.slug == NONE_SLUG),
+                kind=group_kind(group.slug, group.product_type) if group else None,
                 model_sold_count=counts.get(group.id, {}).get("sold", 0) if group else 0,
                 model_active_count=counts.get(group.id, {}).get("active", 0) if group else 0,
             )

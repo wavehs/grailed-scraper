@@ -119,6 +119,11 @@ class TitleNormalizer:
 
         return self.normalize(text).tokens
 
+    def spelled(self, text: str) -> tuple[str, ...]:
+        """Folded and respelled words, before the brand and the lexicon are removed."""
+
+        return tuple(item.norm for item in self._spell(words(text)))
+
     def _spell(self, tokens: Sequence[Word]) -> list[Word]:
         if not self._policy.words.spelling:
             return list(tokens)

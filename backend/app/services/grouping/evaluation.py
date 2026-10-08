@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import PROJECT_ROOT
 from app.db.models import Brand, Listing, ListingModelAssignment
+from app.services.grouping.collabs import partner_key
 from app.services.grouping.kinds import GroupKind, collab_partner, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
 from app.services.grouping.text import fold, singular
@@ -493,7 +494,8 @@ def _borderline_row(label: Label, placement: Placement | None) -> dict[str, Any]
 
 
 def _partner_key(value: str) -> str:
-    return "-".join(_TOKEN.findall(fold(value)))
+    # The same key builds the collab slug, so a label's partner meets its line.
+    return partner_key(value)
 
 
 # --- Phrase metrics ---------------------------------------------------------------------

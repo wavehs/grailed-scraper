@@ -17,6 +17,7 @@ from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, M
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
+from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
 
 router = APIRouter(prefix="/trends", tags=["trends"])
@@ -35,6 +36,8 @@ class TrendRow(BaseModel):
     name: str | None
     status: str | None
     is_fallback: bool
+    # The kind of the row's group; type and brand rows have none.
+    kind: GroupKind | None = None
     versions: int = 0
     listings: int
     sold: int
@@ -56,10 +59,25 @@ class TrendRow(BaseModel):
     weekly_sales: list[int]
 
 
+class NoModelShare(BaseModel):
+    """"No model" against the whole scope (brands, section, type; other filters ignored).
+
+    ``sold`` counts sales in the requested window; a share is ``None`` when its total is 0.
+    """
+
+    listings: int
+    total_listings: int
+    sold: int
+    total_sold: int
+    listings_share: Decimal | None
+    sold_share: Decimal | None
+
+
 class TrendListResponse(BaseModel):
     data: list[TrendRow]
     total: int
     computed_at: datetime | None
+    no_model: NoModelShare
 
 
 class VariantRow(BaseModel):
@@ -83,6 +101,7 @@ class SaleRow(BaseModel):
     color: str | None
     group_id: int | None
     group_name: str | None
+    kind: GroupKind | None
     relisted: bool
 
 
@@ -123,6 +142,7 @@ async def list_trends(
     sold_column = _sold_column(window)
     price_column = _price_column(window)
     filters: list[ColumnElement[bool]] = [GroupMetric.scope == level]
+    scope: list[ColumnElement[bool]] = []
     if level == "model":
         filters.append(GroupMetric.is_line.is_(True))
         # Retired groups keep their frozen metrics but leave the rating.
@@ -134,13 +154,14 @@ async def list_trends(
             filters.append(~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
     ids = [int(value) for value in brand_ids.split(",") if value]
     if ids:
-        filters.append(GroupMetric.brand_id.in_(ids))
+        scope.append(GroupMetric.brand_id.in_(ids))
     if product_type:
-        filters.append(GroupMetric.product_type == product_type)
+        scope.append(GroupMetric.product_type == product_type)
     elif level != "brand":
         filters.append(GroupMetric.product_type != REVIEW_TYPE)
     if section:
-        filters.append(GroupMetric.section == section)
+        scope.append(GroupMetric.section == section)
+    filters.extend(scope)
     if price_min is not None:
         filters.append(price_column >= price_min)
     if price_max is not None:
@@ -184,6 +205,7 @@ async def list_trends(
         ],
         total=total,
         computed_at=computed_at,
+        no_model=await _no_model_share(session, scope, product_type, sold_column),
     )
 
 
@@ -220,9 +242,9 @@ async def trend_card(
         else []
     )
     version_groups = {item.id: item for item in detail.versions}
-    groups_by_id: dict[int, str] = {group.id: group.name, **{
-        item.id: item.name for item in detail.versions
-    }}
+    groups_by_id: dict[int, tuple[str, GroupKind]] = {
+        item.id: (item.name, item.kind) for item in (detail, *detail.versions)
+    }
     scope_ids = [group.id, *version_ids]
     recent = await _listings(session, scope_ids, groups_by_id, sold=True, limit=25)
     active = await _listings(session, scope_ids, groups_by_id, sold=False, limit=12)
@@ -238,7 +260,15 @@ async def trend_card(
         sizes=[VariantRow.model_validate(item) for item in (metric.sizes if metric else [])],
         versions=sorted(
             (
-                _row(item, brand, None, window, 0, name=version_groups[item.group_id].name)
+                _row(
+                    item,
+                    brand,
+                    None,
+                    window,
+                    0,
+                    name=version_groups[item.group_id].name,
+                    kind=version_groups[item.group_id].kind,
+                )
                 for item in version_metrics
                 if item.group_id in version_groups
             ),
@@ -294,6 +324,7 @@ def _row(
     versions: int,
     *,
     name: str | None = None,
+    kind: GroupKind | None = None,
 ) -> TrendRow:
     sold = {7: metric.sold_7d, 30: metric.sold_30d, 90: metric.sold_90d}[window]
     price = {
@@ -318,6 +349,7 @@ def _row(
         name=label,
         status=group.status if group is not None else None,
         is_fallback=metric.is_fallback,
+        kind=group_kind(group.slug, group.product_type) if group is not None else kind,
         versions=versions,
         listings=metric.listings,
         sold=sold,
@@ -340,6 +372,51 @@ def _row(
     )
 
 
+async def _no_model_share(
+    session: AsyncSession,
+    scope: list[ColumnElement[bool]],
+    product_type: str | None,
+    sold_column: Any,
+) -> NoModelShare:
+    """Listings and window sales in "No model" groups against all listings of the scope.
+
+    The totals are the type rows, so a listing is counted once; the review type is left out
+    unless it is the requested type, as in the list itself.
+    """
+
+    where = list(scope)
+    if not product_type:
+        where.append(GroupMetric.product_type != REVIEW_TYPE)
+    sums = (
+        func.coalesce(func.sum(GroupMetric.listings), 0),
+        func.coalesce(func.sum(sold_column), 0),
+    )
+    fallback = (
+        await session.execute(
+            select(*sums).where(
+                GroupMetric.scope == "model", GroupMetric.is_fallback.is_(True), *where
+            )
+        )
+    ).one()
+    totals = (await session.execute(select(*sums).where(GroupMetric.scope == "type", *where))).one()
+    listings, sold = int(fallback[0]), int(fallback[1])
+    total_listings, total_sold = int(totals[0]), int(totals[1])
+    return NoModelShare(
+        listings=listings,
+        total_listings=total_listings,
+        sold=sold,
+        total_sold=total_sold,
+        listings_share=_share(listings, total_listings),
+        sold_share=_share(sold, total_sold),
+    )
+
+
+def _share(part: int, total: int) -> Decimal | None:
+    if not total:
+        return None
+    return (Decimal(part) / Decimal(total)).quantize(Decimal("0.0001"))
+
+
 async def _version_counts(session: AsyncSession, group_ids: list[int]) -> dict[int, int]:
     if not group_ids:
         return {}
@@ -360,7 +437,7 @@ async def _version_counts(session: AsyncSession, group_ids: list[int]) -> dict[i
 async def _listings(
     session: AsyncSession,
     group_ids: list[int],
-    names: dict[int, str],
+    groups: dict[int, tuple[str, GroupKind]],
     *,
     sold: bool,
     limit: int,
@@ -414,7 +491,8 @@ async def _listings(
                 size=item.size_normalized,
                 color=item.color,
                 group_id=group_id,
-                group_name=names.get(group_id) if group_id is not None else None,
+                group_name=groups[group_id][0] if group_id in groups else None,
+                kind=groups[group_id][1] if group_id in groups else None,
                 relisted=item.relist_of_id is not None,
             )
         )

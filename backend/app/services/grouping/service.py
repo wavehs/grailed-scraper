@@ -34,8 +34,9 @@ from app.services.grouping.assign import (
     classify_type,
 )
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
+from app.services.grouping.collabs import Collab, CollabIndex
 from app.services.grouping.descriptors import Descriptor, DescriptorIndex
-from app.services.grouping.kinds import NONE_SLUG, is_descriptor_slug
+from app.services.grouping.kinds import NONE_SLUG, is_collab_slug, is_descriptor_slug
 from app.services.grouping.mining import (
     MIN_SELLERS,
     MiningSample,
@@ -51,7 +52,7 @@ GROUPING_VERSION = "grouping-v7"
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
 # Listings without a model group: they feed mining and are looked at again when a group appears.
-_NO_MODEL = frozenset({"none", "descriptor"})
+_NO_MODEL = frozenset({"none", "descriptor", "collab"})
 
 
 @dataclass(slots=True)
@@ -63,6 +64,7 @@ class BrandGroupingStats:
     with_model: int = 0
     no_model: int = 0
     descriptors: int = 0
+    collabs: int = 0
     review: int = 0
     groups_created: int = 0
     mined: int = 0
@@ -84,6 +86,7 @@ class BrandGroupingStats:
             "with_model": self.with_model,
             "no_model": self.no_model,
             "descriptors": self.descriptors,
+            "collabs": self.collabs,
             "review": self.review,
             "groups_created": self.groups_created,
             "mined": self.mined,
@@ -113,6 +116,7 @@ class GroupingResult:
                 "with_model",
                 "no_model",
                 "descriptors",
+                "collabs",
                 "review",
                 "mined",
             ):
@@ -202,6 +206,7 @@ class GroupingService:
         )
         normalizer = brand_normalizer(self._policy, brand, terms)
         descriptors = self._policy.descriptor_index(brand.slug)
+        collabs = CollabIndex(self._policy.brand_collabs(brand.slug), normalizer.spelled)
         groups = {
             group.id: group
             for group in await self._session.scalars(
@@ -314,6 +319,9 @@ class GroupingService:
             stats.groups_created += extra
             results.update(again)
         # Order of placement: model (above), then collaboration, then description, then "No model".
+        stats.groups_created += await self._collaborate(
+            brand, rows, results, groups, collabs, normalizer
+        )
         stats.groups_created += await self._describe(brand, rows, results, groups, descriptors)
         if not incremental:
             generic_words = self._policy.words.generic
@@ -356,6 +364,8 @@ class GroupingService:
                 stats.no_model += 1
             elif method == "descriptor":
                 stats.descriptors += 1
+            elif method == "collab":
+                stats.collabs += 1
             else:
                 stats.with_model += 1
         brand.grouping_hash = self._rules_hash(groups, rows, blocked, terms, parents)
@@ -505,6 +515,7 @@ class GroupingService:
                 group.status == "ignored"
                 or group.slug == NONE_SLUG
                 or is_descriptor_slug(group.slug)
+                or is_collab_slug(group.slug)
                 or group.retired_at is not None
                 or not include(group)
             ):
@@ -660,17 +671,77 @@ class GroupingService:
             if key in existing and existing[key].status == "ignored":
                 continue
             wanted.setdefault(key, (match.descriptor, []))[1].append(row.id)
+        lines = {
+            key: (descriptor.name, descriptor.aliases, row_ids)
+            for key, (descriptor, row_ids) in wanted.items()
+        }
+        return await self._system_lines(brand, groups, results, lines, "descriptor")
+
+    async def _collaborate(
+        self,
+        brand: Brand,
+        rows: Sequence[_Row],
+        results: dict[int, _Decision],
+        groups: dict[int, ModelGroup],
+        collabs: CollabIndex,
+        normalizer: TitleNormalizer,
+    ) -> int:
+        """Listings still without a model go to the line of the collaboration in their title.
+
+        Only the title counts: the partner name or an alias from the seed file, looked up
+        before the brand terms (which include them) are removed. Grailed ``designers`` are no
+        evidence. This runs before descriptions: "Yeezy Gap Wide Leg" is no "Wide Leg".
+        """
+
+        if not collabs.collabs:
+            return 0
+        existing = {(group.product_type, group.slug): group for group in groups.values()}
+        spelled: dict[str, tuple[str, ...]] = {}
+        wanted: dict[tuple[str, str], tuple[Collab, list[int]]] = {}
+        for row in rows:
+            decision = results[row.id]
+            if decision.method != "none":
+                continue
+            if row.title not in spelled:
+                spelled[row.title] = normalizer.spelled(row.title)
+            collab = collabs.find(spelled[row.title])
+            if collab is None:
+                continue
+            key = (decision.product_type, collab.slug)
+            if key in existing and existing[key].status == "ignored":
+                continue
+            wanted.setdefault(key, (collab, []))[1].append(row.id)
+        lines = {
+            key: (collab.name, list(collab.aliases), row_ids)
+            for key, (collab, row_ids) in wanted.items()
+        }
+        return await self._system_lines(brand, groups, results, lines, "collab")
+
+    async def _system_lines(
+        self,
+        brand: Brand,
+        groups: dict[int, ModelGroup],
+        results: dict[int, _Decision],
+        wanted: Mapping[tuple[str, str], tuple[str, list[str], list[int]]],
+        method: str,
+    ) -> int:
+        """Put rows into service groups ``(type, slug) -> (name, aliases, rows)``.
+
+        Groups are created on demand; a retired one comes back with its id.
+        """
+
+        existing = {(group.product_type, group.slug): group for group in groups.values()}
         now = self._now()
         created = 0
-        for (product_type, slug), (descriptor, _) in wanted.items():
+        for (product_type, slug), (name, aliases, _) in wanted.items():
             group = existing.get((product_type, slug))
             if group is None:
                 group = ModelGroup(
                     brand_id=brand.id,
                     product_type=product_type,
                     slug=slug,
-                    name=descriptor.name,
-                    aliases=descriptor.aliases,
+                    name=name,
+                    aliases=aliases,
                     status="auto",
                     source="system",
                     created_at=now,
@@ -682,19 +753,15 @@ class GroupingService:
             else:
                 if group.retired_at is not None:
                     group.retired_at = None
-                if group.name != descriptor.name or group.aliases != descriptor.aliases:
-                    group.name, group.aliases, group.updated_at = (
-                        descriptor.name,
-                        descriptor.aliases,
-                        now,
-                    )
+                if group.name != name or group.aliases != aliases:
+                    group.name, group.aliases, group.updated_at = name, aliases, now
         if wanted:
             await self._session.flush()
-        for (product_type, slug), (_, row_ids) in wanted.items():
+        for (product_type, slug), (_, _, row_ids) in wanted.items():
             group = existing[(product_type, slug)]
             groups[group.id] = group
             for row_id in row_ids:
-                results[row_id] = _Decision(product_type, group.id, "descriptor")
+                results[row_id] = _Decision(product_type, group.id, method)
         return created
 
     async def _mine(
@@ -749,7 +816,9 @@ class GroupingService:
             in_type = [
                 group
                 for group in groups.values()
-                if group.product_type == product_type and not is_descriptor_slug(group.slug)
+                if group.product_type == product_type
+                and not is_descriptor_slug(group.slug)
+                and not is_collab_slug(group.slug)
             ]
             mined_groups = [group for group in in_type if _derived(group)]
             known = [
@@ -980,7 +1049,7 @@ class GroupingService:
         ttl = timedelta(days=self._policy.mining.retire_ttl_days)
         expired: list[ModelGroup] = []
         for group in groups.values():
-            if not (_derived(group) or _described(group)) or group.id in protected:
+            if not (_derived(group) or _system_made(group)) or group.id in protected:
                 continue
             before = was_retired.get(group.id)
             if group.id in used:
@@ -1106,10 +1175,12 @@ def _derived(group: ModelGroup) -> bool:
     return group.status == "auto" and group.source == "mined"
 
 
-def _described(group: ModelGroup) -> bool:
-    """Descriptor groups are system-made too: they retire when no title needs them."""
+def _system_made(group: ModelGroup) -> bool:
+    """Description and collaboration groups: they retire when no title needs them."""
 
-    return group.status == "auto" and is_descriptor_slug(group.slug)
+    return group.status == "auto" and (
+        is_descriptor_slug(group.slug) or is_collab_slug(group.slug)
+    )
 
 
 def _protected(

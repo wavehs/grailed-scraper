@@ -26,6 +26,17 @@ Use the backend venv explicitly (`backend/.venv`, Python 3.11.9). The global `py
   - Build: `pnpm run build` (static export to `frontend/out/`, served by the backend on :8000). Dev server: `pnpm dev` (port 3000).
 - Run the app: `start.bat`. Dev stack: `dev-web.bat` (`scripts/start.ps1 -Mode dev`).
 
+## Subagent Execution Policy (ECC)
+
+When handling complex tasks, codebase exploration, or multi-step implementations, do NOT execute everything directly in the primary session. You must act as an orchestrator and delegate:
+
+- **Exploration & Grepping**: Spawn the `code-searcher` or `scout` subagent. Do not spam broad grep/glob in the root context.
+- **Architectural Planning**: Delegate to `planner` before writing major code changes.
+- **Implementation**: Delegate specific coding tasks to `coder` or `tdd-guide`.
+- **Review**: Delegate to `code-reviewer` before marking work done.
+
+Trigger these subagents automatically via the `Agent` tool without asking for confirmation.
+
 ## Verify before calling a task done
 
 - CI (`.github/workflows/ci.yml`) runs the backend checks (ruff check, mypy, pytest) and the frontend checks (lint, typecheck, test, build). Run the ones covering what you touched.

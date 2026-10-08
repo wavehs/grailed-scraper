@@ -24,7 +24,14 @@ from app.db.models import (
 from app.db.session import get_db
 from app.services.grouping import GroupingService
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
-from app.services.grouping.kinds import NONE_SLUG, is_descriptor_slug
+from app.services.grouping.kinds import (
+    NONE_SLUG,
+    GroupKind,
+    group_kind,
+    is_collab_slug,
+    is_descriptor_slug,
+    is_service_slug,
+)
 from app.services.grouping.policy import load_policy
 from app.services.metrics import MetricsService
 
@@ -68,6 +75,7 @@ class GroupSummary(BaseModel):
     status: Literal["confirmed", "auto", "ignored"]
     source: str
     is_fallback: bool
+    kind: GroupKind
     listings: int = 0
     sold: int = 0
     active: int = 0
@@ -271,12 +279,8 @@ async def split_group(
         )
     )
     parent_id: int | None = None
-    # A service group ("No model", a description) is never the parent of a line.
-    if (
-        payload.as_version
-        and source.slug != NONE_SLUG
-        and not is_descriptor_slug(source.slug)
-    ):
+    # A service group ("No model", a description, a collaboration) is never the parent of a line.
+    if payload.as_version and not is_service_slug(source.slug):
         parent_id = source.parent_id or source.id
     now = datetime.now(UTC)
     name = (payload.name or payload.phrase).strip()
@@ -387,6 +391,8 @@ async def _editable(session: AsyncSession, group_id: int) -> ModelGroup:
         raise ApiError(409, "service_group", "The No model group cannot be edited")
     if is_descriptor_slug(group.slug):
         raise ApiError(409, "service_group", "A description group cannot be edited")
+    if is_collab_slug(group.slug):
+        raise ApiError(409, "service_group", "A collaboration line cannot be edited")
     if _is_unused(group):
         raise ApiError(409, "group_ignored", "This group is no longer used")
     return group
@@ -479,6 +485,7 @@ def _summary(group: ModelGroup, brand: str, counts: dict[int, dict[str, int]]) -
         status=group.status,  # type: ignore[arg-type]
         source=group.source,
         is_fallback=group.slug == NONE_SLUG,
+        kind=group_kind(group.slug, group.product_type),
         listings=sum(by_status.values()),
         sold=by_status.get("sold", 0),
         active=by_status.get("active", 0),

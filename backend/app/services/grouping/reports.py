@@ -1,8 +1,8 @@
-"""The description dictionary in numbers: what it cut off from mining and what it clashes with."""
+"""Descriptions and collaborations in numbers: what they cut off, clash with or miss."""
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand, Listing, ListingModelAssignment, ModelBlock, ModelGroup
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
+from app.services.grouping.collabs import COLLAB_PREFIX
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
-from app.services.grouping.kinds import NONE_SLUG
+from app.services.grouping.kinds import NONE_SLUG, group_kind
 from app.services.grouping.mining import MAX_WORDS, MiningSample, covered, mine_phrases
 from app.services.grouping.normalize import TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy
+from app.services.grouping.text import fold
 
 
 def seed_conflicts(policy: GroupingPolicy, brand_slug: str) -> list[dict[str, Any]]:
@@ -105,6 +107,7 @@ async def suppressed_candidates(
     population = or_(
         ModelGroup.slug == NONE_SLUG,
         ModelGroup.slug.startswith(DESCRIPTOR_PREFIX),
+        ModelGroup.slug.startswith(COLLAB_PREFIX),
         and_(ModelGroup.status == "auto", ModelGroup.source == "mined"),
     )
     samples: dict[str, list[tuple[MiningSample, bool]]] = defaultdict(list)
@@ -132,7 +135,7 @@ async def suppressed_candidates(
             for group in groups
             if group.product_type == product_type
             and not (group.status == "auto" and group.source == "mined")
-            and not group.slug.startswith(DESCRIPTOR_PREFIX)
+            and not group.slug.startswith((DESCRIPTOR_PREFIX, COLLAB_PREFIX))
         ]
         excluded = {
             tokens
@@ -167,6 +170,67 @@ async def suppressed_candidates(
             )
     found.sort(key=lambda row: (-row["sales"], -row["listings"], row["phrase"]))
     return found[:limit]
+
+
+async def collab_report(
+    session: AsyncSession, policy: GroupingPolicy, brand: Brand, *, examples: int = 5
+) -> dict[str, Any]:
+    """Listings whose Grailed designers name a whitelisted collaboration, but which ended up
+    neither in its line nor in a model: the title lacks the partner's name or alias.
+
+    ``designers`` are a hint here only (they never place a listing). Read-only.
+    """
+
+    collabs = policy.brand_collabs(brand.slug)
+    if not collabs:
+        return {"collab_hints": []}
+    totals: Counter[str] = Counter()
+    missed: Counter[str] = Counter()
+    sales: Counter[str] = Counter()
+    kinds: dict[str, Counter[str]] = defaultdict(Counter)
+    titles: dict[str, list[str]] = defaultdict(list)
+    rows = await session.execute(
+        select(
+            Listing.title,
+            Listing.designer_names,
+            Listing.status,
+            ModelGroup.slug,
+            ModelGroup.product_type,
+        )
+        .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
+        .outerjoin(ModelGroup, ModelGroup.id == ListingModelAssignment.model_group_id)
+        .where(Listing.brand_id == brand.id)
+        .order_by(Listing.id)
+    )
+    for title, designers, status, slug, product_type in rows:
+        names = {fold(str(name)).strip() for name in designers or ()}
+        kind = group_kind(slug, product_type) if slug is not None else "none"
+        for collab in collabs:
+            if not names & collab.designers:
+                continue
+            totals[collab.name] += 1
+            if kind == "model" or slug == collab.slug:
+                continue
+            missed[collab.name] += 1
+            sales[collab.name] += int(status == "sold")
+            kinds[collab.name][kind] += 1
+            if len(titles[collab.name]) < examples:
+                titles[collab.name].append(title)
+    return {
+        "collab_hints": [
+            {
+                "collab": collab.name,
+                "slug": collab.slug,
+                "with_designer": totals[collab.name],
+                "unplaced": missed[collab.name],
+                "unplaced_sales": sales[collab.name],
+                "by_kind": dict(kinds[collab.name]),
+                "examples": titles[collab.name],
+            }
+            for collab in collabs
+            if totals[collab.name]
+        ]
+    }
 
 
 def _count(

@@ -11,6 +11,7 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from app.core.config import PROJECT_ROOT
+from app.services.grouping.collabs import Collab, parse_collabs
 from app.services.grouping.descriptors import (
     BRAND_CLASS,
     Descriptor,
@@ -106,6 +107,8 @@ class GroupingPolicy:
     # Phrases that describe a listing but are no model: shared by all brands, or one brand's.
     descriptors: tuple[Descriptor, ...] = ()
     brand_descriptors: dict[str, tuple[Descriptor, ...]] = field(default_factory=dict)
+    # Whitelisted collaborations of a brand (seed file ``collabs``).
+    collabs: dict[str, tuple[Collab, ...]] = field(default_factory=dict)
 
     def seed_models(self, brand_slug: str | None) -> tuple[SeedModel, ...]:
         return self.seeds.get(brand_slug or "", ())
@@ -114,6 +117,9 @@ class GroupingPolicy:
         return DescriptorIndex(
             (*self.descriptors, *self.brand_descriptors.get(brand_slug or "", ()))
         )
+
+    def brand_collabs(self, brand_slug: str | None) -> tuple[Collab, ...]:
+        return self.collabs.get(brand_slug or "", ())
 
 
 @lru_cache(maxsize=4)
@@ -136,6 +142,7 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
     )
     seeds: dict[str, tuple[SeedModel, ...]] = {}
     brand_descriptors: dict[str, tuple[Descriptor, ...]] = {}
+    collabs: dict[str, tuple[Collab, ...]] = {}
     for path in seed_paths:
         payload = _yaml(path)
         seeds[path.stem] = _seed_models(payload, taxonomy, path.name)
@@ -146,8 +153,19 @@ def load_policy(directory: Path = CONFIG_DIRECTORY) -> GroupingPolicy:
         if marks:
             check_unique((*descriptors, *marks), taxonomy.types, path.name)
             brand_descriptors[path.stem] = marks
+        # Collaborations: the file is part of the digest, so a change regroups the brand.
+        partners = parse_collabs(payload.get("collabs") or (), path.name)
+        if partners:
+            collabs[path.stem] = partners
     return GroupingPolicy(
-        taxonomy, words, seeds, digest.hexdigest(), mining, descriptors, brand_descriptors
+        taxonomy,
+        words,
+        seeds,
+        digest.hexdigest(),
+        mining,
+        descriptors,
+        brand_descriptors,
+        collabs,
     )
 
 
