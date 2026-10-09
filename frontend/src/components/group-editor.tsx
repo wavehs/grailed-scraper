@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useGroupQuery, useGroupsQuery, useTypeNames } from '@/lib/queries';
 import type { GroupDetail, GroupKind, GroupSummary } from '@/lib/types';
@@ -325,6 +325,7 @@ export function RegroupButton({ brandIds }: { brandIds?: number[] }) {
   const [notice, setNotice] = useState('');
   const regroup = useMutation({
     mutationFn: () => api('/grouping/regroup', 'POST', { brand_ids: brandIds ?? null, full: true }),
+    onMutate: () => setNotice(''),
     onSuccess: () => {
       setNotice(t('regrouped'));
       client.invalidateQueries();
@@ -333,6 +334,11 @@ export function RegroupButton({ brandIds }: { brandIds?: number[] }) {
   return (
     <span className="inline-flex items-center gap-2">
       {notice && <span className="text-xs text-[var(--success)]">{notice}</span>}
+      {regroup.error && (
+        <span role="alert" className="text-xs text-[var(--danger)]">
+          {errorMessage(regroup.error) || t('requestFailed')}
+        </span>
+      )}
       <Button
         size="sm"
         variant="secondary"

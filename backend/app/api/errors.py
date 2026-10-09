@@ -8,8 +8,13 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import (
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from app.core.logging import mask_sensitive_data
 
@@ -90,6 +95,20 @@ def install_exception_handlers(app: FastAPI) -> None:
             message="Request failed",
             request_id=_request_id(request),
         )
+
+    @app.exception_handler(OperationalError)
+    async def handle_database_error(request: Request, exc: OperationalError) -> JSONResponse:
+        # SQLite has one writer: a long write elsewhere (a run, a CLI job) outlasts the busy
+        # timeout. That is a retryable state, not a server bug.
+        if "database is locked" in str(exc.orig):
+            structlog.get_logger(__name__).warning("database_busy", path=request.url.path)
+            return error_response(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                code="database_busy",
+                message="The database is busy with another write. Try again in a minute.",
+                request_id=_request_id(request),
+            )
+        return await handle_unexpected_error(request, exc)
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:

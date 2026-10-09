@@ -218,6 +218,34 @@ describe('stage 10 screens', () => {
     ).toBe(true);
   });
 
+  it('shows why regrouping failed and clears the error after a successful retry', async () => {
+    let regroupCalls = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/grouping/regroup') && init?.method === 'POST') {
+        regroupCalls += 1;
+        if (regroupCalls === 1)
+          return json(
+            { error: { code: 'database_busy', message: 'The database is busy with another write.' } },
+            503,
+          );
+        return json({ brands: [] });
+      }
+      if (url.endsWith('/brands')) return json({ data: [] });
+      if (url.includes('/trends?')) return json({ data: [], total: 0, computed_at: null });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Regroup' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The database is busy with another write.',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Regroup' }));
+    expect(await screen.findByText('Listings regrouped.')).toBeInTheDocument();
+    expect(screen.queryByText('The database is busy with another write.')).not.toBeInTheDocument();
+  });
+
   it('falls back to the listings share when the window has no sales', async () => {
     vi.stubGlobal(
       'fetch',
