@@ -37,6 +37,8 @@ class MinedPhrase:
     listings: int
     # Sellers who use the phrase outside the longer known and accepted phrases.
     own: int = 0
+    # The same name written as one word or apart ("Superbusy" for "Super Busy"): aliases.
+    variants: tuple[tuple[str, ...], ...] = ()
 
     @property
     def fragment(self) -> bool:
@@ -51,6 +53,7 @@ def mine_phrases(
     generic_phrases: Iterable[tuple[str, ...]] = (),
     keep: Iterable[tuple[str, ...]] = (),
     keep_min_sellers: int | None = None,
+    solid: frozenset[str] = frozenset(),
     min_sellers: int = MIN_SELLERS,
     max_words: int = MAX_WORDS,
     limit: int = MAX_PHRASES,
@@ -59,6 +62,10 @@ def mine_phrases(
 
     ``keep`` are phrases of existing groups: they stay at ``keep_min_sellers`` (hysteresis),
     so a group at the threshold does not appear and disappear from pass to pass.
+    ``solid`` are one-word names that already take their spelling apart (confirmed models,
+    which titles glue to, and tombstones): "Super Busy" is not mined when "superbusy" is
+    one, but it covers its parts like a known phrase. When a name is mined in several
+    spellings, the one with more sellers wins and the others become its variants.
     """
 
     blocked = {tuple(item) for item in excluded}
@@ -96,14 +103,18 @@ def mine_phrases(
         return len({samples[item].seller for item in listing_ids})
 
     support = {gram: sellers(found) for gram, found in occurrences.items()}
+    respelled = {gram for gram in support if len(gram) > 1 and "".join(gram) in solid}
     candidates = [
         gram
         for gram, count in support.items()
-        if count >= threshold(gram) and gram not in blocked and _collocation(gram, support)
+        if count >= threshold(gram)
+        and gram not in blocked
+        and gram not in respelled
+        and _collocation(gram, support)
     ]
     candidates.sort(key=lambda gram: (-len(gram), -support[gram], gram))
     # Known phrases cover their own sub-phrases ("crimes de" inside "crimes de lamour").
-    known = [gram for gram in blocked if gram in occurrences]
+    known = [gram for gram in (*blocked, *respelled) if gram in occurrences]
     accepted: list[tuple[str, ...]] = []
     own: dict[tuple[str, ...], int] = {}
     for gram in candidates:
@@ -115,19 +126,69 @@ def mine_phrases(
         if residual >= threshold(gram):
             accepted.append(gram)
             own[gram] = residual
+    variants = _join_spellings(accepted, support, kept, blocked)
+    accepted = [gram for gram in accepted if gram not in variants.lost]
     # The limit cuts the weakest phrases; existing groups go first, so a group at the edge of
     # the limit does not appear and disappear from pass to pass.
     ranked = sorted(accepted, key=lambda gram: (gram not in kept, -support[gram], gram))[:limit]
-    return [
-        MinedPhrase(
-            tokens=gram,
-            name=_display(surfaces[gram].most_common(1)[0][0]),
-            sellers=support[gram],
-            listings=len(occurrences[gram]),
-            own=own[gram],
+    result: list[MinedPhrase] = []
+    for gram in ranked:
+        others = variants.of.get(gram, ())
+        found = occurrences[gram].union(*(occurrences[other] for other in others))
+        total = sellers(found)
+        result.append(
+            MinedPhrase(
+                tokens=gram,
+                name=_display(surfaces[gram].most_common(1)[0][0]),
+                sellers=total,
+                listings=len(found),
+                own=min(total, own[gram] + sum(own.get(other, 0) for other in others)),
+                variants=others,
+            )
         )
-        for gram in ranked
-    ]
+    return result
+
+
+@dataclass(frozen=True, slots=True)
+class _Spellings:
+    of: dict[tuple[str, ...], tuple[tuple[str, ...], ...]]
+    lost: frozenset[tuple[str, ...]]
+
+
+def _join_spellings(
+    accepted: Sequence[tuple[str, ...]],
+    support: dict[tuple[str, ...], int],
+    kept: set[tuple[str, ...]],
+    blocked: set[tuple[str, ...]],
+) -> _Spellings:
+    """Spellings of one name written as one word or apart ("super busy", "superbusy").
+
+    The accepted spelling with more sellers wins (at a tie, the one of an existing group,
+    then the one written apart); every other spelling seen in titles becomes its variant,
+    mined or not, so its listings land in the same group.
+    """
+
+    chosen = set(accepted)
+    keys = {"".join(gram) for gram in accepted}
+    forms: dict[str, list[tuple[str, ...]]] = defaultdict(list)
+    for gram in support:
+        key = "".join(gram)
+        if key in keys and gram not in blocked:
+            forms[key].append(gram)
+    of: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = {}
+    lost: set[tuple[str, ...]] = set()
+    for key in sorted(forms):
+        spellings = forms[key]
+        if len(spellings) < 2:
+            continue
+        winner = max(
+            (gram for gram in spellings if gram in chosen),
+            key=lambda gram: (support[gram], gram in kept, len(gram), gram),
+        )
+        others = tuple(sorted(gram for gram in spellings if gram != winner))
+        of[winner] = others
+        lost.update(others)
+    return _Spellings(of, frozenset(lost))
 
 
 def parent_line(

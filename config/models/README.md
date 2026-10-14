@@ -2,13 +2,15 @@
 
 One file per brand, named by the brand slug. Seeds are imported as confirmed groups when a
 brand is grouped; existing groups (including ones the user merged or marked "not a model")
-are never overwritten or recreated.
+are never overwritten or recreated. Aliases added to a seed later are appended to its existing
+group (never to a tombstone); aliases are never removed. One letter and a hyphen make one word,
+so `X-Pander` here and `Xpander` in a title are the same name.
 
 ```yaml
 models:
   - name: Geobasket            # display name, also an alias
     aliases: [geo basket]      # extra spellings; normalized like titles
-    types: [hitop_sneakers]    # taxonomy types, or "any" for every type of the brand
+    types: [hitop_sneakers]    # taxonomy types, or "any": every type whose titles name it
     infer: hitop_sneakers      # optional: type to pick when a category is ambiguous
     parent: Track              # optional: the line this model is a version of
 ```
@@ -46,6 +48,11 @@ collabs:
     not_before: [embossed, effect, leather]
 ```
 
+A seed of `types: any` gets a group in a product type only once a title of that type names
+it (the same matching as assignment: longest phrase, glued spelling, typo). Its group in a type
+no title names any longer retires when empty and comes back with its id.
+
 These seeds were written from known product names, not from mined live data. After the
-first live collection, review `python -m app.cli grouping-report --brand <name>` and the
-"auto" groups in the UI, then add confirmed names here.
+first live collection, review `python -m app.cli grouping-report --brand <name> --candidates`
+(top mined lines with example titles and possible merges) and the "auto" groups in the UI,
+then add confirmed names here: the seed takes the mined group with its id.

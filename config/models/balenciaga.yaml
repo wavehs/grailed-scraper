@@ -4,18 +4,19 @@ models:
   - {name: Track Runner, types: [lowtop_sneakers], parent: Track}
   - {name: Triple S, aliases: [triples], types: [lowtop_sneakers, hitop_sneakers]}
   - {name: Speed, aliases: [speed trainer], types: [lowtop_sneakers, hitop_sneakers, slip_ons, boots]}
-  - {name: Runner, types: [lowtop_sneakers]}
-  - {name: 3XL, types: [lowtop_sneakers]}
+  - {name: Runner, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: 3XL, types: [lowtop_sneakers, hitop_sneakers]}
   - {name: 10XL, types: [lowtop_sneakers]}
   - {name: Defender, types: [lowtop_sneakers]}
-  - {name: Arena, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Arena, types: [hitop_sneakers, lowtop_sneakers, shoes]}
   - {name: Bulldozer, types: [boots]}
   - {name: Tractor, types: [boots, shoes]}
   - {name: Knife, types: [boots, heels]}
   - {name: Le Cagole, aliases: [cagole], types: [bag]}
   - {name: Hourglass, types: [bag]}
-  - {name: City, types: [bag]}
-  - {name: Political Campaign, aliases: [campaign], types: any}
+  # The City was first sold as the Classic Motorcycle bag.
+  - {name: City, aliases: [motorcycle, classic motorcycle], types: [bag]}
+  - {name: Political Campaign, aliases: [campaign, political], types: any}
   - {name: Speedhunters, aliases: [speed hunters], types: any}
   # Real models that a brand mark or a description would otherwise cut: Paris is a model only
   # for sneakers (docs/GROUPING.md §0, rule 2), Cargo for sneakers, Metal for tops.
@@ -25,6 +26,41 @@ models:
   # Fragments that no rule can lift to their line: Mud (a wash), Trompe (a word).
   - {name: Mud Show, aliases: [mudshow], types: any}
   - {name: Trompe L'Oeil, aliases: [trompe, trompe loeil, tromp loeil, trompe l oeil], types: any}
+  # Spellings seen in titles and in eval/balenciaga/canon.csv. "X-Pander" is one word
+  # (text.words); "X Pander" loses the noise word "x". Sporty B is never mined: "b" is too short.
+  - {name: X-Pander, aliases: [pander], types: [lowtop_sneakers, hitop_sneakers, platforms, shoes]}
+  - {name: Steroid, aliases: [steriod], types: [boots, shoes, lowtop_sneakers, platforms, flats]}
+  - {name: Santiag, aliases: [santiago], types: [boots, shoes]}
+  - {name: World Food Programme, aliases: [wfp, world food program, world food programe], types: any}
+  - {name: Garde-Robe, aliases: [garderobe], types: any}
+  - {name: Sporty B, aliases: [sportyb], types: any}
+  # "X Rated" loses the noise word "x" and is left as "rated".
+  - {name: X-Rated, aliases: [rated], types: any}
+  # Confirmed from `grouping-report --candidates` (step 6): the top mined lines by sales that
+  # eval/balenciaga/phrases.csv labels as models, in the labeled types; spellings from canon.csv.
+  - {name: Strike, aliases: [striker], types: [boots]}
+  - {name: Alaska, aliases: [alaskan], types: [boots]}
+  - {name: Trooper, types: [boots]}
+  - {name: Stomper, types: [boots]}
+  - {name: Venom, types: [boots]}
+  - {name: Hummer, types: [boots]}
+  - {name: Stan Smith, types: [lowtop_sneakers]}
+  - {name: Speedcat, types: [lowtop_sneakers]}
+  - {name: Tyrex, types: [lowtop_sneakers]}
+  - {name: Phantom, types: [lowtop_sneakers]}
+  - {name: Sunday, types: [sandals, slip_ons]}
+  - {name: Lost Tape, types: [jeans]}
+  - {name: Dove, types: [hoodie, tshirt, longsleeve]}
+  - {name: Unity, aliases: [untiy], types: [hoodie, tshirt, hat]}
+  - {name: Be Different, types: [hoodie, tshirt]}
+  - {name: College, types: [hoodie, tshirt]}
+  - {name: Bebe, types: [hoodie, tshirt]}
+  - {name: Surfer, types: [hoodie]}
+  - {name: Flame, types: [hat]}
+  - {name: Bat, types: [sunglasses]}
+  - {name: Explorer, types: [bag, backpack]}
+  - {name: Snake, types: [bag]}
+  - {name: Work, types: [bag]}
 
 # Marks of the brand: never a model on their own, a description of the brandmark class.
 # A seed above still wins (Paris sneakers), titles keep these words ("Paris Moon", "Neck Logo").
@@ -36,11 +72,17 @@ generic:
   - gvasalia
   - ghesquiere
   - nicolas
+  - nicholas
   - bal
   - poetic
   - BB
   - BB Signature
   - BB Mode
+  - mode
+  - B-Logo
+  - B Logo
+  - G-Logo
+  - G Logo
 
 # Collaborations (class `collab` of eval/balenciaga/codesigners.csv). A listing without a model
 # whose title names the partner or an alias goes to the line `_collab-<partner>` of its type.

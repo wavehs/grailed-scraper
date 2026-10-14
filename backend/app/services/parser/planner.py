@@ -100,7 +100,11 @@ class ParserPlanner:
         self._session = session
         self._settings = settings
 
-    async def build(self, *, brand_ids: list[int] | None = None) -> FetchPlan:
+    async def build(
+        self, *, brand_ids: list[int] | None = None, full: bool = False
+    ) -> FetchPlan:
+        """``full`` ignores the sold watermarks and re-reads the whole sold window."""
+
         statement = select(Brand).options(selectinload(Brand.source_mappings)).order_by(Brand.id)
         if brand_ids:
             statement = statement.where(Brand.id.in_(brand_ids))
@@ -151,7 +155,7 @@ class ParserPlanner:
                         index_type=index_type,
                         key_attr=SOLD_KEYS[0],
                         query=base,
-                        mode="delta",
+                        mode="full" if full else "delta",
                     )
                     query = plan.query
                     mode = "delta" if plan.watermark_value is not None else "full"

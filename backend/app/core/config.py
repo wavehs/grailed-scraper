@@ -122,13 +122,6 @@ class Settings(BaseSettings):
             raise ValueError("Algolia returns at most 1000 hits per page")
         return value
 
-    @field_validator("requests_per_minute")
-    @classmethod
-    def cap_requests_per_minute(cls, value: int) -> int:
-        if value > 90:
-            raise ValueError("Compliance limit is 90 requests per minute")
-        return value
-
     @field_validator("max_concurrent_requests", "parser_max_concurrency")
     @classmethod
     def cap_concurrency(cls, value: int) -> int:

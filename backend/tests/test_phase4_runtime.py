@@ -29,6 +29,7 @@ from app.db.models import (
     SourceSchema,
 )
 from app.db.session import create_database_engine
+from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.runs import RunRepository
 from app.services.grouping import GroupingService
 from app.services.metrics import MetricsService
@@ -203,6 +204,20 @@ async def test_planner_blocks_until_schema_and_mapping_exist(tmp_path) -> None: 
         assert active.query.numeric_filters == ()
         assert active.persisted()["bucket_spec"]["sweep_missing"] is True
         assert sold.query.numeric_filters == (f"sold_at_i>={oldest_sale}",)
+        await LifecycleRepository(session).advance_watermark(
+            source="grailed",
+            brand_id=brand.id,
+            index_type="sold",
+            last_key_value=str(oldest_sale + 5_000),
+            mode="full",
+            now=datetime.now(UTC),
+        )
+        delta = (await planner.build(brand_ids=[brand.id])).tasks[1]
+        assert delta.mode == "delta"
+        assert delta.query.numeric_filters[-1].startswith("sold_at_i>")
+        rebuilt = (await planner.build(brand_ids=[brand.id], full=True)).tasks[1]
+        assert rebuilt.mode == "full"
+        assert rebuilt.query.numeric_filters == (f"sold_at_i>={oldest_sale}",)
         banded = await ParserPlanner(
             session, Settings(collect_price_min_usd=50, collect_price_max_usd=900)
         ).build(brand_ids=[brand.id])

@@ -1,8 +1,9 @@
 files:
   labels.csv: cbde8c65154253dbfd07c291bb540964500040661e0a811d95cc12727d894165
-  phrases.csv: 3daa7a31b439e27e5709da6aa861963afc9f44e5d0a975c71161c29214f37314
+  phrases.csv: 86d6d193a53111becfbb397d9c6edf2c5194a5b20ca8d06e0b5b47b5ca5598f3
   canon.csv: 2b1174536201a8bd9383dd914fea4be37708e46bb6e11bf6174b34a637d5bb61
-date: '2026-10-07'
-labeler: Claude (claude-opus-5-5), blind sheets round1, 2026-10-07
+date: '2026-10-08'
+labeler: Claude (claude-opus-5-5), blind sheets round1 2026-10-07; v7b tail, top-100
+  and lost groups 2026-10-09
 external_check: 'none: decision 7 delegated the top-50 phrase labels and the audit
   to the same labeler'

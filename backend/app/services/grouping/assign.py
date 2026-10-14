@@ -63,6 +63,8 @@ class ModelDictionary:
         self._vocabulary: dict[str, dict[int, set[str]]] = {}
         self._phrases: dict[tuple[str, tuple[str, ...]], ModelEntry] = {}
         self._fuzzy_cache: dict[tuple[str, str], str | None] = {}
+        # One-word phrases of confirmed models: "Hour Glass" in a title is the bag Hourglass.
+        self._solid: dict[str, set[str]] = {}
         ordered = sorted(entries, key=lambda item: (item.status != "confirmed", item.key))
         for entry in ordered:
             index = self._index.setdefault(entry.product_type, PhraseIndex())
@@ -70,6 +72,8 @@ class ModelDictionary:
             for tokens in entry.phrases:
                 index.add(tokens, entry)
                 self._phrases.setdefault((entry.product_type, tokens), entry)
+                if len(tokens) == 1 and entry.status == "confirmed":
+                    self._solid.setdefault(entry.product_type, set()).add(tokens[0])
                 for token in tokens:
                     if len(token) >= FUZZY_MIN_LENGTH and not token.isdigit():
                         vocabulary.setdefault(len(token), set()).add(token)
@@ -81,17 +85,16 @@ class ModelDictionary:
         index = self._index.get(product_type)
         if not index or not tokens:
             return None
-        best = _best(index, tokens)
+        found = self._search(product_type, index, tokens)
         fuzzy = False
-        if best is None:
+        if found is None:
             corrected = [self._correct(product_type, token) for token in tokens]
             if corrected != list(tokens):
-                best = _best(index, corrected)
-                fuzzy = best is not None
-                tokens = corrected
-        if best is None:
+                found = self._search(product_type, index, corrected)
+                fuzzy = found is not None
+        if found is None:
             return None
-        start, length, entry = best
+        tokens, (start, length, entry), _ = found
         matched = tuple(tokens[start : start + length])
         return ModelMatch(entry, matched, fuzzy, self._version(entry, tokens, start, length))
 
@@ -101,11 +104,53 @@ class ModelDictionary:
         found: list[tuple[bool, int, int, int, str]] = []
         for order, product_type in enumerate(candidates):
             index = self._index.get(product_type)
-            best = _best(index, tokens) if index else None
-            if best is not None:
-                _, length, entry = best
-                found.append((not entry.infer, -entry.weight, -length, order, product_type))
+            hit = self._search(product_type, index, tokens) if index else None
+            if hit is not None:
+                _, (_, _, entry), covered = hit
+                found.append((not entry.infer, -entry.weight, -covered, order, product_type))
         return min(found)[-1] if found else None
+
+    def _search(
+        self, product_type: str, index: PhraseIndex[ModelEntry], tokens: Sequence[str]
+    ) -> tuple[Sequence[str], tuple[int, int, ModelEntry], int] | None:
+        """The best phrase of the title as written, or with two words written as one, and the
+        number of title words it covers.
+
+        Two neighbours are glued only into a one-word phrase of a confirmed model; the glued
+        match wins only if it covers more words, so "Le Cagole" never loses to a glued word.
+        """
+
+        best = _best(index, tokens)
+        if product_type not in self._solid or len(tokens) < 2:
+            return (tokens, best, best[1]) if best is not None else None
+        glued, widths = self._glue(product_type, tokens)
+        if len(glued) < len(tokens):
+            other = _best(index, glued)
+            if other is not None:
+                start, length, _ = other
+                covered = sum(widths[start : start + length])
+                if best is None or covered > best[1]:
+                    return glued, other, covered
+        return (tokens, best, best[1]) if best is not None else None
+
+    def _glue(
+        self, product_type: str, tokens: Sequence[str]
+    ) -> tuple[list[str], list[int]]:
+        solid = self._solid[product_type]
+        glued: list[str] = []
+        widths: list[int] = []
+        index = 0
+        while index < len(tokens):
+            pair = "".join(tokens[index : index + 2])
+            if index + 1 < len(tokens) and pair in solid:
+                glued.append(pair)
+                widths.append(2)
+                index += 2
+                continue
+            glued.append(tokens[index])
+            widths.append(1)
+            index += 1
+        return glued, widths
 
     def _correct(self, product_type: str, token: str) -> str:
         if len(token) < FUZZY_MIN_LENGTH or token.isdigit():

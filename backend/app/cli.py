@@ -25,7 +25,12 @@ from app.db.session import get_database_url
 from app.services.grouping import GroupingService, evaluation
 from app.services.grouping.kinds import is_collab_slug, is_descriptor_slug, is_service_slug
 from app.services.grouping.policy import load_policy
-from app.services.grouping.reports import collab_report, descriptor_report
+from app.services.grouping.reports import (
+    collab_report,
+    descriptor_report,
+    merge_candidates,
+    model_candidates,
+)
 from app.services.grouping.scratch import make_scratch
 from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
@@ -308,13 +313,18 @@ async def grouping_report(
     *,
     descriptors: bool = False,
     collabs: bool = False,
+    merge: bool = False,
+    candidates: bool = False,
 ) -> dict[str, object]:
     """Offline grouping quality: model coverage, mixed-type check and top groups per brand.
 
     ``descriptors`` adds the description groups, the phrases the dictionary cut off from
     mining (with their sales) and the seeds that share words with descriptions. ``collabs``
     adds, per whitelisted collaboration, the listings whose Grailed designers name it but
-    which are neither in its line nor in a model.
+    which are neither in its line nor in a model. ``merge`` adds groups of one type that may be
+    one model: a typo apart ("Strike"/"Striker") or written as one word; a person merges them.
+    ``candidates`` adds the top mined lines by sales with example titles and merge partners:
+    a person marks the real models, which then go into ``config/models/<brand>.yaml``.
     """
 
     engine = create_async_engine(get_database_url(settings))
@@ -393,6 +403,10 @@ async def grouping_report(
                     entry.update(await descriptor_report(session, load_policy(), item))
                 if collabs:
                     entry.update(await collab_report(session, load_policy(), item))
+                if merge:
+                    entry.update(await merge_candidates(session, item))
+                if candidates:
+                    entry.update(await model_candidates(session, item))
                 report[item.name] = entry
         return {"status": "ok", "brands": report}
     finally:
@@ -589,6 +603,16 @@ def main() -> int:
         help="add listings whose designers name a whitelisted collab but that sit outside "
         "its line and every model",
     )
+    report_parser.add_argument(
+        "--merge-candidates",
+        action="store_true",
+        help="add groups that may be one model: a typo apart or written as one word",
+    )
+    report_parser.add_argument(
+        "--candidates",
+        action="store_true",
+        help="add the top mined lines by sales with example titles, to confirm as models",
+    )
     eval_parser = subparsers.add_parser(
         "grouping-eval", help="measure grouping against eval/<brand>/ labels (read-only)"
     )
@@ -675,7 +699,12 @@ def main() -> int:
     if args.command == "grouping-report":
         return _print(
             grouping_report(
-                Settings(), args.brand, descriptors=args.descriptors, collabs=args.collabs
+                Settings(),
+                args.brand,
+                descriptors=args.descriptors,
+                collabs=args.collabs,
+                merge=args.merge_candidates,
+                candidates=args.candidates,
             )
         )
     if args.command == "grouping-eval":

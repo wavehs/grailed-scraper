@@ -109,8 +109,9 @@ def test_default_hash_salt_is_generated_once_outside_the_database(tmp_path) -> N
 
 
 def test_compliance_limits_are_enforced() -> None:
+    assert Settings(requests_per_minute=900).requests_per_minute == 900
     with pytest.raises(ValidationError):
-        Settings(requests_per_minute=91)
+        Settings(requests_per_minute=0)
     with pytest.raises(ValidationError):
         Settings(max_concurrent_requests=4)
 

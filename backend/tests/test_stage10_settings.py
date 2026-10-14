@@ -49,7 +49,7 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
                 json={"requests_per_minute": 24, "collect_price_min_usd": 100},
             )
             after = client.get("/api/settings")
-            invalid = client.patch("/api/settings", json={"requests_per_minute": 91})
+            invalid = client.patch("/api/settings", json={"requests_per_minute": 0})
             unknown = client.patch("/api/settings", json={"algolia_api_key": "secret"})
     finally:
         app.dependency_overrides.clear()

@@ -35,7 +35,7 @@ NULLABLE_SETTINGS = frozenset({"collect_price_min_usd", "collect_price_max_usd"}
 class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    requests_per_minute: int | None = Field(default=None, ge=1, le=90)
+    requests_per_minute: int | None = Field(default=None, ge=1)
     max_concurrent_requests: int | None = Field(default=None, ge=1, le=3)
     sold_history_days: int | None = Field(default=None, ge=30, le=3650)
     collect_price_min_usd: int | None = Field(default=None, ge=0)

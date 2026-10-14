@@ -254,23 +254,23 @@ async def test_blocked_phrase_is_never_a_model_but_stays_in_titles(tmp_path: Pat
 
 
 async def test_respelled_phrase_keeps_the_group_id(tmp_path: Path) -> None:
-    engine, factory = await _database(tmp_path, _tees(100, "Chrome Hearts X-Pander Tee", 5, "x"))
+    engine, factory = await _database(tmp_path, _tees(100, "Chrome Hearts The Zorbo Tee", 5, "x"))
     await _regroup(factory, T0)
-    pander = await _group(factory, "pander")  # "x" is noise in grouping-v6 spelling
-    assert pander is not None
+    typo = await _group(factory, "zorbo")  # "the" is noise: the alias is "zorbo"
+    assert typo is not None
 
     def spell(directory: Path) -> None:
         path = directory / "grouping.yaml"
         text = path.read_text(encoding="utf-8")
         path.write_text(
-            text.replace("spelling:\n", "spelling:\n  x pander: xpander\n"), encoding="utf-8"
+            text.replace("spelling:\n", "spelling:\n  the zorbo: zorba\n"), encoding="utf-8"
         )
 
     respelled = await _regroup(factory, T0 + timedelta(days=1), policy=_policy(tmp_path, spell))
-    xpander = await _group(factory, "xpander")
+    fixed = await _group(factory, "zorba")
     assert respelled.inherited == 1
-    assert xpander is not None and xpander.id == pander.id
-    assert "pander" in xpander.aliases and await _group(factory, "pander") is None
+    assert fixed is not None and fixed.id == typo.id
+    assert "zorbo" in fixed.aliases and await _group(factory, "zorbo") is None
     await engine.dispose()
 
 
@@ -456,7 +456,8 @@ async def test_a_delta_that_adds_seed_groups_becomes_a_pure_full_pass(tmp_path: 
     engine, factory = await _database(tmp_path, _tees(100, "Chrome Hearts Moon Club Tee", 5, "m"))
     await _regroup(factory, T0)
     await _drop(factory, [100, 101, 102])  # two sellers left: below the hysteresis floor
-    hat = _listing(300, "Chrome Hearts Plain Hat", "h0")  # a new type brings its seed groups
+    # A hat naming an "any" seed brings its seed group in a new type.
+    hat = _listing(300, "Chrome Hearts Matty Boy Hat", "h0")
     hat.category = "accessories"
     hat.subcategory = hat.category_path = "accessories.hats"
     await _add(factory, [hat])

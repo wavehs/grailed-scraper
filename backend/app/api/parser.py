@@ -39,6 +39,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.repositories.runs import RunRepository
+from app.services.parser.eta import estimate_eta
 from app.services.parser.planner import ParserPlanner
 from app.services.parser.runtime import ParserRuntime
 from app.services.sources.grailed.discovery.service import DiscoveryService
@@ -53,6 +54,7 @@ class RunRequest(BaseModel):
     """Collect selected brands (all when omitted): full on first run, delta afterwards."""
 
     brand_ids: list[int] | None = None
+    full: bool = False
 
 
 class ClearDataRequest(BaseModel):
@@ -110,6 +112,15 @@ class RunDetailResponse(BaseModel):
     tasks: list[TaskResponse]
 
 
+class ProgressTask(BaseModel):
+    id: int
+    brand_name: str | None
+    index_type: str
+    status: str
+    hits_collected: int
+    expected_hits: int | None
+
+
 class ProgressResponse(BaseModel):
     status: str
     phase: str
@@ -126,10 +137,15 @@ class ProgressResponse(BaseModel):
     truncated: bool = False
     current_brand: str | None = None
     tasks_failed: int = 0
+    hits_expected: int | None = None
+    elapsed_seconds: int = 0
+    hits_per_second: float = 0.0
     eta_seconds: int | None = None
+    eta_is_lower_bound: bool = False
     heartbeat_at: datetime | None
     warnings: list[str]
     errors: list[dict[str, Any]] = []
+    tasks: list[ProgressTask] = []
 
 
 class ParserHealthResponse(BaseModel):
@@ -189,7 +205,9 @@ async def start_run(
         raise ApiError(409, "run_active", "A collection run is already in progress")
     await ensure_discovery(session, settings)
     try:
-        plan = await ParserPlanner(session, settings).build(brand_ids=payload.brand_ids)
+        plan = await ParserPlanner(session, settings).build(
+            brand_ids=payload.brand_ids, full=payload.full
+        )
     except LookupError as exc:
         raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
     except RuntimeError as exc:
@@ -319,6 +337,9 @@ async def run_progress(
         for item in tasks
         if item.status == "failed" and item.error
     ]
+    hits_fetched = int(progress.get("hits_fetched", 0))
+    elapsed = _elapsed_seconds(run)
+    estimate = estimate_eta(tasks, hits_fetched=hits_fetched, elapsed_seconds=elapsed)
     return ProgressResponse(
         status=run.status,
         phase=run.phase,
@@ -328,7 +349,7 @@ async def run_progress(
         brands_completed=int(progress.get("brands_completed", 0)),
         tasks_total=int(progress.get("tasks_total", 0)),
         tasks_done=int(progress.get("tasks_done", 0)),
-        hits_fetched=int(progress.get("hits_fetched", 0)),
+        hits_fetched=hits_fetched,
         requests_made=run.requests_made,
         coverage=run.coverage_avg,
         partial=run.status == "partial"
@@ -342,9 +363,25 @@ async def run_progress(
             else None
         ),
         tasks_failed=sum(item.status == "failed" for item in tasks),
+        hits_expected=estimate.hits_expected,
+        elapsed_seconds=elapsed,
+        hits_per_second=estimate.hits_per_second,
+        eta_seconds=estimate.eta_seconds,
+        eta_is_lower_bound=estimate.is_lower_bound,
         heartbeat_at=run.heartbeat_at,
         warnings=list(run.warnings),
         errors=errors,
+        tasks=[
+            ProgressTask(
+                id=item.id,
+                brand_name=(item.bucket_spec or {}).get("brand_name"),
+                index_type=item.index_type,
+                status=item.status,
+                hits_collected=item.hits_collected,
+                expected_hits=item.expected_hits,
+            )
+            for item in tasks
+        ],
     )
 
 
@@ -546,6 +583,15 @@ async def parser_discovery_refresh(
     settings: Annotated[Settings, Depends(get_effective_settings)],
 ) -> DiscoveryResponse:
     return await refresh_discovery(payload, service, settings)
+
+
+def _elapsed_seconds(run: ParserRun) -> int:
+    if run.started_at is None:
+        return 0
+    end = run.finished_at or datetime.now(UTC)
+    start = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=UTC)
+    stop = end if end.tzinfo else end.replace(tzinfo=UTC)
+    return max(int((stop - start).total_seconds()), 0)
 
 
 def _summary(run: ParserRun) -> RunSummary:

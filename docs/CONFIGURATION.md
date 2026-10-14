@@ -9,7 +9,7 @@
 
 | Ключ | Default | Описание |
 |---|---|---|
-| `requests_per_minute` | 90 | жёсткий максимум 90 |
+| `requests_per_minute` | 90 | верхней границы нет; дефолт остаётся 90, выше — только явным `APP_REQUESTS_PER_MINUTE` или в настройках |
 | `max_concurrent_requests` | 3 | жёсткий максимум 3 |
 | `sold_history_days` | 365 | проданные объявления старше не собираются (фильтр `sold_at_i`); активные собираются все |
 | `collect_price_min_usd` / `collect_price_max_usd` | null | необязательный ценовой диапазон для обоих индексов |

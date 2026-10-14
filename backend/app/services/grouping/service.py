@@ -47,11 +47,14 @@ from app.services.grouping.mining import (
 from app.services.grouping.normalize import NormalizedTitle, TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy, SeedModel, load_policy
 from app.services.grouping.relists import RelistRow, detect_relists
+from app.services.grouping.seeds import seed_types
 
 GROUPING_VERSION = "grouping-v7"
 # Raised when a code change moves listings or lines: the rules hash changes, so the next pass
-# is a full one. 4: a mined version hangs only under the line it starts with.
-_RULES_REVISION = 4
+# is a full one. 4: a mined version hangs only under the line it starts with. 5: "X-Pander"
+# is one word, names written as one word or apart are one model. 6: a seed of "any" type
+# gets a group only in the types whose titles name it.
+_RULES_REVISION = 6
 NONE_NAME = "No model"
 _WRITE_CHUNK = 500
 # Listings without a model group: they feed mining and are looked at again when a group appears.
@@ -77,6 +80,8 @@ class BrandGroupingStats:
     deleted: int = 0
     inherited: int = 0
     promoted: int = 0
+    # Seed groups that got aliases added to the seed file after they were made.
+    seed_aliases: int = 0
     full: bool = True
     unknown_categories: dict[str, int] = field(default_factory=dict)
 
@@ -99,6 +104,7 @@ class BrandGroupingStats:
             "deleted": self.deleted,
             "inherited": self.inherited,
             "promoted": self.promoted,
+            "seed_aliases": self.seed_aliases,
             "full": self.full,
             "unknown_categories": dict(self.unknown_categories),
         }
@@ -126,7 +132,7 @@ class GroupingResult:
                 totals[key] += int(getattr(item, key))
             totals["groups_created"] += item.groups_created
             totals["relists"] += item.relists
-            for key in ("retired", "revived", "deleted", "inherited", "promoted"):
+            for key in ("retired", "revived", "deleted", "inherited", "promoted", "seed_aliases"):
                 totals[key] += int(getattr(item, key))
             unknown.update(item.unknown_categories)
         return {
@@ -247,31 +253,30 @@ class GroupingService:
         protected = _protected(groups, rows, parents)
         weights = Counter(row.group_id for row in rows if row.group_id is not None)
 
-        def first(group: ModelGroup) -> bool:
-            # A full pass derives mined groups again; a delta pass only adds to them.
-            return incremental or not _derived(group) or group.id in protected
-
-        dictionary = self._dictionary(groups, normalizer, weights, first)
-        taxonomy = self._policy.taxonomy
-
-        decisions: dict[int, TypeDecision] = {}
-        for row in rows:
-            assert row.normalized is not None
-            decision = classify_type(taxonomy, row.category_path, row.normalized, dictionary)
-            decisions[row.id] = decision
-            if not decision.known_category:
-                key = row.category_path or "—"
-                stats.unknown_categories[key] = stats.unknown_categories.get(key, 0) + 1
-        present = {decision.product_type for decision in decisions.values()} - {REVIEW_TYPE}
-        created = await self._seed(brand, seeds, groups, normalizer, present, stats)
+        # Types first without the model dictionary: the "any" seeds they name decide which
+        # seed groups exist, so the dictionary must not decide them in turn.
+        plain = self._classify(rows, stats)
+        needed = seed_types(seeds, _typed_titles(seeds, rows, plain), normalizer)
+        synced, revived = stats.seed_aliases, stats.revived
+        created = await self._seed(brand, seeds, groups, normalizer, needed, stats)
         stats.groups_created += created
-        if created or stats.promoted:
-            # New seed groups change the dictionary: the pass becomes a full one, and `first`
-            # must already see it as full when the dictionary is rebuilt.
+        if created or stats.promoted or (stats.seed_aliases, stats.revived) != (synced, revived):
+            # New seed groups or seed aliases change the dictionary: the pass becomes a full one.
             incremental = False
             stats.full = True
             _apply_parents(groups, parents)
-            dictionary = self._dictionary(groups, normalizer, weights, first)
+        # Seed groups no title names are out of the dictionary: an empty one left by an earlier
+        # version must not draw listings into its type.
+        idle = _idle_seeds(seeds, groups, normalizer, needed, rows, parents)
+
+        def first(group: ModelGroup) -> bool:
+            # A full pass derives mined groups again; a delta pass only adds to them.
+            if group.id in idle:
+                return False
+            return incremental or not _derived(group) or group.id in protected
+
+        dictionary = self._dictionary(groups, normalizer, weights, first)
+        decisions = self._infer_types(rows, plain, dictionary)
 
         targets = [
             row
@@ -313,7 +318,10 @@ class GroupingService:
         if derived:
             _apply_parents(groups, parents)
             dictionary = self._dictionary(
-                groups, normalizer, weights, lambda group: first(group) or group.id in derived
+                groups,
+                normalizer,
+                weights,
+                lambda group: first(group) or (group.id in derived and group.id not in idle),
             )
             retry = [row for row in rows if results[row.id].method in _NO_MODEL]
             again, extra = await self._assign(
@@ -337,7 +345,15 @@ class GroupingService:
                 rows, results, groups, fresh, protected, normalizer, forbidden
             )
         await self._settle(
-            groups, results, protected, now, stats, was_retired, full=not incremental, fresh=fresh
+            groups,
+            results,
+            protected,
+            now,
+            stats,
+            was_retired,
+            full=not incremental,
+            fresh=fresh,
+            idle=idle,
         )
 
         relists = detect_relists(
@@ -373,6 +389,43 @@ class GroupingService:
         brand.grouped_at = now
         await self._session.flush()
         return stats
+
+    def _classify(
+        self, rows: Sequence[_Row], stats: BrandGroupingStats
+    ) -> dict[int, TypeDecision]:
+        """Product type of every listing from its category and title words only, without
+        the model dictionary; unknown categories are counted in ``stats``."""
+
+        taxonomy = self._policy.taxonomy
+        decisions: dict[int, TypeDecision] = {}
+        for row in rows:
+            assert row.normalized is not None
+            decision = classify_type(taxonomy, row.category_path, row.normalized)
+            decisions[row.id] = decision
+            if not decision.known_category:
+                key = row.category_path or "—"
+                stats.unknown_categories[key] = stats.unknown_categories.get(key, 0) + 1
+        return decisions
+
+    def _infer_types(
+        self,
+        rows: Sequence[_Row],
+        plain: Mapping[int, TypeDecision],
+        dictionary: ModelDictionary,
+    ) -> dict[int, TypeDecision]:
+        """The model dictionary only decides the type a category and title left to the
+        fallback (``classify_type``): only those listings are read again with it."""
+
+        taxonomy = self._policy.taxonomy
+        decisions = dict(plain)
+        for row in rows:
+            if plain[row.id].method != "fallback":
+                continue
+            assert row.normalized is not None
+            decisions[row.id] = classify_type(
+                taxonomy, row.category_path, row.normalized, dictionary
+            )
+        return decisions
 
     async def _rows(self, brand_id: int) -> list[_Row]:
         statement = (
@@ -431,10 +484,11 @@ class GroupingService:
         seeds: Sequence[SeedModel],
         groups: dict[int, ModelGroup],
         normalizer: TitleNormalizer,
-        present: set[str] | None,
+        needed: Mapping[str, set[str]] | None,
         stats: BrandGroupingStats,
     ) -> int:
-        """Create missing seed models; ``present`` limits "any" seeds to types in use.
+        """Create missing seed models: fixed types when ``needed`` is None, else the seeds of
+        "any" type in the types whose titles name them (seed name -> types).
 
         A mined group with the seed phrase becomes the seed and keeps its id: this is how a
         confirmed model moves from the review list into ``config/models``.
@@ -446,10 +500,10 @@ class GroupingService:
         now = self._now()
         for seed in seeds:
             if seed.types is None:
-                if present is None:
+                if needed is None:
                     continue
-                types = sorted(present)
-            elif present is not None:
+                types = sorted(needed.get(seed.name, ()))
+            elif needed is not None:
                 continue
             else:
                 types = list(seed.types)
@@ -470,6 +524,23 @@ class GroupingService:
                         found.retired_at = None
                         found.updated_at = now
                         promoted.append((found, seed.parent))
+                    elif found.source == "seed" and found.status != "ignored":
+                        if found.retired_at is not None:
+                            # A title names the "any" seed in this type again.
+                            found.retired_at = None
+                            found.updated_at = now
+                            stats.revived += 1
+                        # Aliases added to the seed file reach groups made before them;
+                        # aliases from manual edits stay, nothing is removed.
+                        missing = [
+                            alias
+                            for alias in seed.aliases[1:]
+                            if alias not in found.aliases and alias != found.name
+                        ]
+                        if missing:
+                            found.aliases = [*found.aliases, *missing]
+                            found.updated_at = now
+                            stats.seed_aliases += 1
                     continue
                 group = ModelGroup(
                     brand_id=brand.id,
@@ -833,6 +904,15 @@ class GroupingService:
                 if (tokens := normalizer.phrase(value))
             }
             excluded |= {tuple(group.slug.split("-")) for group in known}
+            # Titles glue their spelling apart to a confirmed one-word model (assign.py); a
+            # tombstone stays one in any spelling. Other known names keep it minable.
+            solid = frozenset(
+                tokens[0]
+                for group in known
+                if group.status in {"confirmed", "ignored"}
+                for value in (group.name, *group.aliases, group.slug)
+                if len(tokens := normalizer.phrase(value)) == 1
+            )
             keep = {
                 tuple(group.slug.split("-"))
                 for group in mined_groups
@@ -846,6 +926,7 @@ class GroupingService:
                 generic_phrases=(*generic_phrases, *descriptors.phrases(product_type)),
                 keep=keep,
                 keep_min_sellers=keep_min,
+                solid=solid,
             )
             if scope is not None:
                 phrases = [item for item in phrases if item.tokens in scope_grams[product_type]]
@@ -871,9 +952,14 @@ class GroupingService:
             fragments: list[ModelGroup] = []
             for mined in phrases:
                 slug = _slug(mined.tokens, mined.name)
+                spellings = [" ".join(item) for item in mined.variants]
                 reused = by_slug.get(slug)
                 if reused is None and slug not in taken:
                     reused = by_alias.get(mined.tokens)
+                    # "Superbusy" won over the group "Super Busy": the group keeps its id.
+                    for variant in mined.variants:
+                        if reused is None:
+                            reused = by_slug.get(_slug(variant, ""))
                 if reused is not None and reused.id not in derived:
                     if reused.slug != slug:
                         # The rules now spell the phrase differently: keep the id, the old
@@ -886,6 +972,10 @@ class GroupingService:
                         reused.name = mined.name
                         reused.updated_at = now
                         taken.add(slug)
+                    missing = [item for item in spellings if item not in reused.aliases]
+                    if missing:
+                        reused.aliases = [*reused.aliases, *missing]
+                        reused.updated_at = now
                     if reused.retired_at is not None:
                         reused.retired_at = None
                     if reused.support != mined.sellers:
@@ -902,7 +992,7 @@ class GroupingService:
                     product_type=product_type,
                     slug=slug,
                     name=mined.name,
-                    aliases=[" ".join(mined.tokens)],
+                    aliases=[" ".join(mined.tokens), *spellings],
                     status="auto",
                     source="mined",
                     support=mined.sellers,
@@ -1041,9 +1131,11 @@ class GroupingService:
         *,
         full: bool,
         fresh: set[int],
+        idle: set[int],
     ) -> None:
         """Mined groups without listings retire; expired ones are deleted (full pass only).
 
+        ``idle`` seed groups (an "any" seed no title of their type names) retire the same way.
         A delta pass is additive: it never retires a group that was active before it, it
         only puts back to rest groups it revived or created that got no listings.
         """
@@ -1058,7 +1150,9 @@ class GroupingService:
         ttl = timedelta(days=self._policy.mining.retire_ttl_days)
         expired: list[ModelGroup] = []
         for group in groups.values():
-            if not (_derived(group) or _system_made(group)) or group.id in protected:
+            if not (_derived(group) or _system_made(group) or group.id in idle):
+                continue
+            if group.id in protected:
                 continue
             before = was_retired.get(group.id)
             if group.id in used:
@@ -1191,6 +1285,59 @@ def _system_made(group: ModelGroup) -> bool:
     return group.status == "auto" and (
         is_descriptor_slug(group.slug) or is_collab_slug(group.slug)
     )
+
+
+def _typed_titles(
+    seeds: Sequence[SeedModel], rows: Sequence[_Row], plain: Mapping[int, TypeDecision]
+) -> list[tuple[str, tuple[str, ...]]]:
+    """(product type, title words) of every listing outside review, for the "any" seeds."""
+
+    if all(seed.types is not None for seed in seeds):
+        return []
+    typed: list[tuple[str, tuple[str, ...]]] = []
+    for row in rows:
+        assert row.normalized is not None
+        product_type = plain[row.id].product_type
+        if product_type != REVIEW_TYPE:
+            typed.append((product_type, row.normalized.tokens))
+    return typed
+
+
+def _idle_seeds(
+    seeds: Sequence[SeedModel],
+    groups: Mapping[int, ModelGroup],
+    normalizer: TitleNormalizer,
+    needed: Mapping[str, set[str]],
+    rows: Sequence[_Row],
+    parents: Mapping[int, int | None],
+) -> set[int]:
+    """Seed groups of "any" type in a product type where no title names the seed.
+
+    Groups manual rules point at stay, as do tombstones and lines of a version that is no
+    mined group (a split or a seed version).
+    """
+
+    wanted = {
+        _slug(normalizer.phrase(seed.name), seed.name): needed.get(seed.name, set())
+        for seed in seeds
+        if seed.types is None
+    }
+    pinned = {row.override for row in rows if row.override is not None}
+    pinned |= set(parents) | {value for value in parents.values() if value is not None}
+    pinned |= {
+        group.parent_id
+        for group in groups.values()
+        if group.parent_id is not None and group.status != "ignored" and not _derived(group)
+    }
+    return {
+        group.id
+        for group in groups.values()
+        if group.source == "seed"
+        and group.status == "confirmed"
+        and group.slug in wanted
+        and group.product_type not in wanted[group.slug]
+        and group.id not in pinned
+    }
 
 
 def _protected(

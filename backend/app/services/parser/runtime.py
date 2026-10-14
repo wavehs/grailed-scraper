@@ -362,6 +362,8 @@ class ParserRuntime:
                         metrics.record_listings(inserted=upsert.inserted, updated=upsert.updated)
                     task.hits_collected += len(batch.hits)
                     task.cursor = batch.cursor or task.cursor
+                    if pagination.source_estimated_hits:
+                        task.expected_hits = pagination.source_estimated_hits
                     run.requests_made = sum(metrics.requests_by_tier.values())
                     await RunRepository(session).heartbeat(run_id)
                     await session.commit()

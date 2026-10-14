@@ -1,10 +1,15 @@
-"""Descriptions and collaborations in numbers: what they cut off, clash with or miss."""
+"""Descriptions, collaborations and spellings in numbers: what they cut off, clash with,
+miss or may duplicate."""
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
+from itertools import combinations
 from typing import Any
 
+from rapidfuzz.distance import Levenshtein
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +17,7 @@ from app.db.models import Brand, Listing, ListingModelAssignment, ModelBlock, Mo
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
 from app.services.grouping.collabs import COLLAB_PREFIX
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
-from app.services.grouping.kinds import NONE_SLUG, group_kind
+from app.services.grouping.kinds import NONE_SLUG, group_kind, is_service_slug
 from app.services.grouping.mining import MAX_WORDS, MiningSample, covered, mine_phrases
 from app.services.grouping.normalize import TitleNormalizer
 from app.services.grouping.policy import REVIEW_TYPE, GroupingPolicy
@@ -230,6 +235,188 @@ async def collab_report(
             for collab in collabs
             if totals[collab.name]
         ]
+    }
+
+
+# Names shorter than this differ by one letter too often to mean the same model ("Cash"/"Case").
+MERGE_MIN_LENGTH = 5
+
+
+@dataclass(frozen=True, slots=True)
+class LineRow:
+    """A model group of one product type with its listings and sales."""
+
+    id: int
+    product_type: str
+    slug: str
+    name: str
+    status: str
+    parent_id: int | None
+    listings: int
+    sales: int
+
+
+def merge_pairs(lines: Sequence[LineRow]) -> list[dict[str, Any]]:
+    """Groups of one type that may be one model: a typo apart or written as one word.
+
+    Nothing is merged automatically ("Strike" and "Striker" are both real words); a person
+    merges in the interface. Sorted by the sales the pair holds together.
+    """
+
+    by_type: dict[str, list[LineRow]] = defaultdict(list)
+    for line in lines:
+        by_type[line.product_type].append(line)
+    pairs: list[dict[str, Any]] = []
+    for product_type, items in sorted(by_type.items()):
+        items.sort(key=lambda item: item.slug)
+        for left, right in combinations(items, 2):
+            if left.parent_id == right.id or right.parent_id == left.id:
+                continue
+            reason = _merge_reason(left.slug, right.slug)
+            if reason is None:
+                continue
+            pairs.append(
+                {
+                    "product_type": product_type,
+                    "reason": reason,
+                    "sales": left.sales + right.sales,
+                    "groups": [_line_ref(item) for item in (left, right)],
+                }
+            )
+    pairs.sort(key=lambda pair: (-pair["sales"], pair["product_type"], pair["groups"][0]["slug"]))
+    return pairs
+
+
+async def merge_candidates(
+    session: AsyncSession, brand: Brand, *, limit: int = 50
+) -> dict[str, Any]:
+    """``merge_pairs`` over the brand's live model groups (no service groups, no tombstones)."""
+
+    lines = [line for line in await _live_lines(session, brand) if line.listings]
+    return {"merge_candidates": merge_pairs(lines)[:limit]}
+
+
+def candidate_lines(lines: Sequence[LineRow], *, limit: int = 50) -> list[dict[str, Any]]:
+    """Mined lines ranked by the sales of the line and its versions, with the groups they may
+    be one model with. Only lines: a version follows its line into the seed file."""
+
+    versions: dict[int, list[LineRow]] = defaultdict(list)
+    for line in lines:
+        if line.parent_id is not None:
+            versions[line.parent_id].append(line)
+    partners: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for pair in merge_pairs([line for line in lines if line.listings]):
+        left, right = pair["groups"]
+        partners[left["id"]].append({**right, "reason": pair["reason"]})
+        partners[right["id"]].append({**left, "reason": pair["reason"]})
+    rows: list[dict[str, Any]] = [
+        {
+            "id": line.id,
+            "product_type": line.product_type,
+            "name": line.name,
+            "slug": line.slug,
+            "listings": line.listings + sum(item.listings for item in versions[line.id]),
+            "sales": line.sales + sum(item.sales for item in versions[line.id]),
+            "versions": sorted(item.name for item in versions[line.id]),
+            "merge_with": partners[line.id],
+            "seed": f"{{name: {line.name}, types: [{line.product_type}]}}",
+        }
+        for line in lines
+        if line.status == "auto" and line.parent_id is None
+    ]
+    rows.sort(key=lambda row: (-row["sales"], -row["listings"], row["product_type"], row["slug"]))
+    return rows[:limit]
+
+
+async def model_candidates(
+    session: AsyncSession, brand: Brand, *, limit: int = 50, examples: int = 8
+) -> dict[str, Any]:
+    """Top mined lines with example titles: the list a person marks to confirm models.
+
+    A marked line goes into ``config/models/<brand>.yaml``; the seed then takes the group
+    with its id (docs/GROUPING.md §6). Sold titles come first, newest first. Read-only.
+    """
+
+    rows = candidate_lines(await _live_lines(session, brand), limit=limit)
+    for row in rows:
+        members = [row["id"], *(
+            await session.scalars(select(ModelGroup.id).where(ModelGroup.parent_id == row["id"]))
+        )]
+        titles = await session.scalars(
+            select(Listing.title)
+            .join(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
+            .where(ListingModelAssignment.model_group_id.in_(members))
+            .order_by((Listing.status == "sold").desc(), Listing.created_at.desc(), Listing.id)
+            .limit(examples * 5)
+        )
+        row["titles"] = list(dict.fromkeys(titles))[:examples]
+    return {"model_candidates": rows}
+
+
+async def _live_lines(session: AsyncSession, brand: Brand) -> list[LineRow]:
+    """The brand's live model groups with their listings and sales (no service groups);
+    a line whose listings all sit in its versions is here with zero."""
+
+    sold = func.sum(func.iif(Listing.status == "sold", 1, 0))
+    rows = (
+        await session.execute(
+            select(
+                ModelGroup.id,
+                ModelGroup.product_type,
+                ModelGroup.slug,
+                ModelGroup.name,
+                ModelGroup.status,
+                ModelGroup.parent_id,
+                func.count(Listing.id),
+                sold,
+            )
+            .outerjoin(
+                ListingModelAssignment, ListingModelAssignment.model_group_id == ModelGroup.id
+            )
+            .outerjoin(Listing, Listing.id == ListingModelAssignment.listing_id)
+            .where(
+                ModelGroup.brand_id == brand.id,
+                ModelGroup.status != "ignored",
+                ModelGroup.retired_at.is_(None),
+                ModelGroup.product_type != REVIEW_TYPE,
+            )
+            .group_by(ModelGroup.id)
+        )
+    ).all()
+    return [
+        LineRow(row[0], row[1], row[2], row[3], row[4], row[5], row[6], int(row[7] or 0))
+        for row in rows
+        if not is_service_slug(row[2])
+    ]
+
+
+def _merge_reason(left: str, right: str) -> str | None:
+    left_words, right_words = left.replace("-", " "), right.replace("-", " ")
+    if left_words.replace(" ", "") == right_words.replace(" ", ""):
+        return "spelling"
+    if min(len(left_words), len(right_words)) < MERGE_MIN_LENGTH:
+        return None
+    if abs(len(left_words) - len(right_words)) > 1:
+        return None
+    if Levenshtein.distance(left_words, right_words, score_cutoff=1) > 1:
+        return None
+    # "Track 2" and "Track 3" are two versions, "Sporty 2" is no typo of "Sporty B".
+    for op in Levenshtein.editops(left_words, right_words):
+        removed = left_words[op.src_pos] if op.tag != "insert" else ""
+        added = right_words[op.dest_pos] if op.tag != "delete" else ""
+        if removed.isdigit() or added.isdigit():
+            return None
+    return "typo"
+
+
+def _line_ref(line: LineRow) -> dict[str, Any]:
+    return {
+        "id": line.id,
+        "slug": line.slug,
+        "name": line.name,
+        "status": line.status,
+        "listings": line.listings,
+        "sales": line.sales,
     }
 
 

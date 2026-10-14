@@ -249,3 +249,173 @@ bag,large,Large,not_model:size,
 jeans,robe,Robe,duplicate:Garde-Robe,
 shorts,cargo,Cargo,not_model:detail,
 sunglasses,mask,Mask,not_model:optics,
+accessory_other,coffee-cup,Coffee Cup,not_model:subtype,
+accessory_other,water-bottle,Water Bottle,not_model:subtype,
+bag,2000s,2000S,not_model:style,era
+bag,crocodile,Crocodile,not_model:material,croc embossed
+bag,day,Day,model,
+bag,hourglass,Hourglass,model,
+bag,mini,Mini,not_model:size,
+bag,rodeo,Rodeo,model,
+belt,bb-large,BB Large,not_model:brandmark,
+belt,double,Double,not_model:fragment,Double B / double holes
+belt,monogram,Monogram,not_model:brandmark,
+belt,prong,Prong,not_model:detail,3-prong buckle
+blazer,hourglass,Hourglass,not_model:fit,"hourglass silhouette, not the bag"
+bomber,shoulder,Shoulder,not_model:detail,padded / off shoulder
+boots,heeled,Heeled,not_model:detail,
+boots,santiag,Santiag,model,
+boots,tyrex,Tyrex,model,
+bracelet,arena,Arena,model,Arena leather line
+denim_jacket,political-campaign,Political Campaign,model,
+earring,cagole,Cagole,model,Le Cagole
+hat,3b-sport-icon,3B Sports Icon,model,
+hat,beverly-hill,Beverly Hills,not_model:print,as in labels.csv
+hat,political-campaign,Political Campaign,model,
+hat,racer,Racer,borderline,racer cap: style or named graphic
+hat,rib,Rib,not_model:material,rib knit
+hat,script,Script,not_model:brandmark,script logo
+hat,y2k,Y2K,not_model:style,era
+hitop_sneakers,gradient,Gradient,not_model:print,
+hitop_sneakers,mid,Mid,not_model:subtype,mid top
+hitop_sneakers,xpander,X-Pander,model,X-Pander
+hoodie,3b-sport,3B Sports,duplicate:3B Sports Icon,
+hoodie,apparel,Apparel,not_model:fragment,Authentic Jersey Apparel
+hoodie,baby,Baby,not_model:color,baby blue
+hoodie,back-logo,Back Logo,not_model:brandmark,
+hoodie,gaffer,Gaffer,model,
+hoodie,graffiti,Graffiti,not_model:print,
+hoodie,heavy,Heavy,not_model:material,
+hoodie,kering,Kering,model,Kering logo graphic
+hoodie,mud-show,Mud Show,model,
+hoodie,paris-moon,Paris Moon,model,
+hoodie,paris-tourist-souvenir,Paris Tourist Souvenir,not_model:print,as in labels.csv
+hoodie,sporty-b,Sporty B,model,
+hoodie,tiger,Tiger,borderline,FBI / Tiger reversible print
+hoodie,world-food-programme,World Food Programme,model,
+jeans,convertible,Convertible,not_model:detail,zip-off
+jeans,double-side,Double Side,not_model:detail,
+jeans,garde-robe,Garde-Robe,model,
+jeans,knee,Knee,not_model:detail,double / stretched knee
+jeans,mud-show,Mud Show,model,
+jeans,scribble,Scribble,not_model:print,rhinestone scribble
+jeans,soft,Soft,not_model:material,
+jeans,straight-leg,Straight Leg,not_model:fit,
+jeans,style,Style,not_model:fragment,
+jeans,waxed,Waxed,not_model:material,
+jeans,wide-leg,Wide Leg,not_model:fit,
+jersey,mayfair-soccer,Mayfair Soccer,model,Mayfair soccer jersey
+leather_jacket,nichola-ghesquiere,Nicholas Ghesquiere,not_model:brandmark,"designer name, misspelled"
+leather_jacket,nicola-ghesquiere,Nicolas Ghesquière,not_model:brandmark,designer name
+light_jacket,biker,Biker,not_model:subtype,biker (army) jacket: garment subtype
+light_jacket,heavy,Heavy,not_model:material,
+light_jacket,minimal,Minimal,not_model:style,minimal tracksuit
+light_jacket,techno,Techno,not_model:material,techno poplin
+longsleeve,hello-name-demna,Hello Name Demna,duplicate:Hello My Name Is,
+longsleeve,layered,Layered,not_model:detail,
+longsleeve,sporty,Sporty,duplicate:Sporty B,fragment of Sporty B
+longsleeve,top,Top,not_model:subtype,
+lowtop_sneakers,steroid,Steroid,model,
+pants,chino,Chino,not_model:subtype,
+pants,convertible,Convertible,not_model:detail,zip-off
+pants,pajama,Pajama,not_model:subtype,
+pants,wide-leg,Wide Leg,not_model:fit,
+parka,coated,Coated,not_model:material,
+polo,poloshirt,Poloshirt,not_model:subtype,
+sandals,mallorca,Mallorca,model,
+scarf,soccer,Soccer,not_model:style,Soccer (sport style)
+shirt,90s,90S,not_model:style,era
+shirt,abstract,Abstract,not_model:print,
+shirt,gamer,Gamer,borderline,Afterworld Gamer shirt
+shirt,plaid,Plaid,not_model:print,
+shirt,stripped,Stripped,not_model:print,striped
+shirt,tape,Tape,duplicate:Tape Type,mixed with Lost Tape
+shirt,viscose,Viscose,not_model:material,
+shoes,pasadena,Pasadena,model,
+shorts,city,Cities,model,Cities
+shorts,hotel,Hotels,duplicate:Hotels & Resorts,fragment of the canon
+shorts,icon,Icon,not_model:fragment,Sports Icon family
+shorts,layered,Layered,not_model:detail,
+shorts,mud-show,Mud Show,model,
+shorts,running,Running,not_model:style,
+slip_ons,cosy,Cosy,model,Cosy mules
+socks_underwear,tennis,Tennis,not_model:style,
+sunglasses,butterfly,Butterfly,not_model:optics,frame shape
+sunglasses,eyewear,EYEWEAR,not_model:subtype,
+sunglasses,havana,Havana,not_model:color,
+sweat_top,heavy,Heavy,not_model:material,
+sweat_top,mud-gaffer,Mud Gaffer,duplicate:Gaffer,
+sweater,off,Off,not_model:fragment,
+sweatpants,double-waisted,Double Waisted,not_model:detail,
+sweatpants,garde-robe,Garde-Robe,model,
+sweatpants,side,Side,not_model:detail,side logo / stripe
+sweatpants,sport-icon,Sports Icon,borderline,Loop or Unity Sports Icon
+sweatpants,sporty-b,Sporty B,model,
+sweatpants,unity,Unity,model,
+sweatpants,unreleased,Unreleased,not_model:template,
+sweatshirt,paris,Paris,not_model:brandmark,
+tshirt,90s,90S,not_model:style,era
+tshirt,barcode,Barcode,model,Barcode graphic
+tshirt,be-nice,Be Nice,model,
+tshirt,big-logo,Big Logo,not_model:brandmark,
+tshirt,copyright,Copyright,model,Copyright logo graphic
+tshirt,destroyed-flatground,Destroyed Flatground,model,Caps Destroyed Flatground graphic
+tshirt,drawn-bb-icon,Drawn BB Icon,not_model:brandmark,hand-drawn BB icon
+tshirt,isabelle-huppert,Isabelle Huppert,model,celebrity graphic
+tshirt,kim-kardashian,Kim Kardashian,model,"celebrity graphic, like Britney"
+tshirt,moon-double-front,Moon Double Front,duplicate:Paris Moon,
+tshirt,mud-show,Mud Show,model,
+tshirt,neck,Neck,not_model:detail,round / mock neck
+tshirt,pixel-logo,Pixel Logo,not_model:brandmark,
+tshirt,saint-germain,Saint Germain,not_model:print,store location print
+tshirt,speedhunter,Speedhunters,model,
+tshirt,sport-icon,Sports Icon,duplicate:3B Sports Icon,
+tshirt,sporty-b,Sporty B,model,
+tshirt,strike,Strike,borderline,"Strike Through tee, not the Strike boot"
+tshirt,surfer,Surfer,model,Surfer logo graphic
+tshirt,tacky,Tacky,not_model:style,as in labels.csv
+tshirt,world-food-programme,World Food Programme,model,
+tshirt,york,York,not_model:fragment,New York print
+wallet,square,Square,not_model:subtype,square folded wallet
+accessory_other,mask,Mask,not_model:subtype,
+backpack,le-cagole,Le Cagole,model,
+bag,bel-air,Bel Air,model,
+bag,lindsay,Lindsay,model,
+bag,strap,Strap,not_model:detail,
+bag,superbusy,Superbusy,model,
+belt,unity,Unity,model,
+hat,gamer,Gamer,borderline,as shirt Gamer
+hat,metal,Metal,model,"Metal logo, as the Metal seed"
+hat,tattoo,Tattoo,borderline,as hoodie Tattoo
+hitop_sneakers,marble,Marble,not_model:print,
+hoodie,ai-generated,AI Generated,model,AI Generated graphic
+hoodie,bb-logo,BB Logo,not_model:brandmark,
+hoodie,corporate,Corporate,not_model:brandmark,corporate logo
+hoodie,est,Est,not_model:brandmark,Est. 1917 logo
+hoodie,gym-wear,Gym Wear,model,
+hoodie,mirror,Mirror,not_model:print,"mirrored logo, as in labels.csv"
+hoodie,myself,Myself,duplicate:90/10,90% Balenciaga 10% Myself
+hoodie,paris-tourist,Paris Tourist,not_model:print,Paris Tourist Souvenir
+jeans,bite,Bite,not_model:detail,"heel bite, as in labels.csv"
+jeans,out,Out,not_model:fragment,blown / washed out
+jeans,pull-up,Pull Up,not_model:detail,as in labels.csv
+light_jacket,3b-sport,3B Sports,duplicate:3B Sports Icon,
+light_jacket,neck,Neck,not_model:detail,mock / v neck
+light_jacket,sateen,Sateen,not_model:material,
+longsleeve,political-campaign,Political Campaign,model,
+longsleeve,sery,Series,not_model:fragment,Series
+pants,paint-splatter,Paint Splatter,not_model:print,
+pants,snow,Snow,not_model:print,snow camo
+shoes,city,City,model,City loafer
+shorts,oakley,Oakley,not_model:collab,
+shorts,political-campaign,Political Campaign,model,
+shorts,trompe-loeil,Trompe L'Oeil,model,
+sweatpants,tacky,Tacky,not_model:style,as in labels.csv
+tshirt,activewear,Activewear,not_model:style,
+tshirt,label,Label,not_model:detail,care label
+tshirt,laurel,Laurel,model,
+tshirt,music,Music,borderline,Apple Music archive playlist tee
+tshirt,planet-earth,Planet Earth,model,
+tshirt,rose,Rose,not_model:fragment,
+tshirt,tab,Tab,not_model:brandmark,tab logo
+wallet,neo-classic,Neo Classic,model,

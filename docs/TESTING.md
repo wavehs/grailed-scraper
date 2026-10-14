@@ -80,7 +80,10 @@ with a margin, so they check feasibility; the product bar is the customer's deci
 `phrases.csv` verdicts give the garbage (`not_model`) and garbage+duplicate shares by
 lines and by sales. The tail estimate draws 50 lines past rank 200 with replacement in
 proportion to sales (seed in `eval.yaml`), so the garbage share among draws estimates the
-garbage share of tail sales.
+garbage share of tail sales. An unlabeled line counts as no garbage, so before the new lines
+are labeled the shares are a lower bound: at checkpoint v7b the dev top 100 read 6% of lines
+as garbage or duplicates, and 14% once the 22 new lines were labeled. Compare numbers only
+from a run without unlabeled warnings.
 
 **Checkpoint artifacts.** With `--baseline-db` the report lists *lost groups*: former model
 groups with sales that are gone and whose sales got no model. Every row with ≥ 10 lost

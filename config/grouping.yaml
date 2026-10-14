@@ -237,6 +237,8 @@ descriptors:
     - Low Rise
     - High Rise
     - Mid Rise
+    # One letter and a hyphen make one word (text.words): "A-Line" is "aline".
+    - {name: A-Line, only_types: [skirt, dress, coat]}
     - {name: Leg, only_types: &bottoms [jeans, pants, sweatpants, shorts, leggings, skirt, jumpsuit, bottom_other, swimwear]}
     - {name: Low, only_types: *bottoms}
   size:
@@ -298,11 +300,14 @@ descriptors:
     - Acid Wash
     - Stone Wash
     - {name: Japanese, only_types: [jeans, pants, denim_jacket, shorts]}
+    - waxed
+    - coated
+    - viscose
   print:
     - print
     - printed
     - graphic
-    - {name: Striped, aliases: [stripe]}
+    - {name: Striped, aliases: [stripe, stripped]}
     - {name: Check, aliases: [checked, checkered]}
     - plaid
     - tartan
@@ -325,6 +330,8 @@ descriptors:
     - slogan
     - typography
     - Photo Print
+    - {name: Color Block, aliases: [colorblock, colourblock, colour block]}
+    - Tourist Souvenir
   detail:
     - {name: Hooded, aliases: [hood]}
     - {name: Zip, aliases: [zipper, zipped]}
@@ -352,6 +359,7 @@ descriptors:
     - belted
     - Mock Neck
     - {name: V Neck, aliases: [vneck]}
+    - D-Ring
     - collar
     - collared
     - Half Zip
@@ -379,6 +387,8 @@ descriptors:
     - {name: Round Toe, only_types: *footwear}
     - {name: Open Toe, only_types: *footwear}
     - {name: High, only_types: [boots]}
+    - {name: Knee, only_types: [jeans, pants, sweatpants, shorts, boots]}
+    - convertible
   optics:
     - {name: Cat Eye, aliases: [cateye], only_types: &eyewear [sunglasses, glasses]}
     - {name: Cat, only_types: *eyewear}
@@ -397,6 +407,7 @@ descriptors:
     - {name: Half Rim, only_types: *eyewear}
     - {name: Semi Rimless, only_types: *eyewear}
     - {name: Geometric, only_types: *eyewear}
+    - {name: Butterfly, only_types: *eyewear}
   subtype:
     - {name: Baseball, only_types: [hat]}
     - {name: Slipper, only_types: [slip_ons, sandals, shoes, mules, footwear_other]}
@@ -431,6 +442,8 @@ descriptors:
     - golf
     - ski
     - skiwear
+    # A sales template, not a model: "Unreleased" Yeezy Gap pieces.
+    - unreleased
   brandmark:
     - logo
     - monogram

@@ -9,7 +9,13 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 # Decimals first so "2.0" stays one token; "#5" keeps its marker; words keep apostrophes.
-_WORD = re.compile(r"\d+\.\d+|#\d+|[^\W_]+(?:['’][^\W_]+)*")
+# One letter, a hyphen and three or more letters are one word ("X-Pander", "V-Neck"), unless
+# the hyphens go on ("A-Cold-Wall" stays three words).
+_WORD = re.compile(
+    r"\d+\.\d+|#\d+"
+    r"|(?<![^\W_])[^\W\d_]-[^\W\d_]{3,}(?:['’][^\W_]+)*(?![^\W_]|-[^\W_])"
+    r"|[^\W_]+(?:['’][^\W_]+)*"
+)
 _APOSTROPHES = str.maketrans("", "", "'’")
 _SUFFIX_DIGIT = re.compile(r"^([a-z]{3,})(\d)$")
 
@@ -47,12 +53,13 @@ def singular(token: str) -> str:
 
 
 def words(text: str) -> list[Word]:
-    """Split text into folded, singular tokens; "track.2" and "track2" give "track", "2"."""
+    """Split text into folded, singular tokens; "track.2" and "track2" give "track", "2",
+    "X-Pander" and "Xpander" give "xpander"."""
 
     result: list[Word] = []
     for match in _WORD.finditer(text):
         surface = match.group()
-        norm = fold(surface)
+        norm = fold(surface).replace("-", "")
         if "." in norm:
             whole, _, fraction = norm.partition(".")
             # "2.0" is a version number; other decimals ("17.5") are sizes.

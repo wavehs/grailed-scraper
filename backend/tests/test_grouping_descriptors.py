@@ -139,6 +139,27 @@ def test_the_longest_description_wins_and_scopes_apply(policy: GroupingPolicy) -
     assert name("tshirt", ("moon", "club")) is None
 
 
+def test_v7b_descriptions_from_the_top_lines_and_their_scopes(policy: GroupingPolicy) -> None:
+    index = policy.descriptor_index("balenciaga")
+    other = policy.descriptor_index("chrome-hearts")
+
+    def name(product_type: str, tokens: tuple[str, ...]) -> str | None:
+        match = index.find(product_type, tokens)
+        return match.descriptor.name if match else None
+
+    assert name("jeans", ("double", "knee")) == "Double"  # both are details
+    assert covered(("double", "knee"), frozenset(), index.phrases("jeans"))
+    assert name("pendant", ("fleur", "knee")) is None  # Chrome Hearts Fleur Knee stays
+    assert other.find("pendant", ("knee",)) is None
+    assert name("shirt", ("stripped",)) == "Striped"
+    assert name("hoodie", ("tourist", "souvenir")) == "Tourist Souvenir"
+    assert name("bag", ("souvenir",)) is None  # the Souvenir bag is a model
+    assert name("sunglasses", ("butterfly",)) == "Butterfly"
+    assert name("hoodie", ("butterfly",)) is None
+    assert name("hoodie", ("mode",)) == "Mode"  # a brand mark of Balenciaga only
+    assert other.find("hoodie", ("mode",)) is None
+
+
 def test_a_phrase_names_one_description_per_product_type() -> None:
     types = ["jeans", "hat", "tshirt"]
     with pytest.raises(ValueError, match="both"):

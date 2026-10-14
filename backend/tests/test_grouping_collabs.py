@@ -485,7 +485,8 @@ def test_a_collab_line_cannot_be_edited(tmp_path: Path) -> None:
             client.post(f"/api/groups/{line.id}/merge", json={"target_id": none.id}),
         ]
         split = client.post(
-            f"/api/groups/{line.id}/split", json={"phrase": "Dove", "as_version": True}
+            # "Dove" is a seed of hoodies now (step 6): split a phrase no group has yet.
+            f"/api/groups/{line.id}/split", json={"phrase": "Moon Club", "as_version": True}
         )
     for response in responses:
         assert response.status_code == 409, response.text
