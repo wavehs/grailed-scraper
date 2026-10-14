@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlsplit
@@ -22,25 +22,11 @@ from app.db.session import get_database_url
 
 
 def _lock_byte(file: BinaryIO) -> None:
-    if sys.platform == "win32":
-        import msvcrt
-
-        msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 def _unlock_byte(file: BinaryIO) -> None:
-    if sys.platform == "win32":
-        import msvcrt
-
-        msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+    fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
 
 class SingleInstanceLock:
@@ -91,17 +77,7 @@ def resolve_revision(explicit: str | None = None) -> str:
             return revision.strip()
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
-    git_bin = shutil.which("git")
-    if not git_bin and os.name == "nt":
-        for candidate in (
-            Path(r"C:\Program Files\Git\cmd\git.exe"),
-            Path(r"C:\Program Files\Git\bin\git.exe"),
-        ):
-            if candidate.exists():
-                git_bin = str(candidate)
-                break
-    if not git_bin:
-        git_bin = "git"
+    git_bin = shutil.which("git") or "git"
     try:
         return (
             subprocess.run(

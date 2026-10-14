@@ -1,5 +1,6 @@
 """Checks for the reproducible development baseline."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -46,13 +47,14 @@ def test_reproducible_runtime_contract() -> None:
     assert ci.index("alembic upgrade head") < ci.index("- run: pytest")
 
 
-def test_non_ascii_powershell_scripts_have_a_utf8_bom() -> None:
-    # Windows PowerShell 5.1 reads BOM-less scripts as the ANSI code page, which turns
-    # Cyrillic UTF-8 bytes into smart quotes and breaks parsing.
-    for script in (ROOT / "scripts").glob("*.ps1"):
-        data = script.read_bytes()
-        if not data.isascii():
-            assert data.startswith(b"\xef\xbb\xbf"), script.name
+def test_shell_scripts_are_executable_and_strict() -> None:
+    scripts = sorted((ROOT / "scripts").glob("*.sh"))
+    assert {script.name for script in scripts} >= {"setup.sh", "start.sh"}
+    for script in scripts:
+        assert os.access(script, os.X_OK), script.name
+        lines = script.read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "#!/usr/bin/env bash", script.name
+        assert "set -euo pipefail" in lines, script.name
 
 
 def test_fetching_settings_keep_safe_limits() -> None:

@@ -1,4 +1,4 @@
-"""Pytest configuration and Windows-safe cleanup fixtures."""
+"""Pytest configuration and file-handle cleanup fixtures."""
 
 from __future__ import annotations
 
