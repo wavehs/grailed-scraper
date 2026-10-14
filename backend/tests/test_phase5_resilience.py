@@ -57,7 +57,7 @@ async def test_bounded_pagination_stops_and_reports_truncation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sqlite_pragmas_and_windows_single_instance_lock(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_sqlite_pragmas_and_single_instance_lock(tmp_path) -> None:  # type: ignore[no-untyped-def]
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'phase5.db'}",
         sqlite_busy_timeout_ms=3_210,

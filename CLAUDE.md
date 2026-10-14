@@ -13,18 +13,20 @@ Grailed Liquidity Analyzer: a local tool that collects live Grailed listings (ac
 
 ## Commands
 
-Use the backend venv explicitly (`backend/.venv`, Python 3.11.9). The global `python`/`pip` won't work. Paths below are for Windows.
+Use the backend venv explicitly (`backend/.venv`, Python 3.11.9). The global `python`/`pip` won't work. Paths below are for macOS (zsh); `make help` lists shortcuts.
 
 - Backend, from `backend/`:
-  - Tests: `.venv/Scripts/python -m pytest` (~30 s). One test: `.venv/Scripts/python -m pytest tests/test_metrics.py -k <name>`.
-  - Lint: `.venv/Scripts/python -m ruff check app tests`.
-  - Typecheck: `.venv/Scripts/python -m mypy` (strict; covers `app` and `tests`).
-  - Migrations: `.venv/Scripts/alembic upgrade head`.
-  - Dev server: `.venv/Scripts/python -m uvicorn app.main:app --port 8000`.
+  - Tests: `.venv/bin/python -m pytest` (~30 s). One test: `.venv/bin/python -m pytest tests/test_metrics.py -k <name>`.
+  - Lint: `.venv/bin/python -m ruff check app tests`.
+  - Typecheck: `.venv/bin/python -m mypy` (strict; covers `app` and `tests`).
+  - Migrations: `.venv/bin/alembic upgrade head`.
+  - Dev server: `.venv/bin/python -m uvicorn app.main:app --port 8000`.
 - Frontend, from `frontend/` (pnpm 9.15.9):
   - Lint, typecheck, tests: `pnpm run lint`, `pnpm run typecheck`, `pnpm run test`.
   - Build: `pnpm run build` (static export to `frontend/out/`, served by the backend on :8000). Dev server: `pnpm dev` (port 3000).
-- Run the app: `start.bat`. Dev stack: `dev-web.bat` (`scripts/start.ps1 -Mode dev`).
+- Setup (idempotent): `make setup` (`scripts/setup.sh`; uses uv when installed).
+- Run the app: `make start`. Dev stack: `make dev` (`scripts/start.sh dev`; `NO_BROWSER=1` skips opening the browser).
+- All CI checks at once: `make check` (or `make backend-check` / `make frontend-check`).
 
 ## Subagent Execution Policy (ECC)
 

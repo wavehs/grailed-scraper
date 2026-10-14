@@ -13,7 +13,7 @@ source-independent checks only and never replaces the live gate below.
 
 ## Required live gate
 
-```powershell
+```bash
 cd backend
 python -m app.cli discover
 python -m app.cli canary --brand "Rick Owens" --limit 50
@@ -42,12 +42,12 @@ Plan grouping-v7 measures grouping against hand labels in `eval/<brand>/` (forma
 `eval/README.md`; definitions: `docs/GROUPING.md`, section 0). The commands only read the
 database (`mode=ro`): the working one or a copy selected with `APP_DATABASE_URL`.
 
-```powershell
+```bash
 cd backend
 python -m app.cli grouping-eval --brand balenciaga                       # dev split
-python -m app.cli grouping-eval --brand balenciaga --strict --baseline-db ..\data\backups\<before>.sqlite3
+python -m app.cli grouping-eval --brand balenciaga --strict --baseline-db ../data/backups/<before>.sqlite3
 python -m app.cli grouping-eval --brand balenciaga --split holdout --checkpoint v7a --strict --baseline-db <before>
-python -m app.cli grouping-eval-sample --brand balenciaga --out ..\data\cache\eval\<round>
+python -m app.cli grouping-eval-sample --brand balenciaga --out ../data/cache/eval/<round>
 ```
 
 **Splits.** `sha256(grailed_id) % 5 ∈ {0, 1}` is the holdout (about 40%). `--split holdout`
