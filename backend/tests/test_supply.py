@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.services.metrics.calculator import MetricListing
-from app.services.metrics.supply import SellerRow, dormant_wholesalers, supply_counts
+from app.services.metrics.supply import SellerRow, dormant_wholesalers, status_at, supply_counts
 
 AS_OF = datetime(2026, 10, 15, 12, tzinfo=UTC)
 
@@ -74,3 +74,26 @@ def test_effective_supply_drops_wholesalers_and_lots_and_fresh_supply_drops_stal
     counts = supply_counts(items, AS_OF)
 
     assert (counts.active_now, counts.active_effective, counts.active_fresh) == (6, 4, 3)
+
+
+def test_the_status_at_a_past_moment_reopens_later_sales_and_removals() -> None:
+    before = AS_OF - timedelta(days=30)
+    created = AS_OF - timedelta(days=60)
+    later = AS_OF - timedelta(days=5)
+    earlier = AS_OF - timedelta(days=40)
+
+    assert status_at("sold", created, later, None, before) == "active"
+    assert status_at("sold", created, earlier, None, before) == "sold"
+    assert status_at("removed", created, None, later, before) == "active"
+    assert status_at("removed_pending", created, None, earlier, before) == "removed_pending"
+    assert status_at("active", created, None, None, before) == "active"
+
+
+def test_a_listing_created_after_the_moment_did_not_exist() -> None:
+    assert status_at("active", AS_OF, None, None, AS_OF - timedelta(days=1)) is None
+
+
+def test_a_removal_without_a_check_time_keeps_its_status() -> None:
+    created = AS_OF - timedelta(days=60)
+
+    assert status_at("removed", created, None, None, AS_OF - timedelta(days=30)) == "removed"

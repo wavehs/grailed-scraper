@@ -20,6 +20,7 @@ WHOLESALE_MIN_ACTIVE = 200
 WHOLESALE_MAX_SELL_THROUGH = Decimal("0.01")
 WHOLESALE_SOLD_DAYS = 365
 FRESH_DAYS = 60
+_REMOVED = frozenset({"removed", "removed_pending"})
 
 # (seller identity, status, sold_at) of one listing of the brand.
 SellerRow = tuple[str | None, str, datetime | None]
@@ -30,6 +31,29 @@ class SupplyCounts:
     active_now: int
     active_effective: int
     active_fresh: int
+
+
+def status_at(
+    status: str,
+    created_at: datetime,
+    sold_at: datetime | None,
+    removed_checked_at: datetime | None,
+    moment: datetime,
+) -> str | None:
+    """The status a listing had at ``moment``; None if it was not listed yet (plan 2.7).
+
+    A sale or a removal seen after ``moment`` leaves the listing active then. A removal
+    with no check time is kept: it cannot be placed in time.
+    """
+
+    if created_at > moment:
+        return None
+    if status == "sold" and sold_at is not None and sold_at > moment:
+        return "active"
+    removed_later = removed_checked_at is not None and removed_checked_at > moment
+    if status in _REMOVED and removed_later:
+        return "active"
+    return status
 
 
 def dormant_wholesalers(rows: Iterable[SellerRow], as_of: datetime) -> frozenset[str]:

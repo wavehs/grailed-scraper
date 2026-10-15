@@ -33,6 +33,7 @@ from app.services.grouping.reports import (
     model_candidates,
 )
 from app.services.grouping.scratch import make_scratch
+from app.services.metrics.backtest import AS_OF_DAYS, run_backtest, write_report
 from app.services.normalization.backfill import BACKFILL_BATCH, backfill_market_fields
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
@@ -322,6 +323,30 @@ async def backfill_market(settings: Settings, *, batch_size: int) -> dict[str, o
             )
     finally:
         await engine.dispose()
+
+
+async def metrics_backtest(
+    settings: Settings, *, as_of_days: int, directory: Path | None = None
+) -> dict[str, object]:
+    """Score the metrics as of ``now - as_of_days`` against the sales since (plan 2.7)."""
+
+    engine = create_database_engine(settings)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            report = await run_backtest(session, as_of_days=as_of_days)
+    finally:
+        await engine.dispose()
+    path = write_report(report, directory or evaluation.EVAL_DIRECTORY / "metrics")
+    return {
+        "status": "ok",
+        "report": str(path),
+        "groups": len(report.outcomes),
+        "verdicts": [
+            {"target": item.target, "metric": item.metric, "rho": item.rho, "passed": item.passed}
+            for item in report.verdicts
+        ],
+    }
 
 
 async def reflag(settings: Settings, brand_ids: tuple[int, ...] = ()) -> dict[str, object]:
@@ -646,6 +671,12 @@ def main() -> int:
         help="fill price path, shipping and seller-score columns from raw_json (resumable)",
     )
     backfill_parser.add_argument("--batch-size", type=int, default=BACKFILL_BATCH)
+    backtest_parser = subparsers.add_parser(
+        "metrics-backtest",
+        help="score the liquidity metrics as of N days ago against the sales since",
+    )
+    backtest_parser.add_argument("--as-of-days", type=int, default=AS_OF_DAYS)
+    backtest_parser.add_argument("--out", type=Path, default=None)
     reflag_parser = subparsers.add_parser(
         "reflag-replicas",
         help="re-check stored possible_replica flags with the current rule and recompute metrics",
@@ -775,6 +806,12 @@ def main() -> int:
         if args.batch_size < 1:
             parser.error("--batch-size must be positive")
         return _print(backfill_market(Settings(), batch_size=args.batch_size))
+    if args.command == "metrics-backtest":
+        if args.as_of_days < 1:
+            parser.error("--as-of-days must be positive")
+        return _print(
+            metrics_backtest(Settings(), as_of_days=args.as_of_days, directory=args.out)
+        )
     if args.command == "reflag-replicas":
         return _print(reflag(Settings(), tuple(args.brand_ids)))
     if args.command == "regroup":
