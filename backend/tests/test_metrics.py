@@ -133,6 +133,27 @@ def test_a_scope_with_fewer_than_eight_recent_sales_keeps_every_price() -> None:
     assert metrics.median_price_7d == Decimal("2000.00")
 
 
+def test_tied_prices_do_not_make_ordinary_sales_outliers() -> None:
+    # Half the sales at one price leave a tiny MAD; a 1.3x sale is still ordinary.
+    prices = ("100", "100", "100", "100", "105", "110", "120", "130")
+    sales = [_item(index, price=price, sold_days=index) for index, price in enumerate(prices)]
+
+    metrics = compute_metrics(sales, AS_OF)
+
+    assert metrics.median_price_90d == Decimal("102.50")
+
+
+def test_equal_prices_leave_out_only_a_sale_more_than_three_times_off() -> None:
+    # The base sales are older than a week, so the 7-day median shows the one recent sale.
+    sales = [_item(index, price="100", sold_days=30 + index) for index in range(8)]
+
+    close = compute_metrics([*sales, _item(20, price="290", sold_days=2)], AS_OF)
+    far = compute_metrics([*sales, _item(20, price="310", sold_days=2)], AS_OF)
+
+    assert close.median_price_7d == Decimal("290.00")
+    assert far.median_price_7d is None and far.sold_7d == 1
+
+
 def _listing(
     listing_id: int,
     brand_id: int,

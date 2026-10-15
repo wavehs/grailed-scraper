@@ -20,7 +20,9 @@ OUTLIER_MIN_SALES = 8
 OUTLIER_DAYS = 90
 OUTLIER_MAD_K = Decimal(4)
 _MAD_SCALE = Decimal("1.4826")
-_FLAT_LIMIT = Decimal(20).ln()  # all prices equal: only a 20x jump is an outlier
+# Round-number prices tie often and shrink the MAD towards 0; a sale within 3x of the
+# median is never an outlier, however tight the scope.
+_MIN_LIMIT = Decimal(3).ln()
 _CENT = Decimal("0.01")
 _RATIO = Decimal("0.0001")
 _SHARE = Decimal("0.000001")
@@ -169,7 +171,7 @@ def price_outliers(listings: Sequence[MetricListing], as_of: datetime) -> frozen
         return frozenset()
     center = median(value for _, value in sales)
     mad = median(abs(value - center) for _, value in sales)
-    limit = OUTLIER_MAD_K * _MAD_SCALE * mad if mad else _FLAT_LIMIT
+    limit = max(OUTLIER_MAD_K * _MAD_SCALE * mad, _MIN_LIMIT)
     return frozenset(item_id for item_id, value in sales if abs(value - center) > limit)
 
 

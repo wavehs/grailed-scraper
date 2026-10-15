@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -322,16 +323,28 @@ async def backfill_market(settings: Settings, *, batch_size: int) -> dict[str, o
         await engine.dispose()
 
 
-async def reflag(settings: Settings) -> dict[str, object]:
-    """Clear replica flags the current rule no longer sets, then recompute those brands."""
+async def reflag(settings: Settings, brand_ids: tuple[int, ...] = ()) -> dict[str, object]:
+    """Clear replica flags the current rule no longer sets, then recompute those brands.
+
+    ``brand_ids`` are recomputed too: a re-run after a failed recompute finds nothing left
+    to clear, so the failure log names the brands to pass here.
+    """
 
     engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
             result = await reflag_replicas(session)
-            brand_ids = result.brand_ids
-            metrics = await recompute_brands(session, brand_ids) if brand_ids else None
+            brand_ids = tuple(sorted({*result.brand_ids, *brand_ids}))
+            try:
+                metrics = await recompute_brands(session, brand_ids) if brand_ids else None
+            except Exception:
+                structlog.get_logger(__name__).error(
+                    "reflag_recompute_failed",
+                    brand_ids=list(brand_ids),
+                    hint="re-run reflag-replicas --brand-ids with these ids",
+                )
+                raise
         return {
             "status": "ok",
             "checked": result.checked,
@@ -629,9 +642,16 @@ def main() -> int:
         help="fill price path, shipping and seller-score columns from raw_json (resumable)",
     )
     backfill_parser.add_argument("--batch-size", type=int, default=BACKFILL_BATCH)
-    subparsers.add_parser(
+    reflag_parser = subparsers.add_parser(
         "reflag-replicas",
         help="re-check stored possible_replica flags with the current rule and recompute metrics",
+    )
+    reflag_parser.add_argument(
+        "--brand-ids",
+        type=int,
+        nargs="+",
+        default=[],
+        help="also recompute these brands (after a recompute that failed)",
     )
     report_parser = subparsers.add_parser(
         "grouping-report", help="grouping quality per brand (offline)"
@@ -744,7 +764,7 @@ def main() -> int:
             parser.error("--batch-size must be positive")
         return _print(backfill_market(Settings(), batch_size=args.batch_size))
     if args.command == "reflag-replicas":
-        return _print(reflag(Settings()))
+        return _print(reflag(Settings(), tuple(args.brand_ids)))
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
     if args.command == "grouping-report":

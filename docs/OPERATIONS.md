@@ -122,6 +122,19 @@ python -m app.cli retention --apply
 python -m app.cli backfill-market-fields
 ```
 
+После сужения правила реплик (0.6) старые флаги `possible_replica` перепроверяет
+`reflag-replicas`: снимает флаг, где правило больше не срабатывает (не добавляет), одним
+коммитом и пересчитывает метрики затронутых брендов. Строку, которую сбор изменил между
+чтением и записью, команда не трогает — её проверит следующий запуск, так что запускать
+можно и при работающем сборе. Если пересчёт упал (например, `database is locked`), флаги
+уже сняты, а повторный запуск ничего не найдёт: в логе `reflag_recompute_failed` есть
+`brand_ids`, их передают явно.
+
+```text
+python -m app.cli reflag-replicas
+python -m app.cli reflag-replicas --brand-ids 3 17
+```
+
 ### 14.6. SQLite backup и restore
 
 ```text

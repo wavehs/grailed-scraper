@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app import cli
+from app.cli import reflag
 from app.core.config import Settings
-from app.db.models import Base, Listing
+from app.db.models import Base, Brand, Listing
 from app.domain.listings import ListingData
+from app.services.normalization import reflag as reflag_module
 from app.services.normalization.fx import StaticFxRateProvider
 from app.services.normalization.mapping import load_source_mapping, resolve_path
 from app.services.normalization.normalizer import (
@@ -19,7 +24,7 @@ from app.services.normalization.normalizer import (
     NormalizationContext,
     normalize_size,
 )
-from app.services.normalization.quality import QualityProcessor
+from app.services.normalization.quality import QualityProcessor, looks_replica
 from app.services.normalization.reflag import ReflagResult, reflag_replicas
 from app.services.sources.base.models import RawHit
 
@@ -207,6 +212,86 @@ async def test_stored_replica_flags_are_rechecked_with_the_current_rule(tmp_path
 
     assert result == ReflagResult(checked=3, cleared=2, brand_ids=(1,))
     assert flags == {1: [], 2: ["possible_replica"], 3: ["no_photos"], 4: []}
+
+
+async def _stored(path: Path, flags: list[str]) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    now = datetime(2026, 8, 8, tzinfo=UTC)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(
+            Brand(
+                id=1,
+                name="Maison Margiela",
+                slug="maison-margiela",
+                aliases=[],
+                include_subbrands=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        listing = _listing(1, "Robe-inspired coat", Decimal("100"), now, photos=1)
+        session.add(Listing(**listing.model_copy(update={"quality_flags": flags}).model_dump()))
+        await session.commit()
+    await engine.dispose()
+
+
+async def test_a_scrape_between_the_read_and_the_write_keeps_its_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "race.db"
+    await _stored(database, ["possible_replica"])
+
+    def scraped_meanwhile(title: str, description: str | None, brand: str) -> bool:
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                "UPDATE listings SET quality_flags = ?",
+                ('["possible_replica", "price_outlier"]',),
+            )
+        return looks_replica(title, description, brand)
+
+    monkeypatch.setattr(reflag_module, "looks_replica", scraped_meanwhile)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database}")
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        result = await reflag_replicas(session)
+        flags = await session.scalar(select(Listing.quality_flags))
+    await engine.dispose()
+
+    # The stale write is skipped; the next run re-checks the listing with its new flags.
+    assert flags == ["possible_replica", "price_outlier"]
+    assert result == ReflagResult(checked=1, cleared=0, brand_ids=())
+
+
+async def test_a_rerun_recomputes_named_brands_when_nothing_is_left_to_clear(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "rerun.db"
+    await _stored(database, [])
+
+    result = await reflag(Settings(database_url=f"sqlite+aiosqlite:///{database}"), brand_ids=(1,))
+
+    assert result["cleared"] == 0 and result["brand_ids"] == [1]
+    assert result["metrics"] is not None
+
+
+async def test_a_failed_recompute_is_raised_after_the_flags_are_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "failed.db"
+    await _stored(database, ["possible_replica"])
+
+    async def locked(*_: object) -> None:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(cli, "recompute_brands", locked)
+    with pytest.raises(RuntimeError):
+        await reflag(Settings(database_url=f"sqlite+aiosqlite:///{database}"))
+    with sqlite3.connect(database) as connection:
+        stored = connection.execute("SELECT quality_flags FROM listings").fetchone()
+
+    assert stored == ("[]",)
 
 
 def _listing(
