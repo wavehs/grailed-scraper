@@ -32,6 +32,7 @@ from app.services.grouping.reports import (
     model_candidates,
 )
 from app.services.grouping.scratch import make_scratch
+from app.services.normalization.backfill import BACKFILL_BATCH, backfill_market_fields
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import (
@@ -302,6 +303,20 @@ async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]
             "grouping": result.summary(),
             "metrics": metrics.summary(),
         }
+    finally:
+        await engine.dispose()
+
+
+async def backfill_market(settings: Settings, *, batch_size: int) -> dict[str, object]:
+    """Fill the market columns of older listings from raw_json, one commit per batch."""
+
+    engine = create_database_engine(settings)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            return await backfill_market_fields(
+                session, load_source_mapping(), batch_size=batch_size
+            )
     finally:
         await engine.dispose()
 
@@ -587,6 +602,11 @@ def main() -> int:
     regroup_parser.add_argument(
         "--delta", action="store_true", help="only new or changed listings when rules are unchanged"
     )
+    backfill_parser = subparsers.add_parser(
+        "backfill-market-fields",
+        help="fill price path, shipping and seller-score columns from raw_json (resumable)",
+    )
+    backfill_parser.add_argument("--batch-size", type=int, default=BACKFILL_BATCH)
     report_parser = subparsers.add_parser(
         "grouping-report", help="grouping quality per brand (offline)"
     )
@@ -693,6 +713,10 @@ def main() -> int:
         return _print(run_discovery(Settings()))
     if args.command == "taxonomy-check":
         return _print(run_taxonomy_check(Settings()))
+    if args.command == "backfill-market-fields":
+        if args.batch_size < 1:
+            parser.error("--batch-size must be positive")
+        return _print(backfill_market(Settings(), batch_size=args.batch_size))
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
     if args.command == "grouping-report":

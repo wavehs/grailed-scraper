@@ -51,7 +51,11 @@ unmatched_brands   ← НОВАЯ
 schema_alerts      ← НОВАЯ
 listings           + first_seen_at, last_seen_at, removed_checked_at,
                      quality_flags(json), fetch_tier ('T1'), sold_at_is_estimated,
-                     price_original, currency_original, fx_rate, schema_version
+                     price_original, currency_original, fx_rate, schema_version,
+                     рыночные поля (миграция 0022): price_initial, price_drop_count,
+                     price_updated_at, bumped_at, sold_shipping_price, ship_domestic,
+                     makeoffer, buynow, department, seller_rating_avg,
+                     seller_rating_count, seller_txn_count, seller_trusted
 ```
 
 ### 14.2. Upsert
@@ -101,6 +105,20 @@ python -m app.cli retention --apply
 ```
 
 После очистки `raw_json={}`, а время фиксируется в `raw_json_purged_at`.
+
+Рыночные поля хита (путь цены `price_drops`, доставка, `makeoffer`/`buynow`, отдел,
+рейтинг и число сделок продавца) с миграции 0022 лежат в собственных колонках и
+очисткой не теряются. Суммы — в USD, как `price`. `price_initial` = первая цена из
+`price_drops`, иначе текущая; при обновлении листинга не перезаписывается.
+`price_drop_count` — число снижений в цепочке `price_drops` + текущая цена. Рейтинг и
+число сделок не идентифицируют продавца и хранятся при любом `store_seller_identity`.
+Старые листинги заполняет бэкфилл из `raw_json` (батчи по 5 000, коммит на батч,
+повторный запуск продолжает с незаполненных; у очищенных `raw_json` — только
+`price_initial = price`). Боевая БД, 444 тыс. листингов: 89 батчей, ~30 с.
+
+```text
+python -m app.cli backfill-market-fields
+```
 
 ### 14.6. SQLite backup и restore
 

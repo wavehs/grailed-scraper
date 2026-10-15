@@ -32,7 +32,7 @@ scope. При partial/truncated старое значение сохраняет
 
 ```
 не в БД + в active-индексе                → INSERT status=active, first_seen_at=now
-в БД active + снова в active              → UPDATE price, likes, last_seen_at (+ price_history если цена изменилась)
+в БД active + снова в active              → UPDATE price, likes, last_seen_at (+ price_history если цена изменилась; при вставке — базовая строка)
 в БД active + появился в sold-индексе     → UPDATE status=sold, sold_at, sold_price,
                                              days_to_sell = sold_at − created_at
 не в БД + сразу в sold                    → INSERT status=sold (days_to_sell из created_at)
@@ -45,6 +45,6 @@ removed_pending + нашёлся в sold          → status=sold
 
 ### 10.3. История цен
 
-Таблица `listing_price_history(listing_id, price, observed_at, source_run_id)` — пишется только при изменении цены. Даёт: скорость уценки, эластичность спроса, «сколько скинули до продажи» (`discount_to_sale`).
+Таблица `listing_price_history(listing_id, price, observed_at, source_run_id)` — пишется при первой вставке листинга (база истории) и при каждом изменении цены. Цены до первого наблюдения — в `price_initial`/`price_drop_count` (из `price_drops`). Даёт: скорость уценки, эластичность спроса, «сколько скинули до продажи» (`discount_to_sale`).
 
 ---

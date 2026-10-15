@@ -38,6 +38,19 @@ fields:
   seller_username: ["user.username", "seller.username"]
   sticker:         ["sticker", "sticker.type"]
   location:        ["location", "seller.country"]
+  # Market fields (columns since 0022; none of them identifies a seller).
+  price_drops:         ["price_drops"]
+  price_updated_at:    ["price_updated_at"]
+  bumped_at:           ["bumped_at"]
+  sold_shipping_price: ["sold_shipping_price"]
+  ship_domestic:       ["shipping.us.amount"]
+  makeoffer:           ["makeoffer"]
+  buynow:              ["buynow"]
+  department:          ["department"]
+  seller_rating_avg:   ["user.seller_score.rating_average"]
+  seller_rating_count: ["user.seller_score.rating_count"]
+  seller_txn_count:    ["user.total_bought_and_sold"]
+  seller_trusted:      ["user.trusted_seller"]
 conditions:
   is_new: "is_new"
   is_gently_used: "is_gently_used"

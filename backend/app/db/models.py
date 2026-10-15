@@ -179,6 +179,20 @@ class Listing(Base):
     relist_of_id: Mapped[int | None] = mapped_column(
         ForeignKey("listings.id", name="fk_listings_relist_of", ondelete="SET NULL")
     )
+    # Market fields kept out of raw_json, which retention purges (migration 0022).
+    price_initial: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    price_drop_count: Mapped[int | None] = mapped_column(Integer)
+    price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    bumped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sold_shipping_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    ship_domestic: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    makeoffer: Mapped[bool | None] = mapped_column(Boolean)
+    buynow: Mapped[bool | None] = mapped_column(Boolean)
+    department: Mapped[str | None] = mapped_column(String(32))
+    seller_rating_avg: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    seller_rating_count: Mapped[int | None] = mapped_column(Integer)
+    seller_txn_count: Mapped[int | None] = mapped_column(Integer)
+    seller_trusted: Mapped[bool | None] = mapped_column(Boolean)
 
     brand: Mapped[Brand | None] = relationship(back_populates="listings")
     parser_run: Mapped[ParserRun | None] = relationship(back_populates="listings")

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import structlog
-from dateutil.parser import isoparse  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
 from app.core.config import Settings
@@ -17,9 +16,13 @@ from app.core.privacy import seller_identity
 from app.domain.listings import FetchTier, ListingData, ListingStatus, to_utc_datetime
 from app.services.normalization.fx import FxRateProvider, StaticFxRateProvider
 from app.services.normalization.mapping import SourceMappingConfig
+from app.services.normalization.market import market_fields
+from app.services.normalization.values import CENT as _CENT
+from app.services.normalization.values import money as _money
+from app.services.normalization.values import text as _text
+from app.services.normalization.values import timestamp as _timestamp
 from app.services.sources.base.models import RawHit
 
-_CENT = Decimal("0.01")
 _LETTER_SIZES = {
     "XXS": "XXS",
     "XS": "XS",
@@ -220,6 +223,12 @@ class ListingNormalizer:
                 parser_run_id=context.parser_run_id,
                 raw_json=_sanitize_raw_json(payload),
                 schema_version=context.schema_version or self._mapping.schema_version,
+                **market_fields(
+                    self._mapping,
+                    payload,
+                    price_original=price_original,
+                    fx_rate=fx_rate if currency != "USD" else None,
+                ),
             )
         except ValidationError as exc:
             failure = NormalizationFailure("invalid", detail=str(exc))
@@ -255,48 +264,6 @@ def normalize_size(value: str | None, category: str | None) -> str | None:
             return None
         return f"US {format(us.normalize(), 'f')}"
     return None
-
-
-def _money(value: Any) -> Decimal | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return Decimal(str(value)).quantize(_CENT, ROUND_HALF_UP)
-    except (InvalidOperation, ValueError):
-        return None
-
-
-def _timestamp(value: Any) -> datetime | None:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, datetime):
-        return to_utc_datetime(value)
-    if isinstance(value, (int, float, Decimal)):
-        numeric = Decimal(str(value))
-        if numeric <= 0:
-            return None
-        if abs(numeric) > Decimal("100000000000"):
-            numeric /= Decimal(1000)
-        try:
-            return datetime.fromtimestamp(float(numeric), tz=UTC)
-        except (OSError, OverflowError, ValueError):
-            return None
-    if isinstance(value, str):
-        try:
-            return to_utc_datetime(isoparse(value))
-        except (TypeError, ValueError, OverflowError):
-            try:
-                return _timestamp(Decimal(value))
-            except InvalidOperation:
-                return None
-    return None
-
-
-def _text(value: Any) -> str | None:
-    if value is None or isinstance(value, (dict, list, bool)):
-        return None
-    result = re.sub(r"\s+", " ", str(value)).strip()
-    return result or None
 
 
 def _positive_int(value: Any) -> int | None:

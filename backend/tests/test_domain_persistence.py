@@ -150,5 +150,5 @@ async def test_listing_upsert_preserves_first_seen_and_tracks_only_price_changes
     assert original_first_seen == repeated_first_seen
     assert len(listings) == 1
     assert listings[0].description == "The original source description"
-    assert len(history) == 1
-    assert history[0].price == Decimal("100.00")
+    # The first sighting is the base of the history, then the one real change.
+    assert [row.price for row in history] == [Decimal("125.00"), Decimal("100.00")]

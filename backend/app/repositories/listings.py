@@ -13,6 +13,7 @@ from sqlalchemy.sql import ColumnElement
 
 from app.db.models import Listing, ListingPriceHistory
 from app.domain.listings import ListingData
+from app.services.normalization.market import MARKET_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -53,9 +54,12 @@ class ListingRepository:
                 if (old_price := existing_prices.get(item.grailed_id)) is not None
                 and old_price != item.price
             ]
+            # A first sighting is the base of the history, so a later change has a "before".
+            new = [item for item in batch if item.grailed_id not in existing_prices]
+            observed = [*new, *changed]
 
             await self._upsert_records(batch)
-            listing_ids = await self._listing_ids([item.grailed_id for item in changed])
+            listing_ids = await self._listing_ids([item.grailed_id for item in observed])
             self._session.add_all(
                 ListingPriceHistory(
                     listing_id=listing_ids[item.grailed_id],
@@ -63,7 +67,7 @@ class ListingRepository:
                     observed_at=item.last_seen_at,
                     source_run_id=item.parser_run_id,
                 )
-                for item in changed
+                for item in observed
             )
             price_changes += len(changed)
 
@@ -95,6 +99,10 @@ class ListingRepository:
         update_columns["removed_checked_at"] = statement.excluded.removed_checked_at
         # A collaboration listing found under a second tracked brand keeps its first brand.
         update_columns["brand_id"] = func.coalesce(Listing.brand_id, statement.excluded.brand_id)
+        # The first known starting price stands; a later hit may have lost its earlier drops.
+        update_columns["price_initial"] = func.coalesce(
+            Listing.price_initial, statement.excluded.price_initial
+        )
         await self._session.execute(
             statement.on_conflict_do_update(
                 index_elements=[Listing.grailed_id], set_=update_columns
@@ -155,8 +163,10 @@ class ListingRepository:
             "raw_json",
             "raw_json_purged_at",
             "schema_version",
+            *MARKET_COLUMNS,
         )
 
     @staticmethod
     def _values(listing: ListingData) -> dict[str, object]:
-        return listing.model_dump(mode="python")
+        values = listing.model_dump(mode="python")
+        return {**values, "price_initial": listing.price_initial or listing.price}

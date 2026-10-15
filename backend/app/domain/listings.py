@@ -63,8 +63,31 @@ class ListingData(BaseModel):
     raw_json: dict[str, Any]
     raw_json_purged_at: datetime | None = None
     schema_version: int = Field(ge=1)
+    # Market fields (see services/normalization/market.py); amounts in USD.
+    price_initial: Decimal | None = Field(default=None, gt=0)
+    price_drop_count: int | None = Field(default=None, ge=0)
+    price_updated_at: datetime | None = None
+    bumped_at: datetime | None = None
+    sold_shipping_price: Decimal | None = Field(default=None, ge=0)
+    ship_domestic: Decimal | None = Field(default=None, ge=0)
+    makeoffer: bool | None = None
+    buynow: bool | None = None
+    department: str | None = Field(default=None, max_length=32)
+    seller_rating_avg: Decimal | None = Field(default=None, ge=0, le=5)
+    seller_rating_count: int | None = Field(default=None, ge=0)
+    seller_txn_count: int | None = Field(default=None, ge=0)
+    seller_trusted: bool | None = None
 
-    @field_validator("price", "price_original", "fx_rate", "sold_price", mode="before")
+    @field_validator(
+        "price",
+        "price_original",
+        "fx_rate",
+        "sold_price",
+        "price_initial",
+        "sold_shipping_price",
+        "ship_domestic",
+        mode="before",
+    )
     @classmethod
     def require_decimal_money(cls, value: Any) -> Any:
         """Reject floats so monetary values remain exact from normalization onward."""
