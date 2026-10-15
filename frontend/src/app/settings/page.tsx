@@ -162,6 +162,13 @@ function SettingField({
         <HelpTip label={label} text={t(`${name}_help`)} />
         <Badge variant="muted">{t(entry.origin)}</Badge>
       </div>
+      {entry.origin === 'database' &&
+      entry.base_value !== undefined &&
+      entry.base_value !== entry.value ? (
+        <p className="mb-1.5 text-xs text-[var(--text-secondary)]">
+          {t('overridesBase')}: {entry.base_value === null ? t('noLimit') : String(entry.base_value)}
+        </p>
+      ) : null}
       {typeof entry.value === 'boolean' ? (
         <span className="flex items-center gap-2 text-[var(--text-secondary)]">
           <input

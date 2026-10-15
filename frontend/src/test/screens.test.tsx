@@ -761,6 +761,27 @@ describe('stage 10 screens', () => {
     });
   });
 
+  it('shows the environment value hidden by a saved override', async () => {
+    const groups = {
+      collection: {
+        requests_per_minute: { value: 900, origin: 'database', base_value: 90 },
+        sold_history_days: { value: 365, origin: 'default', base_value: 365 },
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/health')) return json(health);
+        if (url.endsWith('/settings')) return json({ groups });
+        return json({});
+      }),
+    );
+    renderApp(<SettingsPage />);
+    expect(await screen.findByText('Overrides .env or default: 90')).toBeInTheDocument();
+    expect(screen.getAllByText(/Overrides \.env or default/)).toHaveLength(1);
+  });
+
   it('requires an explicit warning confirmation before saving plain seller identity', async () => {
     const groups = {
       privacy: { store_seller_identity: { value: 'hashed', origin: 'default' } },

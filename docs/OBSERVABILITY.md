@@ -66,7 +66,8 @@ duration_s`.
 или деградировавший последний run. Поле `reasons` содержит машиночитаемые причины,
 а `schema.alerts` — подробности активных alerts. Секция `runtime` отдельно сообщает
 Alembic current/head, доступность data/log directories, production bind validation и
-состояние single-instance lock. Production startup не применяет миграции и завершается
-до запуска API/parser runtime при неизвестной revision или несовпадении Alembic head.
+состояние single-instance lock. Startup (любое окружение) сначала применяет миграции
+(`alembic upgrade head` в lifespan `app/main.py`), затем завершается до запуска API/parser
+runtime при неизвестной revision или несовпадении Alembic head.
 
 ---

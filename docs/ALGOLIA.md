@@ -34,7 +34,7 @@ Multi-query тело:
 ### 5.3. Базовые параметры каждого запроса
 
 ```
-hitsPerPage        = min(discovered_max, settings.hits_per_page)   # дефолт 200
+hitsPerPage        = min(discovered_max, settings.algolia_hits_per_page)   # дефолт 1000
 page               = N
 filters            / facetFilters / numericFilters
 attributesToHighlight = []      # экономия трафика

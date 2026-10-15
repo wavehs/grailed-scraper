@@ -50,7 +50,7 @@ Trigger these subagents automatically via the `Agent` tool without asking for co
 - If pnpm commands fail with `MODULE_NOT_FOUND`, `node_modules` is broken. Reinstall with `CI=true pnpm install --frozen-lockfile`; without `CI=true` pnpm hangs on a purge prompt.
 - Settings use the `APP_` prefix and read the repo-root `.env`, not `backend/.env`. Variable names are in `.env.example`. The default DB is `data/grailed.db`. Tests redirect DB, lock and logs to a temp dir in `tests/conftest.py`.
 - `backend/tests/test_project_config.py` asserts dependency pins and safe limits. If you change a pin or default limit, update that test.
-- The root `TASKS.md` is the canonical task list. Most docs and `TASKS.md` are in Russian. Write code, comments, and commit messages in English.
+- The root `new-features.md` (roadmap v2) is the canonical task list; progress lives in `PROGRESS-new-features.md`. Most docs are in Russian. Write code, comments, and commit messages in English.
 
 ## Repo etiquette
 

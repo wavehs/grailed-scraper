@@ -59,11 +59,13 @@ def test_settings_api_persists_validated_overrides_and_origins(tmp_path) -> None
     assert before.json()["groups"]["collection"]["requests_per_minute"] == {
         "value": 12,
         "origin": "env",
+        "base_value": 12,
     }
     assert updated.status_code == 200
     assert after.json()["groups"]["collection"]["requests_per_minute"] == {
         "value": 24,
         "origin": "database",
+        "base_value": 12,
     }
     assert invalid.status_code == unknown.status_code == 422
     assert "secret" not in after.text.casefold()

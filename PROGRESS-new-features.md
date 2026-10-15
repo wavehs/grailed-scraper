@@ -17,7 +17,7 @@
 ## Статус пунктов
 
 - [x] 0.2 macOS — cherry-pick `58b7784`; ruff, mypy, pytest (79,3%), фронтенд lint/typecheck/test/build зелёные.
-- [ ] 0.3 Документация и конфиг
+- [x] 0.3 Документация и конфиг — мёртвые i18n-ключи несуществующих настроек (88), блок `pagination:` удалён, доки PAGINATION/ALGOLIA/LIFECYCLE/OBSERVABILITY/COMPLIANCE исправлены, ссылка на `TASKS.md` заменена, Settings показывает значение из `.env`, скрытое сохранённым (`base_value`). Дубликата `new-features` в репозитории уже нет.
 - [ ] 0.4 Причины `database is locked`
 - [ ] 0.5 Честное покрытие
 - [ ] 0.1 Рыночные поля + бэкфилл

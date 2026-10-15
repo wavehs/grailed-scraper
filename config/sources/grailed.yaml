@@ -7,12 +7,6 @@ indices:
 facets:
   brand: designers.name
   category: category_path
-pagination:
-  strategy: auto          # auto | browse | keyset | range_split
-  key_attrs_sold: [sold_at_i, sold_at, created_at_i, created_at]
-  key_attrs_active: [created_at_i, created_at, updated_at_i, updated_at]
-  secondary_attrs: [id, objectID, price_i]
-  hits_per_page: 200
 fields:
   grailed_id:      ["id", "objectID"]
   url:             ["url", "permalink"]

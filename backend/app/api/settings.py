@@ -47,6 +47,8 @@ class SettingsPatch(BaseModel):
 class SettingResponse(BaseModel):
     value: Any
     origin: SettingOrigin
+    # Value from .env or the code default, shown when a Settings override hides it.
+    base_value: Any
 
 
 class SettingsResponse(BaseModel):
@@ -88,7 +90,9 @@ async def _response(session: AsyncSession, base: Settings) -> SettingsResponse:
                 origin = "env"
             else:
                 origin = "default"
-            groups[group][key] = SettingResponse(value=getattr(settings, key), origin=origin)
+            groups[group][key] = SettingResponse(
+                value=getattr(settings, key), origin=origin, base_value=getattr(base, key)
+            )
     return SettingsResponse(groups=groups)
 
 

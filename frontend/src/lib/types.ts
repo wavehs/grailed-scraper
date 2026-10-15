@@ -155,7 +155,7 @@ export type CursorPage<T> = {
 
 export type SettingOrigin = 'default' | 'env' | 'database';
 export type SettingValue = string | number | boolean | null;
-export type SettingEntry = { value: SettingValue; origin: SettingOrigin };
+export type SettingEntry = { value: SettingValue; origin: SettingOrigin; base_value?: SettingValue };
 export type SettingsResponse = { groups: Record<string, Record<string, SettingEntry>> };
 export type DiscoveryResponse = {
   source: 'grailed';
