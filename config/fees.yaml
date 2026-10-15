@@ -1,0 +1,19 @@
+# Grailed seller fees for the reseller calculator (v2 plan 2.6).
+# Source: Grailed Help Center, "Selling fees" (2026-05-20 change), cross-checked on
+# 2026-10-15 with size.ly and crosslist.com fee calculators. Re-check before relying on it.
+effective_from: 2026-05-20
+source: https://help.grailed.com
+commission:
+  # The rate of the highest tier whose `from_usd` the tier base reaches.
+  tiers:
+    - {from_usd: "0", rate: "0.06"}
+    - {from_usd: "120", rate: "0.09"}
+  minimum_usd: "1.99"
+  # What the $120 threshold is measured on: the item price (`price`) or the price plus
+  # buyer-paid shipping (`price_with_shipping`). Calculators measure the item price.
+  tier_base: price
+processing:
+  # Stripe processing on the whole payment, shipping included.
+  fixed_usd: "0.49"
+  domestic_rate: "0.0349"
+  international_rate: "0.0499"
