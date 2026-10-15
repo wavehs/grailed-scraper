@@ -28,6 +28,14 @@ The report must show real listing identifiers, required schema fields, valid/rej
 
 Stop with `HOLD` on automation prohibition, CAPTCHA, repeated 429, missing credentials, or an incomplete result that is not explicitly marked partial/truncated.
 
+## Scheduler live canary
+
+The scheduler is unit-tested with an injected clock (`tests/test_scheduler.py`); its live
+check is manual and has not been run yet. Set `schedule_enabled=true`, `schedule_hour` to
+the current hour and `schedule_brand_ids` to one small brand, start the app, and within
+about 10 minutes `GET /api/parser/schedule` must report `state=done` with a `last_run`
+that collected real listings at `schedule_rpm`. Turn the schedule off afterwards.
+
 ## Grouping quality
 
 After a live collection, `python -m app.cli grouping-report [--brand NAME]` prints per

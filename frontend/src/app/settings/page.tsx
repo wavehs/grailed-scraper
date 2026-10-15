@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Compass, Save, Shield, SlidersHorizontal } from 'lucide-react';
+import { CalendarClock, Compass, Save, Shield, SlidersHorizontal } from 'lucide-react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { HelpTip } from '@/components/ui/help-tip';
+import { ScheduleBrandPicker, ScheduleCard } from '@/components/schedule-settings';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -22,6 +23,7 @@ const optionalNumbers = new Set(['collect_price_min_usd', 'collect_price_max_usd
 const groupIcons: Record<string, JSX.Element> = {
   collection: <SlidersHorizontal size={16} />,
   privacy: <Shield size={16} />,
+  schedule: <CalendarClock size={16} />,
 };
 
 export default function SettingsPage() {
@@ -65,7 +67,8 @@ export default function SettingsPage() {
   const error = settings.error ?? save.error ?? discovery.error;
   if (settings.isLoading) return <LoadingState />;
   if (!settings.data) return <ErrorState error={error} retry={() => settings.refetch()} />;
-  const update = (key: string, value: SettingValue) => setValues((old) => ({ ...old, [key]: value }));
+  const update = (key: string, value: SettingValue) =>
+    setValues((old) => ({ ...old, [key]: value }));
   const source = parserHealth.data?.discovery;
   return (
     <section className="space-y-6" aria-labelledby="settings-heading">
@@ -115,6 +118,8 @@ export default function SettingsPage() {
         </Button>
       </form>
 
+      <ScheduleCard writable={health.writable} />
+
       <Card className="space-y-3 p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           <Compass size={16} /> {t('discovery')}
@@ -155,18 +160,33 @@ function SettingField({
   const { t } = useI18n();
   const label = t(name);
   const numeric = typeof entry.value === 'number' || optionalNumbers.has(name);
+  const header = (
+    <div className="mb-1.5 flex items-center gap-2">
+      <span className="font-medium text-[var(--text-primary)]">{label}</span>
+      <HelpTip label={label} text={t(`${name}_help`)} />
+      <Badge variant="muted">{t(entry.origin)}</Badge>
+    </div>
+  );
+  if (name === 'schedule_brand_ids')
+    // Brand buttons inside a <label> would all be activated by a click on its text.
+    return (
+      <div className="block text-sm md:col-span-2 xl:col-span-3">
+        {header}
+        <ScheduleBrandPicker
+          value={Array.isArray(value) ? value : null}
+          onChange={(next) => update(name, next)}
+        />
+      </div>
+    );
   return (
     <label className="block text-sm">
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="font-medium text-[var(--text-primary)]">{label}</span>
-        <HelpTip label={label} text={t(`${name}_help`)} />
-        <Badge variant="muted">{t(entry.origin)}</Badge>
-      </div>
+      {header}
       {entry.origin === 'database' &&
       entry.base_value !== undefined &&
       entry.base_value !== entry.value ? (
         <p className="mb-1.5 text-xs text-[var(--text-secondary)]">
-          {t('overridesBase')}: {entry.base_value === null ? t('noLimit') : String(entry.base_value)}
+          {t('overridesBase')}:{' '}
+          {entry.base_value === null ? t('noLimit') : String(entry.base_value)}
         </p>
       ) : null}
       {typeof entry.value === 'boolean' ? (

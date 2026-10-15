@@ -26,6 +26,54 @@ GlobalTokenBucket(rate = requests_per_minute/60)
 
 Dry-run, токены подтверждения и пробное зондирование бюджета удалены.
 
+Необязательные поля: `full: true` — полный сбор вместо delta, `rpm` — скорость только
+этого запуска (иначе `requests_per_minute`). На странице «Сбор» это флажок «Полный
+прогон» и поле скорости. Ответ Grailed 429/403 или CAPTCHA останавливает запуск со
+`stop_reason=throttled`: курсоры сохраняются, запуск можно продолжить позже.
+
+### 12.3. Ежедневный сбор по расписанию
+
+Включается в «Настройках» (`schedule_enabled`, по умолчанию выключен). Пока backend
+запущен, цикл в `services/scheduler.py` раз в 10 минут (первый раз — через минуту после
+старта) проверяет слот:
+
+- **Слот** открывается в `schedule_hour` по местному времени. Если приложение было
+  выключено и слот пропущен больше чем на 20 часов, он не догоняется — ждёт следующего.
+- **Состав:** `schedule_brand_ids` или все бренды, у которых уже есть объявления. Новые
+  бренды расписание само не собирает. Скорость — `schedule_rpm` (90).
+- **Воскресенье** — полный прогон (`full`); когда он завершён (`completed` или `partial`), создаётся
+  backup (`db-backup`), затем применяется retention raw data (`retention --apply`).
+- **Throttling:** запуск, остановленный по 429/403/CAPTCHA, ставит расписание на паузу
+  на 6 часов, затем тот же запуск продолжается. Паузу можно снять кнопкой «Продолжить
+  сейчас» в «Настройках» (`DELETE /api/parser/schedule/pause`).
+- **Попытки:** не больше 3 запусков или продолжений на слот; после этого слот пропускается.
+- Если уже идёт ручной сбор, расписание ждёт его окончания.
+
+Состояние: `GET /api/parser/schedule` (`state`, `reason`, `next_slot_at`,
+`paused_until`, `last_run`); оно же показано карточкой в «Настройках». Сведения о
+слоте и о действиях после запуска хранятся в `parser_runs.stats.schedule`, поэтому
+перезапуск backend их не теряет.
+
+Расписание работает только пока запущено приложение. Чтобы backend стартовал сам после
+входа в систему на macOS, можно добавить LaunchAgent (`~/Library/LaunchAgents/`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.grailed-scraper</string>
+  <key>ProgramArguments</key>
+  <array><string>/path/to/grailed-scraper/scripts/start.sh</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><false/>
+</dict>
+</plist>
+```
+
+`launchctl load ~/Library/LaunchAgents/local.grailed-scraper.plist`; путь к скрипту
+запуска подставить свой.
+
 ---
 
 ## 14. Персистентность и идемпотентность
@@ -151,5 +199,15 @@ Backup использует SQLite online backup API и завершается �
 страховочная копия. Восстановленная БД повторно проходит integrity check.
 `regroup` также сначала создаёт проверенный backup, затем заново группирует все
 бренды (`--delta` — только новые и изменённые объявления) и пересчитывает метрики.
+
+Каждый backup — один файл `.sqlite3` (полная копия БД). Ротация (`retention --apply`) оставляет копии моложе
+`backup_retention_days` и не больше `backup_keep_count` (3) последних.
+
+```text
+python -m app.cli db-vacuum
+```
+
+`db-vacuum` пересобирает файл БД и возвращает место после retention. Нужен остановленный
+backend и свободное место не меньше двух размеров БД; иначе команда отказывается.
 
 ---

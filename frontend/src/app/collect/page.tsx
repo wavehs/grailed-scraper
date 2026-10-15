@@ -7,12 +7,19 @@ import { Ban, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
+import {
+  DataTable,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from '@/components/ui/data-table';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState, ErrorState, LoadingState, Notice } from '@/components/states';
+import { HelpTip } from '@/components/ui/help-tip';
 import { api, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useBrandsQuery, useRunsQuery } from '@/lib/queries';
@@ -29,6 +36,8 @@ export default function CollectPage() {
   const [openRun, setOpenRun] = useState<number | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [notice, setNotice] = useState('');
+  const [full, setFull] = useState(false);
+  const [rpm, setRpm] = useState('');
   const runs = useRunsQuery(30, 0, (query: { state: { data?: { data: RunSummary[] } } }) =>
     query.state.data?.data.some((run) => !terminal.has(run.status)) ? 2_000 : false,
   );
@@ -63,6 +72,8 @@ export default function CollectPage() {
     mutationFn: () =>
       api<RunStartResponse>('/parser/run', 'POST', {
         brand_ids: selected && selected.length < mapped.length ? selected : null,
+        ...(full ? { full: true } : {}),
+        ...(Number.isInteger(Number(rpm)) && Number(rpm) >= 1 ? { rpm: Number(rpm) } : {}),
       }),
     onSuccess: () => {
       setNotice(t('collectionStarted'));
@@ -177,6 +188,30 @@ export default function CollectPage() {
               );
             })}
           </div>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-secondary)]">
+            <span className="flex items-center gap-1">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={full}
+                  onChange={(event) => setFull(event.target.checked)}
+                />
+                {t('fullRun')}
+              </label>
+              <HelpTip label={t('fullRun')} text={t('fullRunHelp')} />
+            </span>
+            <label className="flex items-center gap-2">
+              {t('runRpm')}
+              <input
+                className="w-28 rounded-lg"
+                type="number"
+                min={1}
+                placeholder={t('runRpmPlaceholder')}
+                value={rpm}
+                onChange={(event) => setRpm(event.target.value)}
+              />
+            </label>
+          </div>
           <Button
             icon={<Play size={16} />}
             disabled={!(selected ?? []).length || start.isPending}
@@ -188,7 +223,9 @@ export default function CollectPage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">{t('collectionHistory')}</h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+          {t('collectionHistory')}
+        </h2>
         {runs.isLoading && <LoadingState />}
         {runs.data && !runs.data.data.length && <EmptyState message={t('noRuns')} />}
         {Boolean(runs.data?.data.length) && (
@@ -213,7 +250,9 @@ export default function CollectPage() {
                     </button>
                   </TableCell>
                   <TableCell>{formatDate(run.started_at ?? run.created_at, locale)}</TableCell>
-                  <TableCell>{t(run.mode === 'full' ? 'firstCollection' : 'incrementalUpdate')}</TableCell>
+                  <TableCell>
+                    {t(run.mode === 'full' ? 'firstCollection' : 'incrementalUpdate')}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(run.status)} dot>
                       {t(run.status)}
@@ -254,7 +293,11 @@ export default function CollectPage() {
         )}
       </section>
 
-      <Modal open={openRun !== null} onClose={() => setOpenRun(null)} title={`${t('run')} #${openRun ?? ''}`}>
+      <Modal
+        open={openRun !== null}
+        onClose={() => setOpenRun(null)}
+        title={`${t('run')} #${openRun ?? ''}`}
+      >
         {detail.isLoading && <LoadingState />}
         {detail.data && (
           <DataTable>

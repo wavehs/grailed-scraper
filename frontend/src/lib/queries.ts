@@ -4,11 +4,12 @@ import { useI18n } from '@/lib/i18n';
 import type {
   ApiHealth,
   BrandList,
-  ParserHealth,
-  RunList,
-  SettingsResponse,
   GroupDetail,
   GroupList,
+  ParserHealth,
+  RunList,
+  ScheduleStatus,
+  SettingsResponse,
   Taxonomy,
   TrendCard,
   TrendFilters,
@@ -62,6 +63,14 @@ export function useSettingsQuery() {
   return useQuery({
     queryKey: ['settings'],
     queryFn: ({ signal }) => getApi<SettingsResponse>('/settings', signal),
+  });
+}
+
+export function useScheduleQuery() {
+  return useQuery({
+    queryKey: ['schedule'],
+    queryFn: ({ signal }) => getApi<ScheduleStatus>('/parser/schedule', signal),
+    refetchInterval: 30_000,
   });
 }
 
@@ -141,8 +150,7 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
 export function useTrendsQuery(filters: TrendFilters, offset = 0) {
   return useQuery({
     queryKey: ['trends', filters, offset],
-    queryFn: ({ signal }) =>
-      getApi<TrendList>(`/trends?${trendParams(filters, offset)}`, signal),
+    queryFn: ({ signal }) => getApi<TrendList>(`/trends?${trendParams(filters, offset)}`, signal),
     placeholderData: (previous) => previous,
   });
 }

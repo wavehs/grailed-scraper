@@ -157,8 +157,12 @@ export type CursorPage<T> = {
 };
 
 export type SettingOrigin = 'default' | 'env' | 'database';
-export type SettingValue = string | number | boolean | null;
-export type SettingEntry = { value: SettingValue; origin: SettingOrigin; base_value?: SettingValue };
+export type SettingValue = string | number | boolean | null | number[];
+export type SettingEntry = {
+  value: SettingValue;
+  origin: SettingOrigin;
+  base_value?: SettingValue;
+};
 export type SettingsResponse = { groups: Record<string, Record<string, SettingEntry>> };
 export type DiscoveryResponse = {
   source: 'grailed';
@@ -339,4 +343,28 @@ export type TrendFilters = {
   descriptors: boolean;
   sort: TrendSort;
   desc: boolean;
+};
+
+export type ScheduledRun = {
+  id: number;
+  status: string;
+  slot: string;
+  full: boolean;
+  attempts: number;
+  stop_reason: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
+export type ScheduleStatus = {
+  enabled: boolean;
+  hour: number;
+  rpm: number;
+  brand_ids: number[] | null;
+  full_weekday: number;
+  state: 'idle' | 'start' | 'resume' | 'done' | 'give_up';
+  reason: string;
+  slot: string;
+  next_slot_at: string;
+  paused_until: string | null;
+  last_run: ScheduledRun | null;
 };
