@@ -175,16 +175,22 @@ async def test_a_recompute_keeps_the_last_cross_brand_values(tmp_path: Path) -> 
         await session.execute(
             update(GroupMetric)
             .where(GroupMetric.scope_key == "model:10")
-            .values(p30=Decimal("0.4"), liquidity_score=Decimal("55.5"), ls_ref_scope="all")
+            .values(
+                p30=Decimal("0.4"),
+                liquidity_score=Decimal("55.5"),
+                ls_ref_scope="all",
+                badges=["hot"],
+            )
         )
         await session.commit()
 
     row = await _recompute(factory)
 
-    assert (row.p30, row.liquidity_score, row.ls_ref_scope) == (
+    assert (row.p30, row.liquidity_score, row.ls_ref_scope, row.badges) == (
         Decimal("0.400000"),
         Decimal("55.50"),
         "all",
+        ["hot"],
     )
 
 
@@ -202,6 +208,7 @@ async def test_recomputing_brands_ranks_them_and_their_snapshots(tmp_path: Path)
     assert row.p30 is not None and Decimal(0) < row.p30 < Decimal(1)
     # Three sales in 90 days: no model reaches the reference sample, so no score.
     assert (row.liquidity_score, row.ls_ref_scope) == (Decimal(0), "none")
+    assert row.badges == ["low_data"]
     assert (snapshot.p30, snapshot.liquidity_score) == (row.p30, row.liquidity_score)
     assert (snapshot.active_effective, snapshot.active_fresh) == (2, 0)
 

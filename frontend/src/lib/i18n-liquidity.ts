@@ -82,6 +82,16 @@ export const liquidityEn: Record<string, string> = {
   sizeP30: 'P30',
   hotSize: 'hot',
   hotSizeHelp: 'Hot size: a cohort of at least 10 and a P30 at least the model’s.',
+  badge_low_data: 'Low data',
+  badge_low_data_help: 'Low data: fewer than 5 sales in 90 days, so no other badge.',
+  badge_hot: 'Hot',
+  badge_hot_help: 'Hot: Liquidity Score in the top 10% of its reference sample and at least 10 sales in 90 days.',
+  badge_stable: 'Stable price',
+  badge_stable_help: 'Stable price: at least 30 sales in 90 days and the p25–p75 spread within 35% of the median.',
+  badge_slow: 'Slow',
+  badge_slow_help: 'Slow: median days to sell in the top 25% and P30 in the bottom 25% of its reference sample.',
+  badge_saturated: 'Saturated',
+  badge_saturated_help: 'Saturated: fresh listings per month of sales in the top 20% of its reference sample.',
 };
 
 export const liquidityRu: Record<string, string> = {
@@ -167,4 +177,14 @@ export const liquidityRu: Record<string, string> = {
   sizeP30: 'P30',
   hotSize: 'ходовой',
   hotSizeHelp: 'Ходовой размер: когорта от 10 и P30 не ниже, чем у модели.',
+  badge_low_data: 'Мало данных',
+  badge_low_data_help: 'Мало данных: меньше 5 продаж за 90 дней, других значков нет.',
+  badge_hot: 'Горячая',
+  badge_hot_help: 'Горячая: Liquidity Score в верхних 10% эталонной выборки и от 10 продаж за 90 дней.',
+  badge_stable: 'Стабильная цена',
+  badge_stable_help: 'Стабильная цена: от 30 продаж за 90 дней и разброс p25–p75 не больше 35% медианы.',
+  badge_slow: 'Медленная',
+  badge_slow_help: 'Медленная: медиана дней до продажи в верхних 25%, а P30 в нижних 25% эталонной выборки.',
+  badge_saturated: 'Перенасыщена',
+  badge_saturated_help: 'Перенасыщена: свежих объявлений на месяц продаж больше, чем у 80% эталонной выборки.',
 };

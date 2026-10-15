@@ -323,6 +323,8 @@ export type TrendRow = {
   gmv_90d: number | null;
   department: string | null;
   price: PriceBucket | null;
+  /** Model badges: low_data, hot, stable, slow, saturated (docs/METRICS.md §13). */
+  badges?: string[];
 };
 
 /** "No model" against the whole scope; shares are decimal strings, null when the total is 0. */

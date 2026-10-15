@@ -162,12 +162,16 @@ def _reference(sample: Sequence[RankRow], p30: dict[int, Decimal]) -> tuple[Deci
 
 
 def _quantile(values: Sequence[Decimal]) -> Decimal:
+    return quantile(values, Decimal(str(REFERENCE_QUANTILE)))
+
+
+def quantile(values: Sequence[Decimal], q: Decimal) -> Decimal:
     """Linear interpolation between closest ranks; 0 for an empty sample."""
 
     if not values:
         return Decimal(0)
     ordered = sorted(values)
-    position = Decimal(str(REFERENCE_QUANTILE)) * (len(ordered) - 1)
+    position = q * (len(ordered) - 1)
     low = int(position)
     high = min(low + 1, len(ordered) - 1)
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)

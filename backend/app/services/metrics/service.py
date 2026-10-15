@@ -279,11 +279,17 @@ class MetricsService:
                 GroupMetric.p30,
                 GroupMetric.liquidity_score,
                 GroupMetric.ls_ref_scope,
+                GroupMetric.badges,
             ).where(GroupMetric.brand_id == brand_id)
         )
         return {
-            key: {"p30": p30, "liquidity_score": score, "ls_ref_scope": reference}
-            for key, p30, score, reference in rows.tuples().all()
+            key: {
+                "p30": p30,
+                "liquidity_score": score,
+                "ls_ref_scope": reference,
+                "badges": badges,
+            }
+            for key, p30, score, reference, badges in rows.tuples().all()
         }
 
     @staticmethod
@@ -356,6 +362,7 @@ class MetricsService:
             "p30": None,
             "liquidity_score": None,
             "ls_ref_scope": None,
+            "badges": None,
         }
 
 

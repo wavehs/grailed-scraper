@@ -11,6 +11,7 @@ import {
   P30Cell,
   SupplyCell,
 } from '@/components/liquidity-cells';
+import { MetricBadges } from '@/components/metric-badges';
 import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
 import { Sparkline } from '@/components/trend-charts';
 import { CLEAR_WARDROBE, WardrobePresets } from '@/components/wardrobe-presets';
@@ -408,6 +409,7 @@ function TrendTableRow({
           {row.status === 'auto' && !isServiceGroup(row) && <Badge variant="warning">{t('autoGroup')}</Badge>}
           <GroupKindBadge kind={row.kind} />
           {row.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
+          <MetricBadges badges={row.badges} />
           {row.versions > 0 && (
             <Badge variant="muted">
               {t('versionsCount')}: {row.versions}

@@ -385,6 +385,8 @@ class GroupMetric(Base):
     liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
     # Reference sample of the score: "section", "all", or "none" when it was empty.
     ls_ref_scope: Mapped[str | None] = mapped_column(String(8))
+    # Model badges (services/metrics/badges.py); None on other scopes and before 0026.
+    badges: Mapped[list[str] | None] = mapped_column(JSON)
 
 
 

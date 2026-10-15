@@ -7,6 +7,7 @@ import { ArrowLeft, Clock3, ExternalLink, PackageCheck, Percent, ShoppingBag, Tr
 import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } from '@/components/group-editor';
 import { AskVsSoldPanel } from '@/components/ask-vs-sold';
 import { formatRatio } from '@/components/liquidity-cells';
+import { MetricBadges } from '@/components/metric-badges';
 import { MonthCharts } from '@/components/month-charts';
 import { ResaleCalculator } from '@/components/resale-calculator';
 import { WeeklyCharts } from '@/components/trend-charts';
@@ -69,6 +70,7 @@ function GroupCard() {
         {group.status === 'auto' && !isServiceGroup(group) && <Badge variant="warning">{t('autoGroup')}</Badge>}
         <GroupKindBadge kind={group.kind} />
         {metrics?.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
+        <MetricBadges badges={metrics?.badges} />
       </div>
 
       {metrics ? (

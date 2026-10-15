@@ -48,6 +48,8 @@ class LiquidityFields(BaseModel):
     gmv_90d: int | None = None
     department: str | None = None
     price: PriceBucket | None = None
+    # Codes from services/metrics/badges.py; empty off the model scope.
+    badges: list[str] = []
 
 
 def liquidity_fields(
@@ -66,6 +68,7 @@ def liquidity_fields(
         gmv_90d=decimal_to_cents(metric.gmv_90d) if metric.gmv_90d is not None else None,
         department=metric.department,
         price=price_bucket(metric.pricing, condition, parent_pricing),
+        badges=metric.badges or [],
     )
     return dict(fields)
 
