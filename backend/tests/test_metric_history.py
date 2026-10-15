@@ -23,12 +23,8 @@ from app.db.models import (
     ModelGroup,
 )
 from app.services.metrics.calculator import MetricListing
-from app.services.metrics.history import (
-    SNAPSHOT_KEEP_DAYS,
-    month_stats,
-    percentile,
-    snapshot_rows,
-)
+from app.services.metrics.history import SNAPSHOT_KEEP_DAYS, month_stats, snapshot_rows
+from app.services.metrics.pricing import percentile
 from app.services.metrics.service import MetricsService
 
 AS_OF = datetime(2026, 10, 15, 12, tzinfo=UTC)

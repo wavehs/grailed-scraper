@@ -17,10 +17,12 @@ from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.policy import REVIEW_TYPE, load_policy
 from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute_metrics
 from app.services.metrics.history import write_month_stats, write_snapshots
+from app.services.metrics.supply import dormant_wholesalers
 
-METRICS_VERSION = "metrics-v1"
+METRICS_VERSION = "metrics-v2"
 _EXCLUDED = {"possible_replica"}
-_PRICE_EXCLUDED = {"price_outlier", "lot_or_bundle"}
+LOT_FLAG = "lot_or_bundle"
+_PRICE_EXCLUDED = {"price_outlier", LOT_FLAG}
 _INSERT_CHUNK = 500
 NEW_CONDITION = "is_new"
 
@@ -90,12 +92,20 @@ class MetricsService:
                 Listing.product_type,
                 ListingModelAssignment.model_group_id,
                 Listing.condition,
+                Listing.seller_identity,
+                Listing.bumped_at,
+                Listing.price_initial,
+                Listing.price_updated_at,
+                Listing.department,
             )
             .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
             .where(Listing.brand_id == brand_id)
         )
         raw = list(await self._session.execute(statement))
         created = {row[0]: _aware(row[4] or row[5]) for row in raw}
+        wholesalers = dormant_wholesalers(
+            ((row[15], row[1], _aware(row[6]) if row[6] else None) for row in raw), as_of
+        )
         by_scope: dict[str, list[MetricListing]] = defaultdict(list)
         scope_meta: dict[str, dict[str, Any]] = {}
         for row in raw:
@@ -117,6 +127,13 @@ class MetricsService:
                 color=row[9],
                 size=row[10],
                 new_condition=row[14] == NEW_CONDITION,
+                root_id=row[11],
+                is_lot=LOT_FLAG in flags,
+                wholesale=row[15] in wholesalers,
+                fresh_at=max(listed_at, _aware(row[16])) if row[16] else listed_at,
+                price_initial=row[17],
+                price_updated_at=_aware(row[18]) if row[18] else None,
+                department=row[19],
             )
             group = groups.get(row[13]) if row[13] is not None else None
             product_type = row[12] or (group.product_type if group else None)
@@ -137,8 +154,12 @@ class MetricsService:
                 by_scope[key].append(item)
                 scope_meta.setdefault(key, {"scope": "brand", "brand_id": brand_id})
         now = datetime.now(UTC)
+        ranked = await self._ranking(brand_id)
         values = [
-            self._row(key, scope_meta[key], compute_metrics(items, as_of), now)
+            {
+                **self._row(key, scope_meta[key], compute_metrics(items, as_of), now),
+                **ranked.get(key, {}),
+            }
             for key, items in by_scope.items()
         ]
         # Retired groups have no listings now; their last metrics stay frozen (grouping-v7).
@@ -154,6 +175,25 @@ class MetricsService:
         await write_snapshots(self._session, brand_id, values, as_of.astimezone(UTC).date())
         await write_month_stats(self._session, brand_id, by_scope, scope_meta, as_of, now)
         return len(values), len(raw)
+
+    async def _ranking(self, brand_id: int) -> dict[str, dict[str, Any]]:
+        """Last cross-brand values per scope, kept until the next cross-brand pass.
+
+        The reference scope also feeds the score's hysteresis (v2 plan 2.4).
+        """
+
+        rows = await self._session.execute(
+            select(
+                GroupMetric.scope_key,
+                GroupMetric.p30,
+                GroupMetric.liquidity_score,
+                GroupMetric.ls_ref_scope,
+            ).where(GroupMetric.brand_id == brand_id)
+        )
+        return {
+            key: {"p30": p30, "liquidity_score": score, "ls_ref_scope": reference}
+            for key, p30, score, reference in rows.tuples().all()
+        }
 
     @staticmethod
     def _add(
@@ -216,6 +256,16 @@ class MetricsService:
             "colors": metrics.colors,
             "sizes": metrics.sizes,
             "computed_at": now,
+            "active_effective": metrics.active_effective,
+            "active_fresh": metrics.active_fresh,
+            "p30_sold": metrics.p30_sold,
+            "p30_cohort": metrics.p30_cohort,
+            "gmv_90d": metrics.gmv_90d,
+            "pricing": metrics.pricing,
+            "department": metrics.department,
+            "p30": None,
+            "liquidity_score": None,
+            "ls_ref_scope": None,
         }
 
 

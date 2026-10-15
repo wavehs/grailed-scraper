@@ -371,6 +371,20 @@ class GroupMetric(Base):
     colors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     sizes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # v2 plan 2.1-2.4; empty on rows computed before migration 0024.
+    active_effective: Mapped[int | None] = mapped_column(Integer)
+    active_fresh: Mapped[int | None] = mapped_column(Integer)
+    p30_sold: Mapped[int | None] = mapped_column(Integer)
+    p30_cohort: Mapped[int | None] = mapped_column(Integer)
+    # Smoothed towards the parent by the cross-brand pass; None until it runs.
+    p30: Mapped[Decimal | None] = mapped_column(Numeric(7, 6))
+    gmv_90d: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    # Per condition bucket ("all", "new", "used"): see services/metrics/pricing.py.
+    pricing: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    department: Mapped[str | None] = mapped_column(String(32))
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+    # Reference sample of the score: "section", "all", or "none" when it was empty.
+    ls_ref_scope: Mapped[str | None] = mapped_column(String(8))
 
 
 

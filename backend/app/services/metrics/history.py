@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import GroupMetricDaily, GroupMonthStat
 from app.services.metrics.calculator import MetricListing, price_outliers
+from app.services.metrics.pricing import BUCKETS, QUARTILES, in_bucket, percentile
 
 SNAPSHOT_KEEP_DAYS = 730
 # A model without a sale in 90 days is kept only while its supply is worth watching.
@@ -33,9 +34,9 @@ SNAPSHOT_COLUMNS = (
     "median_price_30d",
     "sell_through_30d",
     "trend_score",
+    "active_effective",
+    "active_fresh",
 )
-BUCKETS = ("all", "new", "used")
-QUARTILES = (Decimal("0.25"), Decimal("0.5"), Decimal("0.75"))
 _CENT = Decimal("0.01")
 _INSERT_CHUNK = 500
 
@@ -49,19 +50,6 @@ class MonthStat:
     p25: Decimal | None
     p50: Decimal | None
     p75: Decimal | None
-
-
-def percentile(values: Sequence[Decimal], q: Decimal) -> Decimal | None:
-    """Linear interpolation between closest ranks (``numpy.percentile``'s default)."""
-
-    if not values:
-        return None
-    ordered = sorted(values)
-    position = q * (len(ordered) - 1)
-    low = int(position)
-    high = min(low + 1, len(ordered) - 1)
-    value = ordered[low] + (ordered[high] - ordered[low]) * (position - low)
-    return value.quantize(_CENT, ROUND_HALF_UP)
 
 
 def month_stats(items: Iterable[MetricListing], as_of: datetime | None = None) -> list[MonthStat]:
@@ -82,7 +70,7 @@ def month_stats(items: Iterable[MetricListing], as_of: datetime | None = None) -
     for month, sales in sorted(by_month.items()):
         outliers = price_outliers(sales, _next_month(month))
         for bucket in BUCKETS:
-            chosen = [item for item in sales if _in_bucket(item, bucket)]
+            chosen = [item for item in sales if in_bucket(item, bucket)]
             if not chosen:
                 continue
             prices = [
@@ -160,12 +148,6 @@ async def write_month_stats(
 async def _insert(session: AsyncSession, table: type[Any], rows: list[dict[str, Any]]) -> None:
     for start in range(0, len(rows), _INSERT_CHUNK):
         await session.execute(insert(table), rows[start : start + _INSERT_CHUNK])
-
-
-def _in_bucket(item: MetricListing, bucket: str) -> bool:
-    if bucket == "all":
-        return True
-    return item.new_condition == (bucket == "new")
 
 
 def _month(moment: datetime) -> date:

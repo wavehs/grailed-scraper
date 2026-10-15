@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from collections.abc import Sequence
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
+from typing import Any
+
+from app.services.metrics.liquidity import p30_by, p30_counts, rate
+from app.services.metrics.pricing import price_stats
+from app.services.metrics.supply import supply_counts
 
 WEEKS = 12
 NEW_MODEL_DAYS = 60
 NEW_LISTING_DAYS = 14
 MIN_TREND_SALES = 3
 VARIANT_LIMIT = 12
+# A size is "hot" only with at least this many listings in its P30 cohort (v2 plan 2.8).
+HOT_SIZE_MIN_LISTINGS = 10
 # A sale is a scope-level price outlier when its log price is more than OUTLIER_MAD_K robust
 # deviations from the median of the scope's last OUTLIER_DAYS of sales (D8 in the v2 plan).
 OUTLIER_MIN_SALES = 8
@@ -47,10 +54,24 @@ class MetricListing:
     size: str | None
     # Condition ``is_new``; the rest (worn, used, unknown) is the used bucket.
     new_condition: bool = False
+    # The first listing of the relist chain; None for a root.
+    root_id: int | None = None
+    is_lot: bool = False
+    # Listed by a dormant wholesaler of the brand (supply.dormant_wholesalers).
+    wholesale: bool = False
+    # Last created or bumped; None = ``listed_at``.
+    fresh_at: datetime | None = None
+    price_initial: Decimal | None = None
+    price_updated_at: datetime | None = None
+    department: str | None = None
 
     @property
     def sale_price(self) -> Decimal:
         return self.sold_price or self.price
+
+    @property
+    def fresh_moment(self) -> datetime:
+        return self.fresh_at or self.listed_at
 
 
 @dataclass(slots=True)
@@ -77,6 +98,13 @@ class ScopeMetrics:
     trend_score: Decimal | None = None
     colors: list[dict[str, object]] = field(default_factory=list)
     sizes: list[dict[str, object]] = field(default_factory=list)
+    active_effective: int = 0
+    active_fresh: int = 0
+    p30_sold: int = 0
+    p30_cohort: int = 0
+    gmv_90d: Decimal = Decimal(0)
+    pricing: dict[str, dict[str, Any]] = field(default_factory=dict)
+    department: str | None = None
 
 
 def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> ScopeMetrics:
@@ -148,7 +176,16 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
         result.sold_30d, result.growth, result.speed, result.sell_through_30d
     )
     result.colors = variant_rows(variants, "color")
-    result.sizes = variant_rows(variants, "size")
+    counts = supply_counts(listings, as_of)
+    result.active_effective = counts.active_effective
+    result.active_fresh = counts.active_fresh
+    result.p30_sold, result.p30_cohort = p30_counts(listings, as_of)
+    result.sizes = size_rows(
+        variant_rows(variants, "size"), listings, as_of, rate(result.p30_sold, result.p30_cohort)
+    )
+    result.pricing = price_stats(listings, as_of, outliers)
+    result.gmv_90d = Decimal(result.pricing["all"]["gmv"])
+    result.department = majority(item.department for item in listings)
     return result
 
 
@@ -214,6 +251,39 @@ def variant_rows(listings: Sequence[MetricListing], attribute: str) -> list[dict
         }
         for value, (sold, active) in ranked[:VARIANT_LIMIT]
     ]
+
+
+def size_rows(
+    rows: list[dict[str, object]],
+    listings: Sequence[MetricListing],
+    as_of: datetime,
+    scope_p30: Decimal | None,
+) -> list[dict[str, object]]:
+    """Size rows with their own P30; a size is hot when it sells at least as well as the scope."""
+
+    by_size = p30_by(listings, as_of, lambda item: _variant_value(item.size))
+    extended: list[dict[str, object]] = []
+    for row in rows:
+        sold, cohort = by_size.get(row["value"], (0, 0))
+        size_p30 = rate(sold, cohort)
+        hot = (
+            cohort >= HOT_SIZE_MIN_LISTINGS
+            and size_p30 is not None
+            and scope_p30 is not None
+            and size_p30 >= scope_p30
+        )
+        shown = str(size_p30) if size_p30 is not None else None
+        extended.append({**row, "p30": shown, "p30_n": cohort, "hot": hot})
+    return extended
+
+
+def majority(values: Iterable[str | None]) -> str | None:
+    """The most common known value; ties go to the alphabetically first."""
+
+    counts = Counter(value for value in values if value)
+    if not counts:
+        return None
+    return min(counts, key=lambda value: (-counts[value], value))
 
 
 def _variant_value(value: str | None) -> str | None:
