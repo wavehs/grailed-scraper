@@ -12,9 +12,18 @@ from alembic.config import Config
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.models import Base, Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
+from app.db.models import (
+    Base,
+    Brand,
+    GroupMetric,
+    GroupMetricDaily,
+    Listing,
+    ListingModelAssignment,
+    ModelGroup,
+)
 from app.services.metrics.service import MetricsService
 from app.services.metrics.supply import WHOLESALE_MIN_ACTIVE
+from app.services.per_brand import recompute_brands
 
 AS_OF = datetime(2026, 10, 15, 12, tzinfo=UTC)
 BACKEND = Path(__file__).resolve().parents[1]
@@ -175,6 +184,24 @@ async def test_a_recompute_keeps_the_last_cross_brand_values(tmp_path: Path) -> 
         Decimal("55.50"),
         "all",
     )
+
+
+async def test_recomputing_brands_ranks_them_and_their_snapshots(tmp_path: Path) -> None:
+    factory = await _database(tmp_path / "ranked.db")
+
+    async with factory() as session:
+        await recompute_brands(session, None)
+        row = await session.scalar(select(GroupMetric).where(GroupMetric.scope_key == "model:10"))
+        snapshot = await session.scalar(
+            select(GroupMetricDaily).where(GroupMetricDaily.scope_key == "model:10")
+        )
+
+    assert row is not None and snapshot is not None
+    assert row.p30 is not None and Decimal(0) < row.p30 < Decimal(1)
+    # Three sales in 90 days: no model reaches the reference sample, so no score.
+    assert (row.liquidity_score, row.ls_ref_scope) == (Decimal(0), "none")
+    assert (snapshot.p30, snapshot.liquidity_score) == (row.p30, row.liquidity_score)
+    assert (snapshot.active_effective, snapshot.active_fresh) == (2, 0)
 
 
 def _columns(database: Path) -> set[str]:

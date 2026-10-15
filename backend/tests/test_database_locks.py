@@ -187,7 +187,8 @@ async def test_regroup_and_metrics_commit_once_per_brand(tmp_path: Path) -> None
 
         computed = await recompute_brands(session, [2, 1, 2])
         assert computed.brands == 2
-        assert len(commits) == 4
+        # Plus one for the cross-brand ranking.
+        assert len(commits) == 5
 
 
 @pytest.mark.asyncio

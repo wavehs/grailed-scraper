@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from app.db.models import Brand
 from app.services.grouping import GroupingResult, GroupingService
 from app.services.grouping.service import BrandGroupingStats
 from app.services.metrics import MetricsResult, MetricsService
+from app.services.metrics.ranking import rank_metrics
 
 
 async def _selected(session: AsyncSession, brand_ids: Iterable[int] | None) -> list[int]:
@@ -41,14 +43,20 @@ async def regroup_brands(
 async def recompute_brands(
     session: AsyncSession, brand_ids: Iterable[int] | None
 ) -> MetricsResult:
-    """Recompute group metrics of the brands (all when ``None``) with one commit per brand."""
+    """Recompute group metrics of the brands (all when ``None``) with one commit per brand.
+
+    A last commit ranks every brand's groups together: smoothed P30 and Liquidity Score.
+    """
 
     started = time.perf_counter()
+    moment = datetime.now(UTC)
     selected = await _selected(session, brand_ids)
     rows = listings = 0
     for brand_id in selected:
-        computed = await MetricsService(session).recompute([brand_id])
+        computed = await MetricsService(session).recompute([brand_id], as_of=moment)
         rows += computed.rows
         listings += computed.listings
         await session.commit()
+    await rank_metrics(session, moment.date())
+    await session.commit()
     return MetricsResult(len(selected), rows, listings, time.perf_counter() - started)
