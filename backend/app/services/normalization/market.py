@@ -29,6 +29,7 @@ MARKET_COLUMNS = (
     "seller_trusted",
 )
 _RATING = Decimal("0.001")
+_DEPARTMENT_LENGTH = 32
 _TRUE = frozenset({"1", "true", "yes"})
 _FALSE = frozenset({"0", "false", "no"})
 
@@ -64,7 +65,7 @@ def market_fields(
         "ship_domestic": usd(_nonnegative_money(value("ship_domestic"))),
         "makeoffer": _flag(value("makeoffer")),
         "buynow": _flag(value("buynow")),
-        "department": text(value("department")),
+        "department": (text(value("department")) or "")[:_DEPARTMENT_LENGTH] or None,
         "seller_rating_avg": _rating(value("seller_rating_avg")),
         "seller_rating_count": _count(value("seller_rating_count")),
         "seller_txn_count": _count(value("seller_txn_count")),

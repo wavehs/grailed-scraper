@@ -103,6 +103,11 @@ class ListingRepository:
         update_columns["price_initial"] = func.coalesce(
             Listing.price_initial, statement.excluded.price_initial
         )
+        # Drops only accumulate; a hit listing fewer of them keeps the larger count.
+        update_columns["price_drop_count"] = func.max(
+            func.coalesce(statement.excluded.price_drop_count, Listing.price_drop_count),
+            func.coalesce(Listing.price_drop_count, statement.excluded.price_drop_count),
+        )
         await self._session.execute(
             statement.on_conflict_do_update(
                 index_elements=[Listing.grailed_id], set_=update_columns

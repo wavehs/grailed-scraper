@@ -192,6 +192,31 @@ async def test_a_first_insert_records_the_base_price(tmp_path: Path) -> None:
     assert stored.price_initial == Decimal("500.00")
 
 
+async def test_a_later_hit_never_lowers_the_stored_drop_count(tmp_path: Path) -> None:
+    factory = await _database(tmp_path / "drops.db")
+    sold = await _normalize(SOLD_HIT, status="sold")
+    no_drops = await _normalize(
+        {key: value for key, value in SOLD_HIT.items() if key != "price_drops"}
+    )
+    fewer = await _normalize({**SOLD_HIT, "price_drops": [393, 353]}, status="sold")
+    async with factory() as session:
+        repository = ListingRepository(session)
+        await repository.upsert_batch([sold])
+        await repository.upsert_batch([no_drops])
+        await repository.upsert_batch([fewer])
+        await session.commit()
+        stored = await session.scalar(select(Listing))
+
+    assert no_drops.price_drop_count == 0
+    assert stored is not None and stored.price_drop_count == 5
+
+
+async def test_a_long_department_is_cut_instead_of_rejecting_the_listing() -> None:
+    listing = await _normalize({**ACTIVE_HIT, "department": "x" * 40})
+
+    assert listing.department == "x" * 32
+
+
 async def test_a_listing_built_without_market_fields_starts_at_its_price(tmp_path: Path) -> None:
     factory = await _database(tmp_path / "plain.db")
     plain = (await _normalize(ACTIVE_HIT)).model_copy(update={"price_initial": None})

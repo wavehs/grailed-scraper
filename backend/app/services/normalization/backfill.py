@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Listing
 from app.services.normalization.mapping import SourceMappingConfig
-from app.services.normalization.market import market_fields
+from app.services.normalization.market import MARKET_COLUMNS, market_fields
 
 # About 90 commits for the live database; each holds the write lock only briefly.
 BACKFILL_BATCH = 5_000
@@ -41,7 +41,12 @@ async def backfill_market_fields(
         ).all()
         if not rows:
             break
-        await session.execute(update(Listing), [_columns(mapping, row) for row in rows])
+        # A scrape may have filled a row since the select; its fresher values stand.
+        await session.execute(
+            update(Listing).where(Listing.price_initial.is_(None)),
+            [_columns(mapping, row) for row in rows],
+            execution_options={"synchronize_session": None},
+        )
         await session.commit()
         batches += 1
         updated += len(rows)
@@ -56,10 +61,14 @@ async def backfill_market_fields(
     }
 
 
+_UNKNOWN = dict.fromkeys(MARKET_COLUMNS)
+
+
 def _columns(mapping: SourceMappingConfig, row: Row[Any]) -> dict[str, Any]:
+    # Every row carries the same keys, so the whole batch is one executemany.
     if not row.raw_json:
         # Retention already purged the hit: only the price itself is known.
-        return {"id": row.id, "price_initial": row.price}
+        return {**_UNKNOWN, "id": row.id, "price_initial": row.price}
     foreign = row.price_original is not None
     fields = market_fields(
         mapping,
