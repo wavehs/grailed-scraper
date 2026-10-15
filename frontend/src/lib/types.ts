@@ -352,6 +352,7 @@ export type ScheduledRun = {
   full: boolean;
   attempts: number;
   stop_reason: string | null;
+  maintenance_error: string | null;
   created_at: string;
   finished_at: string | null;
 };

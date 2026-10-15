@@ -64,6 +64,7 @@ export function ScheduleCard({ writable }: { writable: boolean }) {
     onSuccess: () => client.invalidateQueries({ queryKey: ['schedule'] }),
   });
   const status = schedule.data;
+  if (schedule.error) return <ErrorState error={schedule.error} retry={() => schedule.refetch()} />;
   if (!status?.state) return null;
   const reasonKey = `scheduleReason_${status.reason}`;
   const reason = t(reasonKey) === reasonKey ? t(status.reason) : t(reasonKey);
@@ -103,6 +104,11 @@ export function ScheduleCard({ writable }: { writable: boolean }) {
           </div>
         )}
       </dl>
+      {lastRun?.maintenance_error && (
+        <Notice error>
+          {t('scheduleMaintenanceError')}: {lastRun.maintenance_error}
+        </Notice>
+      )}
       {resume.error && <ErrorState error={resume.error} />}
       {resume.isSuccess && <Notice>{t('schedulePauseCleared')}</Notice>}
       {status.paused_until && (

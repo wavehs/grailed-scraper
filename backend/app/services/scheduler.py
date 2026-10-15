@@ -37,6 +37,11 @@ STARTUP_DELAY_S = 60.0
 THROTTLE_PAUSE = timedelta(hours=6)
 # Starts, resumes and launch errors together, per slot.
 SLOT_ATTEMPTS = 3
+# The wait after a failed launch; it doubles with each failure of the same slot.
+LAUNCH_BACKOFF = timedelta(minutes=30)
+# A failed backup or retention is retried this long after the last try, a few times.
+MAINTENANCE_RETRY = timedelta(hours=1)
+MAINTENANCE_ATTEMPTS = 3
 FULL_WEEKDAY = 6  # Sunday
 # A slot found later than this (the Mac slept through it) is left for the next one.
 CATCH_UP = timedelta(hours=20)
@@ -55,9 +60,23 @@ Maintenance = Callable[[Settings], dict[str, object]]
 
 
 class RunStarter(Protocol):
+    launch_lock: asyncio.Lock
+
     def start(self, run_id: int, *, settings: Settings | None = None) -> None: ...
 
     def active_run_ids(self) -> list[int]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SlotLaunches:
+    """Failed launches of one slot; kept in memory, so a restart forgets them."""
+
+    failures: int = 0
+    retry_at: datetime | None = None
+
+    def failed(self, now: datetime) -> SlotLaunches:
+        failures = self.failures + 1
+        return SlotLaunches(failures, now + LAUNCH_BACKOFF * 2 ** (failures - 1))
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +139,8 @@ def decide(
     paused_until: datetime | None,
     active: bool,
     slot_runs: Sequence[SlotRun],
-    launch_failures: int = 0,
+    launches: SlotLaunches | None = None,
+    has_brands: bool = True,
 ) -> Decision:
     """What the current slot needs; ``slot_runs`` are its scheduled runs, oldest first."""
 
@@ -134,12 +154,18 @@ def decide(
     latest = slot_runs[-1] if slot_runs else None
     if latest is not None and not latest.resumable and latest.status in _DONE:
         return Decision("done", latest.status, slot)
-    if sum(run.attempts for run in slot_runs) + launch_failures >= SLOT_ATTEMPTS:
+    launched = launches or SlotLaunches()
+    if sum(run.attempts for run in slot_runs) + launched.failures >= SLOT_ATTEMPTS:
         return Decision("give_up", "attempts", slot)
+    if launched.retry_at is not None and now < launched.retry_at:
+        return Decision("idle", "backoff", slot)
     if latest is not None and latest.resumable:
         return Decision("resume", latest.status, slot, run_id=latest.id)
     if not slot_runs and now - slot > CATCH_UP:
         return Decision("idle", "missed", slot)
+    if not has_brands:
+        # Brands nobody collected yet are never picked up on their own (D4).
+        return Decision("idle", "no_brands", slot)
     return Decision("start", "due", slot, full=slot.weekday() == FULL_WEEKDAY)
 
 
@@ -149,13 +175,10 @@ async def read_state(
     *,
     now: datetime,
     active_run_ids: Sequence[int],
-    launch_failures: Mapping[str, int] | None = None,
+    launches: Mapping[str, SlotLaunches] | None = None,
 ) -> ScheduleState:
     paused_until = await _paused_until(session)
-    active = bool(active_run_ids) or (
-        await session.scalar(select(ParserRun.id).where(ParserRun.status.in_(_ACTIVE)).limit(1))
-        is not None
-    )
+    active = bool(active_run_ids) or await _any_active(session)
     scheduled = await _recent_scheduled(session)
     key = slot_key(slot_start(now, settings.schedule_hour))
     slot_runs = [
@@ -169,7 +192,8 @@ async def read_state(
         paused_until=paused_until,
         active=active,
         slot_runs=slot_runs,
-        launch_failures=(launch_failures or {}).get(key, 0),
+        launches=(launches or {}).get(key),
+        has_brands=bool(settings.schedule_brand_ids) or await _has_collected_brand(session),
     )
     return ScheduleState(decision, paused_until, scheduled[0] if scheduled else None)
 
@@ -210,10 +234,14 @@ class Scheduler:
         self._refresh = refresh
         self._create = create
         self._maintenance = maintenance
-        self._launch_failures: dict[str, int] = {}
+        self._launches: dict[str, SlotLaunches] = {}
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._logged: tuple[str, str, str] | None = None
+
+    @property
+    def launches(self) -> Mapping[str, SlotLaunches]:
+        return dict(self._launches)
 
     def start(self) -> None:
         if self._task is None:
@@ -250,7 +278,7 @@ class Scheduler:
                 settings,
                 now=now,
                 active_run_ids=self._runtime.active_run_ids(),
-                launch_failures=self._launch_failures,
+                launches=self._launches,
             )
         decision = state.decision
         self._log(decision)
@@ -258,46 +286,53 @@ class Scheduler:
             try:
                 await self._launch(settings, decision)
             except Exception as exc:
-                self._launch_failures[decision.key] = self._launch_failures.get(decision.key, 0) + 1
+                previous = self._launches.get(decision.key, SlotLaunches())
+                self._launches[decision.key] = previous.failed(now)
                 structlog.get_logger(__name__).warning(
                     "schedule_launch_failed", slot=decision.key, error_type=type(exc).__name__
                 )
         return decision
 
     async def _launch(self, settings: Settings, decision: Decision) -> None:
-        async with self._sessions() as session:
+        # The same lock as a manual start: the refresh awaits the network, and a run
+        # created by hand meanwhile must not get a scheduled twin.
+        async with self._runtime.launch_lock, self._sessions() as session:
+            await self._refresh(session, settings)
+            if self._runtime.active_run_ids() or await _any_active(session):
+                structlog.get_logger(__name__).info("schedule_run_active", slot=decision.key)
+                return
             if decision.action == "start":
-                brand_ids = settings.schedule_brand_ids or await _collected_brands(session)
-                if not brand_ids:
-                    # Brands nobody collected yet are never picked up on their own (D4).
-                    structlog.get_logger(__name__).info("schedule_no_brands", slot=decision.key)
+                run = await self._create_scheduled(session, settings, decision)
+                if run is None:
                     return
-                await self._refresh(session, settings)
-                schedule = {"slot": decision.key, "full": decision.full, "attempts": 1}
-                run = await self._create(
-                    session,
-                    settings,
-                    brand_ids=brand_ids,
-                    full=decision.full,
-                    stats={
-                        RUN_RPM_KEY: settings.schedule_rpm,
-                        SCHEDULE_KEY: {**schedule, "after": None},
-                    },
-                )
             else:
                 assert decision.run_id is not None
-                await self._refresh(session, settings)
                 run = await RunRepository(session).prepare_resume(decision.run_id)
-                schedule = _schedule(run.stats)
                 attempts = SlotRun(run.id, run.status, run.stats).attempts + 1
                 run.stats = {
                     **run.stats,
-                    SCHEDULE_KEY: {**schedule, "attempts": attempts, "after": None},
+                    SCHEDULE_KEY: {**_schedule(run.stats), "attempts": attempts},
                 }
                 await session.commit()
-        self._runtime.start(run.id, settings=run_settings(settings, run))
+            self._runtime.start(run.id, settings=run_settings(settings, run))
         structlog.get_logger(__name__).info(
             "schedule_run_launched", run_id=run.id, action=decision.action, slot=decision.key
+        )
+
+    async def _create_scheduled(
+        self, session: AsyncSession, settings: Settings, decision: Decision
+    ) -> ParserRun | None:
+        brand_ids = settings.schedule_brand_ids or await _collected_brands(session)
+        if not brand_ids:
+            structlog.get_logger(__name__).info("schedule_no_brands", slot=decision.key)
+            return None
+        schedule = {"slot": decision.key, "full": decision.full, "attempts": 1, "after": None}
+        return await self._create(
+            session,
+            settings,
+            brand_ids=brand_ids,
+            full=decision.full,
+            stats={RUN_RPM_KEY: settings.schedule_rpm, SCHEDULE_KEY: schedule},
         )
 
     async def _follow_up(self, settings: Settings, now: datetime) -> None:
@@ -308,7 +343,7 @@ class Scheduler:
             finished = [
                 SlotRun(run.id, run.status, run.stats)
                 for run in await _recent_scheduled(session)
-                if _schedule(run.stats).get("after") is None
+                if _needs_follow_up(_schedule(run.stats).get("after"), now)
                 and run.status not in _ACTIVE
                 and run.id not in active
             ]
@@ -342,6 +377,8 @@ class Scheduler:
             return {**after, "paused_until": until.isoformat()}
         if not (_schedule(run.stats).get("full") and run.status in _MAINTAINED):
             return after
+        previous = _schedule(run.stats).get("after")
+        failures = _failures(previous) if isinstance(previous, dict) else 0
         async with self._market_lock:
             if self._runtime.active_run_ids():
                 return None  # A manual run slipped in; maintain once it is over.
@@ -349,7 +386,7 @@ class Scheduler:
                 result = await asyncio.to_thread(self._maintenance, settings)
             except Exception as exc:
                 log.exception("schedule_maintenance_failed", run_id=run.id)
-                return {**after, "error": type(exc).__name__}
+                return {**after, "error": type(exc).__name__, "failures": failures + 1}
         log.info("schedule_maintenance_done", run_id=run.id)
         return {**after, "maintenance": result}
 
@@ -367,6 +404,27 @@ class Scheduler:
             structlog.get_logger(__name__).info(
                 "schedule_state", slot=decision.key, action=decision.action, reason=decision.reason
             )
+
+
+def _needs_follow_up(after: object, now: datetime) -> bool:
+    """Not followed up yet, or a failed maintenance that is due another try."""
+
+    if after is None:
+        return True
+    if not isinstance(after, dict) or not after.get("error"):
+        return False
+    if _failures(after) >= MAINTENANCE_ATTEMPTS:
+        return False
+    try:
+        tried = datetime.fromisoformat(str(after.get("at")))
+    except ValueError:
+        return True
+    return now - tried >= MAINTENANCE_RETRY
+
+
+def _failures(after: Mapping[str, Any]) -> int:
+    value = after.get("failures", 1 if after.get("error") else 0)
+    return value if isinstance(value, int) else 1
 
 
 def _schedule(stats: Mapping[str, Any]) -> dict[str, Any]:
@@ -390,6 +448,16 @@ async def _recent_scheduled(session: AsyncSession) -> list[ParserRun]:
 
     runs = await session.scalars(select(ParserRun).order_by(ParserRun.id.desc()).limit(RECENT_RUNS))
     return [run for run in runs if _schedule(run.stats).get("slot")]
+
+
+async def _any_active(session: AsyncSession) -> bool:
+    found = await session.scalar(select(ParserRun.id).where(ParserRun.status.in_(_ACTIVE)).limit(1))
+    return found is not None
+
+
+async def _has_collected_brand(session: AsyncSession) -> bool:
+    found = await session.scalar(select(Listing.id).where(Listing.brand_id.is_not(None)).limit(1))
+    return found is not None
 
 
 async def _collected_brands(session: AsyncSession) -> list[int]:

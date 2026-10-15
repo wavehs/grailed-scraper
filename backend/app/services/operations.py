@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import time
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -21,6 +22,10 @@ BACKUP_GLOB = "*.sqlite3"
 SIDECAR_SUFFIXES = ("-wal", "-shm")
 # VACUUM rewrites the database into a copy and the WAL can grow to its size as well.
 VACUUM_FREE_FACTOR = 2
+# Each batch is one short write transaction, so the app's own writes get a turn in between.
+RETENTION_BATCH = 5_000
+# How long a retention batch waits for the app's write lock before giving up.
+BUSY_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +56,8 @@ def retention(
     apply: bool = False,
     now: datetime | None = None,
     backup_dir: Path | None = None,
+    batch_size: int = RETENTION_BATCH,
+    on_connect: Callable[[sqlite3.Connection], None] | None = None,
 ) -> RetentionResult:
     current = now or datetime.now(UTC)
     raw_cutoff = current - timedelta(days=settings.raw_data_retention_days)
@@ -59,7 +66,9 @@ def retention(
     backups = (backup_dir or backup_directory(settings)).resolve()
     raw_rows = 0
     if database.exists():
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database, timeout=BUSY_TIMEOUT_S)) as connection:
+            if on_connect is not None:
+                on_connect(connection)
             raw_rows = int(
                 connection.execute(
                     "SELECT count(*) FROM listings WHERE last_seen_at < ? AND raw_json != '{}'",
@@ -67,12 +76,7 @@ def retention(
                 ).fetchone()[0]
             )
             if apply and raw_rows:
-                connection.execute(
-                    "UPDATE listings SET raw_json='{}', raw_json_purged_at=? "
-                    "WHERE last_seen_at < ? AND raw_json != '{}'",
-                    (current.isoformat(), raw_cutoff.isoformat()),
-                )
-                connection.commit()
+                _purge_raw(connection, current, raw_cutoff, batch_size)
     expired = _expired_backups(backups, backup_cutoff, settings.backup_keep_count)
     stale, kept = _sidecars(backups, expired)
     if apply:
@@ -88,6 +92,20 @@ def retention(
         raw_cutoff=raw_cutoff.isoformat(),
         backup_cutoff=backup_cutoff.isoformat(),
     )
+
+
+def _purge_raw(
+    connection: sqlite3.Connection, current: datetime, cutoff: datetime, batch_size: int
+) -> None:
+    while True:
+        cursor = connection.execute(
+            "UPDATE listings SET raw_json='{}', raw_json_purged_at=? WHERE rowid IN ("
+            "SELECT rowid FROM listings WHERE last_seen_at < ? AND raw_json != '{}' LIMIT ?)",
+            (current.isoformat(), cutoff.isoformat(), batch_size),
+        )
+        connection.commit()
+        if cursor.rowcount < batch_size:
+            return
 
 
 def backup_database(
@@ -106,10 +124,18 @@ def backup_database(
     target = (destination or backups / f"grailed-{current:%Y%m%dT%H%M%SZ}.sqlite3").resolve()
     if target.parent != backups:
         raise ValueError("Backups must be written inside data/backups")
-    _sqlite_backup(source, target)
-    # The copy inherits WAL mode; DELETE mode keeps each backup a single file.
-    _set_rollback_journal(target)
-    _require_integrity(target)
+    # Built and checked under a name retention never globs, then renamed into place:
+    # a failed or interrupted backup never passes for the newest good one.
+    partial = target.with_name(f"{target.name}.tmp")
+    try:
+        _sqlite_backup(source, partial)
+        # The copy inherits WAL mode; DELETE mode keeps each backup a single file.
+        _set_rollback_journal(partial)
+        _require_integrity(partial)
+        partial.replace(target)
+    finally:
+        for leftover in (partial, *_sidecar_files(partial)):
+            leftover.unlink(missing_ok=True)
     return target
 
 

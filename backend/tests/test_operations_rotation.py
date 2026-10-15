@@ -14,6 +14,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.runtime import SingleInstanceLock
+from app.services import operations
 from app.services.operations import backup_database, restore_database, retention, vacuum_database
 
 
@@ -144,3 +145,41 @@ def test_vacuum_refuses_without_twice_the_database_free(
 
     with pytest.raises(RuntimeError, match="free space"):
         vacuum_database(settings)
+
+
+def test_retention_purges_old_raw_data_in_batches(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    database = _database(settings, rows=7)
+    old = (datetime.now(UTC) - timedelta(days=400)).isoformat()
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("UPDATE listings SET last_seen_at = ? WHERE rowid <= 5", (old,))
+        connection.commit()
+    statements: list[str] = []
+
+    def trace(connection: sqlite3.Connection) -> None:
+        connection.set_trace_callback(statements.append)
+
+    result = retention(settings, apply=True, batch_size=2, on_connect=trace)
+
+    assert result.raw_rows == 5
+    assert sum(statement.startswith("UPDATE listings") for statement in statements) == 3
+    with closing(sqlite3.connect(database)) as connection:
+        purged = connection.execute("SELECT count(*) FROM listings WHERE raw_json = '{}'")
+        assert purged.fetchone()[0] == 5
+
+
+def test_a_backup_that_fails_its_check_leaves_no_backup_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _settings(tmp_path)
+    _database(settings, rows=1)
+
+    def corrupt(database: Path) -> None:
+        raise ValueError("SQLite integrity_check failed")
+
+    monkeypatch.setattr(operations, "_require_integrity", corrupt)
+
+    with pytest.raises(ValueError, match="integrity"):
+        backup_database(settings)
+
+    assert list((settings.data_directory / "backups").iterdir()) == []

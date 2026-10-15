@@ -134,4 +134,104 @@ describe('daily schedule', () => {
     );
     expect(await screen.findByText(/Pause cleared/)).toBeInTheDocument();
   });
+
+  it('blocks saving an hour outside 0–23 and refreshes the schedule after a save', async () => {
+    const groups = {
+      schedule: {
+        schedule_hour: { value: 4, origin: 'default' },
+        schedule_rpm: { value: 90, origin: 'default' },
+      },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.endsWith('/settings')) return json({ groups });
+      if (url.endsWith('/brands')) return json({ data: brands });
+      if (url.endsWith('/parser/schedule')) return json(schedule);
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<SettingsPage />);
+    const hour = await screen.findByLabelText(/Start hour/);
+
+    await userEvent.clear(hour);
+    await userEvent.type(hour, '24');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByText('Enter a whole number from 0 to 23.')).toBeInTheDocument();
+
+    await userEvent.clear(hour);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await userEvent.type(hour, '5');
+    const schedules = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/parser/schedule')).length;
+    const before = schedules();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) => String(input).endsWith('/settings') && init?.method === 'PATCH',
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ schedule_hour: 5 });
+    });
+    await waitFor(() => expect(schedules()).toBeGreaterThan(before));
+  });
+
+  it('rejects a zero rate and clears "Full run" after a start', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/brands')) return json({ data: brands });
+      if (url.includes('/parser/runs?')) return json({ data: [], total: 0, limit: 30, offset: 0 });
+      if (url.endsWith('/parser/run') && init?.method === 'POST') return json({ run });
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<CollectPage />);
+    await screen.findByRole('button', { name: /Chrome Hearts/ });
+
+    await userEvent.type(screen.getByLabelText('Rate, requests/min'), '0');
+    expect(screen.getByRole('button', { name: 'Update data' })).toBeDisabled();
+    expect(screen.getByText('The rate is a whole number of at least 1.')).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText('Rate, requests/min'));
+    await userEvent.click(screen.getByLabelText('Full run'));
+    await userEvent.click(screen.getByRole('button', { name: 'Update data' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Full run')).not.toBeChecked());
+  });
+
+  it('explains a slot without brands and shows a failed backup', async () => {
+    const status = {
+      ...schedule,
+      reason: 'no_brands',
+      paused_until: null,
+      last_run: { ...schedule.last_run, full: true, maintenance_error: 'OSError' },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.endsWith('/settings')) return json({ groups: {} });
+      if (url.endsWith('/parser/schedule')) return json(status);
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<SettingsPage />);
+
+    expect(await screen.findByText(/No brand has collected listings yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Backup or retention failed: OSError/)).toBeInTheDocument();
+  });
+
+  it('shows an error instead of hiding the schedule when it fails to load', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return json(health);
+      if (url.endsWith('/settings')) return json({ groups: {} });
+      if (url.endsWith('/parser/schedule'))
+        return json({ error: { code: 'boom', message: 'Schedule is broken' } }, 500);
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<SettingsPage />);
+
+    expect(await screen.findByText(/Schedule is broken/)).toBeInTheDocument();
+  });
 });

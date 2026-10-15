@@ -35,6 +35,7 @@ class ScheduledRun(BaseModel):
     full: bool
     attempts: int
     stop_reason: str | None
+    maintenance_error: str | None
     created_at: datetime
     finished_at: datetime | None
 
@@ -55,15 +56,19 @@ class ScheduleResponse(BaseModel):
 
 @router.get("", response_model=ScheduleResponse)
 async def read_schedule(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
 ) -> ScheduleResponse:
+    scheduler = getattr(request.app.state, "scheduler", None)
     state = await read_state(
         session,
         settings,
         now=datetime.now().astimezone(),
         active_run_ids=runtime.active_run_ids(),
+        # The scheduler's failed launches, so the card shows a backoff or a give-up.
+        launches=scheduler.launches if isinstance(scheduler, Scheduler) else None,
     )
     return ScheduleResponse(
         enabled=settings.schedule_enabled,
@@ -97,6 +102,8 @@ def _scheduled(run: ParserRun | None) -> ScheduledRun | None:
         return None
     schedule = run.stats.get(SCHEDULE_KEY, {})
     stop_reason = run.stats.get("stop_reason")
+    after = schedule.get("after")
+    error = after.get("error") if isinstance(after, dict) else None
     return ScheduledRun(
         id=run.id,
         status=run.status,
@@ -104,6 +111,7 @@ def _scheduled(run: ParserRun | None) -> ScheduledRun | None:
         full=bool(schedule.get("full", False)),
         attempts=int(schedule.get("attempts", 1)),
         stop_reason=stop_reason if isinstance(stop_reason, str) else None,
+        maintenance_error=error if isinstance(error, str) else None,
         created_at=run.created_at,
         finished_at=run.finished_at,
     )

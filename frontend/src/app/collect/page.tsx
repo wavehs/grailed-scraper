@@ -38,6 +38,7 @@ export default function CollectPage() {
   const [notice, setNotice] = useState('');
   const [full, setFull] = useState(false);
   const [rpm, setRpm] = useState('');
+  const rpmInvalid = rpm !== '' && !(Number.isInteger(Number(rpm)) && Number(rpm) >= 1);
   const runs = useRunsQuery(30, 0, (query: { state: { data?: { data: RunSummary[] } } }) =>
     query.state.data?.data.some((run) => !terminal.has(run.status)) ? 2_000 : false,
   );
@@ -73,10 +74,12 @@ export default function CollectPage() {
       api<RunStartResponse>('/parser/run', 'POST', {
         brand_ids: selected && selected.length < mapped.length ? selected : null,
         ...(full ? { full: true } : {}),
-        ...(Number.isInteger(Number(rpm)) && Number(rpm) >= 1 ? { rpm: Number(rpm) } : {}),
+        ...(rpm !== '' ? { rpm: Number(rpm) } : {}),
       }),
     onSuccess: () => {
       setNotice(t('collectionStarted'));
+      // A full run is a one-off choice; the next start is a delta again.
+      setFull(false);
       refreshAll();
     },
   });
@@ -211,10 +214,15 @@ export default function CollectPage() {
                 onChange={(event) => setRpm(event.target.value)}
               />
             </label>
+            {rpmInvalid && (
+              <span role="alert" className="text-xs text-[var(--danger)]">
+                {t('runRpmInvalid')}
+              </span>
+            )}
           </div>
           <Button
             icon={<Play size={16} />}
-            disabled={!(selected ?? []).length || start.isPending}
+            disabled={!(selected ?? []).length || rpmInvalid || start.isPending}
             onClick={() => start.mutate()}
           >
             {start.isPending ? t('starting') : t('updateData')}

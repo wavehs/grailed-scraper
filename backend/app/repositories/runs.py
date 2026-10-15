@@ -155,16 +155,25 @@ class RunRepository:
         )
         run.status = "pending"
         run.phase = "fetching"
-        # A resumed run is judged on how it ends this time.
-        run.stats = {key: value for key, value in run.stats.items() if key != "stop_reason"}
+        # A resumed run is judged on how it ends this time, by hand or by the schedule:
+        # its follow-up (pause, backup, retention) is due again once it ends.
+        stats = {key: value for key, value in run.stats.items() if key != "stop_reason"}
+        schedule = stats.get("schedule")
+        if isinstance(schedule, dict):
+            stats["schedule"] = {**schedule, "after": None}
+        run.stats = stats
         run.finished_at = None
         run.heartbeat_at = datetime.now(UTC)
         await self._session.flush()
         return run
 
     async def reconcile_interrupted(self) -> int:
+        """At startup no run has a task yet: a pending one was created but never began."""
+
         run_ids = list(
-            await self._session.scalars(select(ParserRun.id).where(ParserRun.status == "running"))
+            await self._session.scalars(
+                select(ParserRun.id).where(ParserRun.status.in_(("pending", "running")))
+            )
         )
         if not run_ids:
             return 0

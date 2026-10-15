@@ -20,6 +20,33 @@ const selects: Record<string, string[]> = {
   store_seller_identity: ['none', 'hashed', 'plain'],
 };
 const optionalNumbers = new Set(['collect_price_min_usd', 'collect_price_max_usd']);
+type Bounds = { min: number; max?: number; integer: boolean };
+// Mirrors the API's validation so an out-of-range value never reaches a 422.
+const bounds: Record<string, Bounds> = {
+  requests_per_minute: { min: 1, integer: true },
+  max_concurrent_requests: { min: 1, max: 3, integer: true },
+  sold_history_days: { min: 30, max: 3650, integer: true },
+  collect_price_min_usd: { min: 0, integer: false },
+  collect_price_max_usd: { min: 1, integer: false },
+  schedule_hour: { min: 0, max: 23, integer: true },
+  schedule_rpm: { min: 1, integer: true },
+};
+
+/** The message for an invalid number, or null when the value is acceptable. */
+function rangeError(name: string, value: SettingValue, t: (key: string) => string) {
+  const limit = bounds[name];
+  if (!limit || (value === null && optionalNumbers.has(name))) return null;
+  const number = typeof value === 'number' ? value : Number.NaN;
+  const valid =
+    Number.isFinite(number) &&
+    number >= limit.min &&
+    (limit.max === undefined || number <= limit.max) &&
+    (!limit.integer || Number.isInteger(number));
+  if (valid) return null;
+  const key =
+    limit.max !== undefined ? 'numberOutOfRange' : limit.integer ? 'wholeAtLeast' : 'numberAtLeast';
+  return t(key).replace('{min}', String(limit.min)).replace('{max}', String(limit.max));
+}
 const groupIcons: Record<string, JSX.Element> = {
   collection: <SlidersHorizontal size={16} />,
   privacy: <Shield size={16} />,
@@ -55,6 +82,8 @@ export default function SettingsPage() {
       client.setQueryData(['settings'], data);
       setNotice(t('updated'));
       client.invalidateQueries({ queryKey: ['parser-health'] });
+      // The hour, rate and switch change what the schedule card reports.
+      client.invalidateQueries({ queryKey: ['schedule'] });
     },
   });
   const discovery = useMutation({
@@ -70,6 +99,7 @@ export default function SettingsPage() {
   const update = (key: string, value: SettingValue) =>
     setValues((old) => ({ ...old, [key]: value }));
   const source = parserHealth.data?.discovery;
+  const invalid = Object.entries(values).some(([key, value]) => rangeError(key, value, t));
   return (
     <section className="space-y-6" aria-labelledby="settings-heading">
       <PageHeader title={t('settings')} description={t('settingsIntro')} />
@@ -113,7 +143,7 @@ export default function SettingsPage() {
             </label>
           </Notice>
         )}
-        <Button icon={<Save size={16} />} disabled={!health.writable || save.isPending}>
+        <Button icon={<Save size={16} />} disabled={!health.writable || invalid || save.isPending}>
           {save.isPending ? t('saving') : t('save')}
         </Button>
       </form>
@@ -160,6 +190,8 @@ function SettingField({
   const { t } = useI18n();
   const label = t(name);
   const numeric = typeof entry.value === 'number' || optionalNumbers.has(name);
+  const limit = bounds[name];
+  const problem = rangeError(name, value, t);
   const header = (
     <div className="mb-1.5 flex items-center gap-2">
       <span className="font-medium text-[var(--text-primary)]">{label}</span>
@@ -214,15 +246,25 @@ function SettingField({
         <input
           className="w-full rounded-lg"
           type={numeric ? 'number' : 'text'}
-          min={0}
+          min={limit?.min ?? 0}
+          max={limit?.max}
+          step={limit && !limit.integer ? 'any' : undefined}
+          aria-invalid={problem ? true : undefined}
           placeholder={optionalNumbers.has(name) ? t('noLimit') : undefined}
-          value={value === null ? '' : String(value)}
+          value={value === null || Number.isNaN(value) ? '' : String(value)}
           onChange={(event) => {
             const raw = event.target.value;
             if (!numeric) return update(name, raw);
-            update(name, raw === '' && optionalNumbers.has(name) ? null : Number(raw));
+            // An emptied required field is invalid, not zero.
+            if (raw === '') return update(name, optionalNumbers.has(name) ? null : Number.NaN);
+            update(name, Number(raw));
           }}
         />
+      )}
+      {problem && (
+        <p role="alert" className="mt-1 text-xs text-[var(--danger)]">
+          {problem}
+        </p>
       )}
     </label>
   );

@@ -200,6 +200,13 @@ def get_parser_runtime(request: Request) -> ParserRuntime:
     return runtime
 
 
+async def _require_no_active_run(session: AsyncSession, runtime: ParserRuntime) -> None:
+    if runtime.active_run_ids() or await session.scalar(
+        select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
+    ):
+        raise ApiError(409, "run_active", "A collection run is already in progress")
+
+
 @router.post("/run", status_code=202)
 async def start_run(
     payload: RunRequest,
@@ -207,19 +214,18 @@ async def start_run(
     settings: Annotated[Settings, Depends(get_effective_settings)],
     runtime: Annotated[ParserRuntime, Depends(get_parser_runtime)],
 ) -> dict[str, Any]:
-    if runtime.active_run_ids() or await session.scalar(
-        select(ParserRun.id).where(ParserRun.status.in_(("pending", "running"))).limit(1)
-    ):
-        raise ApiError(409, "run_active", "A collection run is already in progress")
-    await ensure_discovery(session, settings)
-    stats = {RUN_RPM_KEY: payload.rpm} if payload.rpm is not None else None
-    try:
-        run = await create_run(
-            session, settings, brand_ids=payload.brand_ids, full=payload.full, stats=stats
-        )
-    except LaunchError as exc:
-        raise ApiError(exc.status, exc.code, exc.message) from exc
-    runtime.start(run.id, settings=run_settings(settings, run))
+    # The scheduler takes the same lock: the discovery refresh below awaits the network.
+    async with runtime.launch_lock:
+        await _require_no_active_run(session, runtime)
+        await ensure_discovery(session, settings)
+        stats = {RUN_RPM_KEY: payload.rpm} if payload.rpm is not None else None
+        try:
+            run = await create_run(
+                session, settings, brand_ids=payload.brand_ids, full=payload.full, stats=stats
+            )
+        except LaunchError as exc:
+            raise ApiError(exc.status, exc.code, exc.message) from exc
+        runtime.start(run.id, settings=run_settings(settings, run))
     return {"run": _summary(run).model_dump(mode="json")}
 
 
@@ -434,15 +440,17 @@ async def resume_run(
     existing = await repository.get(run_id)
     if existing is None:
         raise ApiError(404, "run_not_found", "Parser run does not exist")
-    await ensure_discovery(session, settings)
-    try:
-        run = await repository.prepare_resume(run_id)
-    except LookupError as exc:
-        raise ApiError(404, "run_not_found", "Parser run does not exist") from exc
-    except ValueError as exc:
-        raise ApiError(409, "run_not_resumable", "Parser run cannot be resumed") from exc
-    await session.commit()
-    runtime.start(run_id, settings=run_settings(settings, run))
+    async with runtime.launch_lock:
+        await _require_no_active_run(session, runtime)
+        await ensure_discovery(session, settings)
+        try:
+            run = await repository.prepare_resume(run_id)
+        except LookupError as exc:
+            raise ApiError(404, "run_not_found", "Parser run does not exist") from exc
+        except ValueError as exc:
+            raise ApiError(409, "run_not_resumable", "Parser run cannot be resumed") from exc
+        await session.commit()
+        runtime.start(run_id, settings=run_settings(settings, run))
     return _summary(run)
 
 

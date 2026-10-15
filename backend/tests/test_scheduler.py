@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -16,9 +17,13 @@ from app.core.config import Settings
 from app.db.models import AppSetting, Base, Brand, Listing, ParserRun
 from app.db.session import create_database_engine, get_db
 from app.main import app
+from app.repositories.runs import RunRepository
 from app.services import scheduler as scheduler_module
 from app.services.parser.launch import LaunchError
 from app.services.scheduler import (
+    LAUNCH_BACKOFF,
+    MAINTENANCE_ATTEMPTS,
+    MAINTENANCE_RETRY,
     PAUSE_KEY,
     SLOT_ATTEMPTS,
     THROTTLE_PAUSE,
@@ -104,6 +109,7 @@ def test_only_the_sunday_slot_is_a_full_run() -> None:
 
 class FakeRuntime:
     def __init__(self) -> None:
+        self.launch_lock = asyncio.Lock()
         self.active: list[int] = []
         self.started: list[tuple[int, int]] = []
 
@@ -124,6 +130,8 @@ class Harness:
         self.runtime = FakeRuntime()
         self.created: list[tuple[list[int] | None, bool]] = []
         self.launch_error: Exception | None = None
+        self.refreshes = 0
+        self.during_refresh: ParserRun | None = None
         self.maintenance: list[str] = []
         self.scheduler = Scheduler(
             sessions,
@@ -140,6 +148,10 @@ class Harness:
         return self.settings
 
     async def _refresh(self, session: AsyncSession, settings: Settings) -> None:
+        self.refreshes += 1
+        if self.during_refresh is not None:
+            session.add(self.during_refresh)
+            await session.commit()
         if self.launch_error is not None:
             raise self.launch_error
 
@@ -340,7 +352,7 @@ async def test_a_delta_run_is_not_backed_up(harness: Harness) -> None:
     assert harness.maintenance == []
 
 
-async def test_a_failing_maintenance_is_recorded_once(harness: Harness) -> None:
+async def test_a_failing_maintenance_is_retried_then_left_recorded(harness: Harness) -> None:
     def broken(settings: Settings) -> dict[str, object]:
         harness.maintenance.append("broken")
         raise OSError("disk full")
@@ -357,14 +369,72 @@ async def test_a_failing_maintenance_is_recorded_once(harness: Harness) -> None:
     )
     harness.now = SUNDAY
     await harness.scheduler.tick()
-    await harness.finish(harness.runtime.started[0][0], "partial")
+    run_id = harness.runtime.started[0][0]
+    await harness.finish(run_id, "partial")
 
     await harness.scheduler.tick()
     await harness.scheduler.tick()
-
     assert harness.maintenance == ["broken"]
-    after = (await harness.run(harness.runtime.started[0][0])).stats["schedule"]["after"]
-    assert after["error"] == "OSError"
+
+    for _ in range(MAINTENANCE_ATTEMPTS + 1):
+        harness.now += MAINTENANCE_RETRY
+        await harness.scheduler.tick()
+
+    assert harness.maintenance == ["broken"] * MAINTENANCE_ATTEMPTS
+    after = (await harness.run(run_id)).stats["schedule"]["after"]
+    assert after["error"] == "OSError" and after["failures"] == MAINTENANCE_ATTEMPTS
+
+
+async def test_a_retried_maintenance_that_succeeds_clears_the_error(harness: Harness) -> None:
+    failures = ["disk full"]
+
+    def flaky(settings: Settings) -> dict[str, object]:
+        if failures:
+            raise OSError(failures.pop())
+        return {"backup": "grailed.sqlite3"}
+
+    harness.scheduler = Scheduler(
+        harness.sessions,
+        harness.runtime,
+        harness.settings,
+        load_settings=harness._load,
+        clock=lambda: harness.now,
+        refresh=harness._refresh,
+        create=harness._create,
+        maintenance=flaky,
+    )
+    harness.now = SUNDAY
+    await harness.scheduler.tick()
+    run_id = harness.runtime.started[0][0]
+    await harness.finish(run_id, "completed")
+    await harness.scheduler.tick()
+
+    harness.now += MAINTENANCE_RETRY
+    await harness.scheduler.tick()
+
+    after = (await harness.run(run_id)).stats["schedule"]["after"]
+    assert after["maintenance"] == {"backup": "grailed.sqlite3"} and "error" not in after
+
+
+async def test_a_failed_launch_backs_off_before_the_next_attempt(harness: Harness) -> None:
+    harness.launch_error = LaunchError(503, "discovery_failed", "no credentials")
+
+    await harness.scheduler.tick()
+    decision = await harness.scheduler.tick()
+    assert harness.refreshes == 1
+    assert (decision.action, decision.reason) == ("idle", "backoff")
+
+    harness.now += LAUNCH_BACKOFF
+    await harness.scheduler.tick()
+    assert harness.refreshes == 2
+
+    # The wait doubles after each failure.
+    harness.now += LAUNCH_BACKOFF
+    await harness.scheduler.tick()
+    assert harness.refreshes == 2
+    harness.now += LAUNCH_BACKOFF
+    await harness.scheduler.tick()
+    assert harness.refreshes == 3
 
 
 async def test_a_slot_gives_up_after_repeated_launch_errors(harness: Harness) -> None:
@@ -372,15 +442,77 @@ async def test_a_slot_gives_up_after_repeated_launch_errors(harness: Harness) ->
 
     for _ in range(SLOT_ATTEMPTS + 2):
         await harness.scheduler.tick()
-    assert harness.created == []
+        harness.now += LAUNCH_BACKOFF * 4
+    assert harness.created == [] and harness.refreshes == SLOT_ATTEMPTS
 
     harness.launch_error = None
-    await harness.scheduler.tick()
-    assert harness.created == []
+    decision = await harness.scheduler.tick()
+    assert harness.created == [] and decision.action == "give_up"
 
     harness.now = THURSDAY + timedelta(days=1)
     await harness.scheduler.tick()
     assert len(harness.created) == 1
+
+
+async def test_a_run_started_by_hand_during_the_refresh_is_not_doubled(
+    harness: Harness,
+) -> None:
+    harness.during_refresh = ParserRun(
+        source="grailed",
+        mode="delta",
+        status="pending",
+        dry_run=False,
+        degraded_mode=False,
+        requests_made=0,
+        warnings=[],
+        stats={},
+        created_at=THURSDAY,
+    )
+
+    await harness.scheduler.tick()
+
+    assert harness.refreshes == 1 and harness.created == []
+    assert harness.runtime.started == []
+
+
+async def test_a_scheduled_run_resumed_by_hand_is_still_maintained(harness: Harness) -> None:
+    harness.now = SUNDAY
+    await harness.scheduler.tick()
+    run_id = harness.runtime.started[0][0]
+    await harness.finish(run_id, "partial", stop_reason="throttled")
+    await harness.scheduler.tick()
+    assert (await harness.run(run_id)).stats["schedule"]["after"] is not None
+
+    async with harness.sessions() as session:
+        await RunRepository(session).prepare_resume(run_id)
+        await session.commit()
+    harness.runtime.active.append(run_id)
+    await harness.finish(run_id, "completed")
+    await harness.scheduler.tick()
+
+    assert harness.maintenance == ["ran"]
+
+
+async def test_startup_interrupts_a_run_left_pending_by_a_crash(harness: Harness) -> None:
+    await harness.scheduler.tick()
+    run_id = harness.runtime.started[0][0]
+
+    async with harness.sessions() as session:
+        count = await RunRepository(session).reconcile_interrupted()
+        await session.commit()
+
+    assert count == 1
+    assert (await harness.run(run_id)).status == "interrupted"
+
+
+async def test_a_slot_without_any_brand_says_so(tmp_path: Path) -> None:
+    sessions = await _database(tmp_path / "nobrands.db")
+    harness = Harness(sessions, _settings())
+
+    decision = await harness.scheduler.tick()
+
+    assert (decision.action, decision.reason) == ("idle", "no_brands")
+    assert harness.refreshes == 0
 
 
 async def test_a_manual_run_holds_the_schedule_back(harness: Harness) -> None:
@@ -399,8 +531,6 @@ async def test_the_scheduler_task_stops_cleanly(harness: Harness) -> None:
 
 
 def test_the_schedule_api_reports_and_clears_the_pause(tmp_path: Path) -> None:
-    import asyncio
-
     sessions = asyncio.run(_database(tmp_path / "api.db"))
 
     async def set_pause() -> None:

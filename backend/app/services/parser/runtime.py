@@ -75,6 +75,9 @@ class ParserRuntime:
         self._throttle_streak: dict[int, int] = {}
         self._throttled: set[int] = set()
         self._write_lock = asyncio.Lock()
+        # Held from the "no active run" check until the new run is started, by the API and
+        # the scheduler alike, so the two never create a run each.
+        self.launch_lock = asyncio.Lock()
         self._last_health: dict[str, Any] = {
             "circuits": [],
             "proxies": [],
