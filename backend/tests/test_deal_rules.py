@@ -20,6 +20,7 @@ SCHEDULE = load_fees()
 RULES = DealRules()
 GROUP = GroupFacts(
     slug="sisyphus",
+    product_type="lowtop_sneakers",
     status="auto",
     source="seed",
     support=40,
@@ -69,6 +70,8 @@ def test_a_cheap_listing_of_a_liquid_trusted_model_from_a_rated_seller_is_a_deal
     [
         (OFFER, replace(GROUP, slug="_none"), "fallback"),
         (OFFER, replace(GROUP, is_fallback=True), "fallback"),
+        (OFFER, replace(GROUP, slug="_desc-leather"), "fallback"),
+        (OFFER, replace(GROUP, product_type="review"), "fallback"),
         (OFFER, replace(GROUP, status="ignored"), "ignored_group"),
         (OFFER, replace(GROUP, retired=True), "retired"),
         (OFFER, replace(GROUP, source="mined", support=3), "unproven_group"),
@@ -90,6 +93,12 @@ def test_each_rule_names_its_reason(offer: Offer, group: GroupFacts, reason: str
     assert reason in judgement.reasons
     assert not judgement.is_deal
     assert set(judgement.reasons) <= set(REASONS)
+
+
+def test_a_collab_line_can_be_a_deal() -> None:
+    judgement = judge(OFFER, replace(GROUP, slug="_collab-reebok"), RULES, SCHEDULE)
+
+    assert judgement.is_deal, judgement.reasons
 
 
 def test_a_mined_model_is_proven_by_confirmation_or_support() -> None:

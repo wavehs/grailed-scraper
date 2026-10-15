@@ -61,6 +61,7 @@ class _Row:
     trusted: bool | None
     group_id: int
     slug: str
+    product_type: str
     status: str
     source: str
     support: int | None
@@ -138,6 +139,7 @@ async def _rows(
             Listing.seller_trusted,
             ModelGroup.id,
             ModelGroup.slug,
+            ModelGroup.product_type,
             ModelGroup.status,
             ModelGroup.source,
             ModelGroup.support,
@@ -202,6 +204,7 @@ def _offer(row: _Row, wholesale: bool) -> Offer:
 def _group(row: _Row) -> GroupFacts:
     return GroupFacts(
         slug=row.slug,
+        product_type=row.product_type,
         status=row.status,
         source=row.source,
         support=row.support,

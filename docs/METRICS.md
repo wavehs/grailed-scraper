@@ -340,7 +340,7 @@ group_not_found`.
 
 | Условие | Отказ |
 |---|---|
-| группа не «Без модели» и не фолбэк области | `fallback` |
+| группа — модель или линия коллаба: не «Без модели», не описание (`_desc-`), не тип `review` | `fallback` |
 | группа не `ignored` и не выведена | `ignored_group`, `retired` |
 | модель доказана: `confirmed`, источник `seed`/`user` или `support ≥ 10` | `unproven_group` |
 | LS модели ≥ `deals_min_liquidity_score` (50; D10) | `illiquid` |

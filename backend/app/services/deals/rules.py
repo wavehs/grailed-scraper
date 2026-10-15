@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.services.grouping.kinds import NONE_SLUG
+from app.services.grouping.kinds import group_kind
 from app.services.metrics.fees import FeeSchedule, Resale, resale
 
 MIN_SELLER_RATINGS = 5
@@ -23,6 +23,8 @@ MIN_SUPPORT = 10
 # Under this share of the bucket median an ask is likelier a fake or a typo than a deal.
 FLOOR_RATIO = Decimal("0.3")
 TRUSTED_SOURCES = frozenset({"seed", "user"})
+# Buckets that are not one model, as in the grouping evaluation; a collab line still counts.
+NOT_A_MODEL = frozenset({"none", "descriptor", "review"})
 
 REASONS = (
     "fallback",
@@ -52,6 +54,7 @@ class DealRules:
 @dataclass(frozen=True, slots=True)
 class GroupFacts:
     slug: str
+    product_type: str
     status: str
     source: str
     support: int | None
@@ -125,7 +128,7 @@ def judge(offer: Offer, group: GroupFacts, rules: DealRules, schedule: FeeSchedu
 
 
 def group_reasons(group: GroupFacts, rules: DealRules) -> list[str]:
-    if group.slug == NONE_SLUG or group.is_fallback:
+    if group.is_fallback or group_kind(group.slug, group.product_type) in NOT_A_MODEL:
         return ["fallback"]
     reasons = []
     if group.status == "ignored":
