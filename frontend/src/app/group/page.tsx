@@ -5,6 +5,10 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Clock3, ExternalLink, PackageCheck, Percent, ShoppingBag, TrendingUp } from 'lucide-react';
 import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } from '@/components/group-editor';
+import { AskVsSoldPanel } from '@/components/ask-vs-sold';
+import { formatRatio } from '@/components/liquidity-cells';
+import { MonthCharts } from '@/components/month-charts';
+import { ResaleCalculator } from '@/components/resale-calculator';
 import { WeeklyCharts } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -14,7 +18,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useTrendCardQuery, useTypeNames } from '@/lib/queries';
-import type { TrendListing, TrendRow, TrendVariant } from '@/lib/types';
+import type { TrendCondition, TrendListing, TrendRow, TrendVariant } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 
 function GroupCard() {
@@ -25,7 +29,8 @@ function GroupCard() {
   const id = Number(searchParams.get('id'));
   const groupId = Number.isInteger(id) && id > 0 ? id : null;
   const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
-  const card = useTrendCardQuery(groupId, windowDays);
+  const [condition, setCondition] = useState<TrendCondition>('all');
+  const card = useTrendCardQuery(groupId, windowDays, condition);
   if (groupId === null) return <EmptyState />;
   if (card.isLoading) return <LoadingState />;
   if (!card.data) return <ErrorState error={card.error} retry={() => card.refetch()} />;
@@ -109,6 +114,18 @@ function GroupCard() {
               computedAt={card.data.computed_at}
             />
           </Card>
+          {card.data.months.length > 0 && (
+            <Card className="p-5">
+              <MonthCharts months={card.data.months} overlay={card.data.season_overlay} />
+            </Card>
+          )}
+          <div className="grid gap-5 lg:grid-cols-2">
+            <AskVsSoldPanel price={metrics.price} condition={condition} onCondition={setCondition} />
+            <ResaleCalculator
+              defaultExpected={metrics.price?.p50 ?? metrics.median_price}
+              daysToSell={daysToSell(metrics)}
+            />
+          </div>
         </>
       ) : (
         <EmptyState />
@@ -125,7 +142,7 @@ function GroupCard() {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <VariantTable title={t('popularColors')} rows={card.data.colors} />
-        <VariantTable title={t('popularSizes')} rows={card.data.sizes} />
+        <VariantTable title={t('popularSizes')} rows={card.data.sizes} sizes />
       </div>
 
       <ListingTable title={t('recentSales')} rows={card.data.recent_sales} brandId={group.brand_id} sold />
@@ -196,8 +213,15 @@ function MetricTable({ rows }: { rows: TrendRow[] }) {
   );
 }
 
-function VariantTable({ title, rows }: { title: string; rows: TrendVariant[] }) {
+/** Expected days to sell from P30, else the observed median. */
+function daysToSell(metrics: TrendRow): number | null {
+  const value = metrics.expected_days ?? metrics.median_days_to_sell;
+  return value === null || value === undefined ? null : Number(value);
+}
+
+function VariantTable({ title, rows, sizes = false }: { title: string; rows: TrendVariant[]; sizes?: boolean }) {
   const { t } = useI18n();
+  const showP30 = sizes && rows.some((row) => (row.p30 ?? null) !== null);
   return (
     <Card className="space-y-2 p-4">
       <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
@@ -212,15 +236,28 @@ function VariantTable({ title, rows }: { title: string; rows: TrendVariant[] }) 
               <th className="py-1 font-medium">{t('sold')}</th>
               <th className="py-1 font-medium">{t('active')}</th>
               <th className="py-1 font-medium">{t('sellThrough')}</th>
+              {showP30 && <th className="py-1 font-medium">{t('sizeP30')}</th>}
             </tr>
           </thead>
           <tbody className="tabular-nums text-[var(--text-secondary)]">
             {rows.map((row) => (
               <tr key={row.value} className="border-t border-[var(--border-subtle)]">
-                <td className="py-1 text-[var(--text-primary)]">{row.value}</td>
+                <td className="py-1 text-[var(--text-primary)]">
+                  {row.value}
+                  {row.hot && (
+                    <span className="ml-1 text-xs text-[var(--warning)]" title={t('hotSizeHelp')}>
+                      🔥 {t('hotSize')}
+                    </span>
+                  )}
+                </td>
                 <td className="py-1">{row.sold}</td>
                 <td className="py-1">{row.active}</td>
                 <td className="py-1">{formatPercent(row.sell_through)}</td>
+                {showP30 && (
+                  <td className="py-1">
+                    {(row.p30 ?? null) === null ? '—' : `${formatRatio(row.p30)} · n=${row.p30_n ?? 0}`}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

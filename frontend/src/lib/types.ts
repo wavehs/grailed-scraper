@@ -355,7 +355,48 @@ export type TrendList = {
   period?: PeriodCoverage | null;
 };
 
-export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
+export type TrendVariant = {
+  value: string;
+  sold: number;
+  active: number;
+  sell_through: string;
+  /** Sizes only: the size's own P30, its cohort and whether it sells at least as well as the model. */
+  p30?: string | null;
+  p30_n?: number | null;
+  hot?: boolean;
+};
+
+/** One calendar month of the card's year; cents. The running month is `partial`. */
+export type MonthPoint = {
+  month: string;
+  partial: boolean;
+  sold: number;
+  sold_new: number;
+  sold_used: number;
+  p50: number | null;
+  p50_new: number | null;
+  p50_used: number | null;
+};
+
+/** The type's seasonal index per calendar month, January first. */
+export type SeasonOverlay = {
+  profile_key: string;
+  si_abs: Array<number | null>;
+  months_covered: number;
+  stable: boolean | null;
+};
+
+/** `config/fees.yaml`; amounts and rates are decimal strings. */
+export type FeeSchedule = {
+  effective_from: string;
+  source: string;
+  commission: {
+    tiers: Array<{ from_usd: string; rate: string }>;
+    minimum_usd: string;
+    tier_base: 'price' | 'price_with_shipping';
+  };
+  processing: { fixed_usd: string; domestic_rate: string; international_rate: string };
+};
 
 export type TrendListing = {
   id: number;
@@ -386,6 +427,8 @@ export type TrendCard = {
   type_metrics: TrendRow | null;
   recent_sales: TrendListing[];
   active_listings: TrendListing[];
+  months: MonthPoint[];
+  season_overlay: SeasonOverlay | null;
 };
 
 export type TrendFilters = {

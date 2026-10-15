@@ -332,6 +332,8 @@ describe('stage 10 screens', () => {
               },
             ],
             active_listings: [],
+            months: [],
+            season_overlay: null,
           });
         if (url.endsWith('/groups/1')) return json(group);
         if (url.includes('/groups?')) return json({ data: [group], total: 1 });

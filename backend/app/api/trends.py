@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.errors import ApiError
 from app.api.groups import GroupDetail, group_detail_data
 from app.api.mutation import MutationRoute
+from app.api.trend_card_history import MonthPoint, SeasonOverlay, month_points, type_overlay
 from app.api.trend_fields import (
     LOW_DATA_SALES,
     Condition,
@@ -104,6 +105,10 @@ class VariantRow(BaseModel):
     sold: int
     active: int
     sell_through: Decimal
+    # Sizes only (docs/METRICS.md §9): the size's own P30, its cohort and the hot flag.
+    p30: Decimal | None = None
+    p30_n: int | None = None
+    hot: bool = False
 
 
 class SaleRow(BaseModel):
@@ -135,6 +140,8 @@ class TrendCard(BaseModel):
     type_metrics: TrendRow | None
     recent_sales: list[SaleRow]
     active_listings: list[SaleRow]
+    months: list[MonthPoint] = []
+    season_overlay: SeasonOverlay | None = None
 
 
 @router.get("", response_model=TrendListResponse)
@@ -299,6 +306,8 @@ async def trend_card(
     scope_ids = [group.id, *version_ids]
     recent = await _listings(session, scope_ids, groups_by_id, sold=True, limit=25)
     active = await _listings(session, scope_ids, groups_by_id, sold=False, limit=12)
+    months = await month_points(session, f"model:{group_id}", datetime.now(UTC).date())
+    overlay = await type_overlay(session, group.product_type, metric.department if metric else None)
     return TrendCard(
         group=detail,
         metrics=(
@@ -344,6 +353,8 @@ async def trend_card(
         ),
         recent_sales=recent,
         active_listings=active,
+        months=months,
+        season_overlay=overlay,
     )
 
 

@@ -5,6 +5,7 @@ import { periodRange } from '@/lib/periods';
 import type {
   ApiHealth,
   BrandList,
+  FeeSchedule,
   GroupDetail,
   GroupList,
   ParserHealth,
@@ -13,6 +14,7 @@ import type {
   SettingsResponse,
   Taxonomy,
   TrendCard,
+  TrendCondition,
   TrendFilters,
   TrendList,
 } from '@/lib/types';
@@ -165,11 +167,20 @@ export function useTrendsQuery(filters: TrendFilters, offset = 0) {
   });
 }
 
-export function useTrendCardQuery(groupId: number | null, window: number) {
+export function useTrendCardQuery(groupId: number | null, window: number, condition: TrendCondition = 'all') {
   return useQuery({
-    queryKey: ['trend-card', groupId, window],
+    queryKey: ['trend-card', groupId, window, condition],
     queryFn: ({ signal }) =>
-      getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}`, signal),
+      getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}&condition=${condition}`, signal),
     enabled: groupId !== null,
+  });
+}
+
+/** The Grailed fee schedule; it changes only with a deploy. */
+export function useFeesQuery() {
+  return useQuery({
+    queryKey: ['fees'],
+    queryFn: ({ signal }) => getApi<FeeSchedule>('/fees', signal),
+    staleTime: Infinity,
   });
 }
