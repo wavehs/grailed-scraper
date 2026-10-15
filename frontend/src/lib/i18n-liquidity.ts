@@ -92,6 +92,8 @@ export const liquidityEn: Record<string, string> = {
   badge_slow_help: 'Slow: median days to sell in the top 25% and P30 in the bottom 25% of its reference sample.',
   badge_saturated: 'Saturated',
   badge_saturated_help: 'Saturated: fresh listings per month of sales in the top 20% of its reference sample.',
+  exportCsv: 'CSV',
+  exportCsvHelp: 'Download every row of the list with the current filters and order as CSV (UTF-8, opens in Excel).',
 };
 
 export const liquidityRu: Record<string, string> = {
@@ -187,4 +189,6 @@ export const liquidityRu: Record<string, string> = {
   badge_slow_help: 'Медленная: медиана дней до продажи в верхних 25%, а P30 в нижних 25% эталонной выборки.',
   badge_saturated: 'Перенасыщена',
   badge_saturated_help: 'Перенасыщена: свежих объявлений на месяц продаж больше, чем у 80% эталонной выборки.',
+  exportCsv: 'CSV',
+  exportCsvHelp: 'Скачать все строки списка с текущими фильтрами и сортировкой в CSV (UTF-8, открывается в Excel).',
 };

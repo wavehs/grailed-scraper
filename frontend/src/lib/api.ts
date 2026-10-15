@@ -1,5 +1,10 @@
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
 
+/** An absolute API URL for links the browser follows itself (downloads). */
+export function apiHref(path: string): string {
+  return `${apiUrl}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

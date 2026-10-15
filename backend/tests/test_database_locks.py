@@ -30,6 +30,7 @@ from app.api import (
     routes,
     schedule,
     settings,
+    trend_export,
     trends,
 )
 from app.api.errors import install_exception_handlers
@@ -115,7 +116,19 @@ def test_reads_and_other_database_errors_are_not_retried() -> None:
 
 @pytest.mark.parametrize(
     "module",
-    [brands, discovery, fees, groups, listings, parser, routes, schedule, settings, trends],
+    [
+        brands,
+        discovery,
+        fees,
+        groups,
+        listings,
+        parser,
+        routes,
+        schedule,
+        settings,
+        trend_export,
+        trends,
+    ],
 )
 def test_every_api_router_retries_locked_writes(module: ModuleType) -> None:
     declared = [route for route in module.router.routes if isinstance(route, APIRoute)]

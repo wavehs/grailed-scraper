@@ -11,6 +11,7 @@ import {
   P30Cell,
   SupplyCell,
 } from '@/components/liquidity-cells';
+import { ExportCsvLink } from '@/components/export-csv-link';
 import { MetricBadges } from '@/components/metric-badges';
 import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
 import { Sparkline } from '@/components/trend-charts';
@@ -145,6 +146,7 @@ export default function TrendsPage() {
                 {t('updatedAt')}: {formatDate(trends.data.computed_at, locale)}
               </span>
             )}
+            <ExportCsvLink filters={filters} />
             <RegroupButton />
           </>
         }

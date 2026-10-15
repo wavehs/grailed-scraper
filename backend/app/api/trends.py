@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, Subquery, func, or_, select
+from sqlalchemy import ColumnElement, Subquery, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -16,31 +16,20 @@ from app.api.groups import GroupDetail, group_detail_data
 from app.api.mutation import MutationRoute
 from app.api.trend_card_history import MonthPoint, SeasonOverlay, month_points, type_overlay
 from app.api.trend_fields import (
-    LOW_DATA_SALES,
     Condition,
-    Department,
     LiquidityFields,
     liquidity_fields,
     parent_key,
 )
-from app.api.trend_periods import (
-    MONTH_PATTERN,
-    PeriodCoverage,
-    parse_period,
-    period_coverage,
-    period_price,
-    period_totals,
-)
-from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
+from app.api.trend_periods import PeriodCoverage, period_coverage, period_price
+from app.api.trend_query import TrendQuery, check_window, trend_query, trend_select
+from app.db.models import GroupMetric, Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
-from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
 
 router = APIRouter(prefix="/trends", tags=["trends"], route_class=MutationRoute)
-WINDOWS = (7, 30, 90)
-SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new", "liquidity", "p30"]
 
 
 class TrendRow(LiquidityFields):
@@ -147,123 +136,53 @@ class TrendCard(BaseModel):
 @router.get("", response_model=TrendListResponse)
 async def list_trends(
     session: Annotated[AsyncSession, Depends(get_db)],
-    level: Literal["model", "type", "brand"] = "model",
-    brand_ids: Annotated[str, Query(max_length=500, pattern=r"^[0-9,]*$")] = "",
-    section: Annotated[str | None, Query(max_length=32)] = None,
-    # One type id or a comma-separated list (a wardrobe season preset).
-    product_type: Annotated[str | None, Query(max_length=500, pattern=r"^[a-z0-9_,]*$")] = None,
-    window: Annotated[int, Query()] = 30,
-    month_from: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
-    month_to: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
-    price_min: Annotated[int | None, Query(ge=0)] = None,
-    price_max: Annotated[int | None, Query(ge=0)] = None,
-    new_only: bool = False,
-    min_sales: Annotated[int, Query(ge=0, le=10_000)] = 0,
-    condition: Condition = "all",
-    department: Department | None = None,
-    hide_low_data: bool = False,
-    include_fallback: bool = False,
-    include_descriptors: bool = False,
-    search: Annotated[str, Query(max_length=200)] = "",
-    sort: SortKey = "trend",
-    desc: bool = True,
+    query: Annotated[TrendQuery, Depends(trend_query)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TrendListResponse:
-    _check_window(window)
-    period = parse_period(month_from, month_to)
-    totals = period_totals(period, condition) if period else None
-    sold_column: Any = _sold_column(window)
-    price_column: Any = _price_column(window)
-    if totals is not None:
-        sold_column, price_column = func.coalesce(totals.c.sold, 0), totals.c.price
-    filters: list[ColumnElement[bool]] = [GroupMetric.scope == level]
-    scope: list[ColumnElement[bool]] = []
-    if level == "model":
-        filters.append(GroupMetric.is_line.is_(True))
-        # Retired groups keep their frozen metrics but leave the rating.
-        filters.append(ModelGroup.retired_at.is_(None))
-        if not include_fallback:
-            filters.append(GroupMetric.is_fallback.is_(False))
-        if not include_descriptors:
-            # Descriptions ("Baggy", "Wide Leg") are no models: hidden unless asked for.
-            filters.append(~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
-    ids = [int(value) for value in brand_ids.split(",") if value]
-    if ids:
-        scope.append(GroupMetric.brand_id.in_(ids))
-    types = [value for value in (product_type or "").split(",") if value]
-    if types:
-        scope.append(GroupMetric.product_type.in_(types))
-    elif level != "brand":
-        filters.append(GroupMetric.product_type != REVIEW_TYPE)
-    if section:
-        scope.append(GroupMetric.section == section)
-    filters.extend(scope)
-    if price_min is not None:
-        filters.append(price_column >= price_min)
-    if price_max is not None:
-        filters.append(price_column <= price_max)
-    if new_only:
-        filters.append(GroupMetric.is_new.is_(True))
-    if min_sales:
-        filters.append(sold_column >= min_sales)
-    if hide_low_data:
-        filters.append(GroupMetric.sold_90d >= LOW_DATA_SALES)
-    if department:
-        filters.append(GroupMetric.department == department)
-    if condition != "all" and totals is not None:
-        filters.append(sold_column > 0)
-    elif condition != "all":
-        # Only scopes with sales of that condition in the last 90 days.
-        filters.append(func.json_extract(GroupMetric.pricing, f"$.{condition}.n") > 0)
-    statement = (
-        select(GroupMetric, Brand.name, ModelGroup, sold_column, price_column)
-        .join(Brand, Brand.id == GroupMetric.brand_id)
-        .outerjoin(ModelGroup, ModelGroup.id == GroupMetric.group_id)
-        .where(*filters)
-    )
-    if totals is not None:
-        statement = statement.outerjoin(totals, totals.c.scope_key == GroupMetric.scope_key)
-    term = search.strip().casefold()
-    if term:
-        statement = statement.where(
-            or_(
-                func.lower(Brand.name).contains(term, autoescape=True),
-                func.lower(ModelGroup.name).contains(term, autoescape=True),
-            )
-        )
+    selected = trend_select(query)
+    statement = selected.statement
     total = int(await session.scalar(select(func.count()).select_from(statement.subquery())) or 0)
     rows = list(
-        (
-            await session.execute(
-                statement.order_by(*_order(sort, desc, sold_column, price_column))
-                .limit(limit)
-                .offset(offset)
-            )
-        ).tuples()
+        (await session.execute(selected.ordered(query).limit(limit).offset(offset))).tuples()
     )
-    versions = await _version_counts(session, [row[2].id for row in rows if row[2]])
-    parents = await _parent_pricing(session, [row[0] for row in rows])
     computed_at = await session.scalar(select(func.max(GroupMetric.computed_at)))
+    period = selected.period
     return TrendListResponse(
-        data=[
-            _row(
-                metric,
-                brand,
-                group,
-                window,
-                versions.get(group.id, 0) if group else 0,
-                condition=condition,
-                parent_pricing=parents.get(parent_key(metric) or ""),
-                period_sales=(int(sold), period_price(price)) if period else None,
-            )
-            for metric, brand, group, sold, price in rows
-        ],
+        data=await trend_rows(session, rows, query, by_period=period is not None),
         total=total,
         computed_at=computed_at,
-        no_model=await _no_model_share(session, scope, bool(types), sold_column, totals),
-        period=await period_coverage(session, period, ids, computed_at) if period else None,
+        no_model=await _no_model_share(
+            session, selected.scope, bool(selected.types), selected.sold, selected.totals
+        ),
+        period=(
+            await period_coverage(session, period, selected.brand_ids, computed_at)
+            if period
+            else None
+        ),
     )
+
+
+async def trend_rows(
+    session: AsyncSession, rows: list[tuple[Any, ...]], query: TrendQuery, *, by_period: bool
+) -> list[TrendRow]:
+    """API rows of ``(metric, brand, group, sold, price)`` tuples from ``trend_select``."""
+
+    versions = await _version_counts(session, [row[2].id for row in rows if row[2]])
+    parents = await _parent_pricing(session, [row[0] for row in rows])
+    return [
+        _row(
+            metric,
+            brand,
+            group,
+            query.window,
+            versions.get(group.id, 0) if group else 0,
+            condition=query.condition,
+            parent_pricing=parents.get(parent_key(metric) or ""),
+            period_sales=(int(sold), period_price(price)) if by_period else None,
+        )
+        for metric, brand, group, sold, price in rows
+    ]
 
 
 @router.get("/groups/{group_id}", response_model=TrendCard)
@@ -273,7 +192,7 @@ async def trend_card(
     window: Annotated[int, Query()] = 30,
     condition: Condition = "all",
 ) -> TrendCard:
-    _check_window(window)
+    check_window(window)
     group = await session.get(ModelGroup, group_id)
     if group is None:
         raise ApiError(404, "group_not_found", "Model group does not exist")
@@ -356,44 +275,6 @@ async def trend_card(
         months=months,
         season_overlay=overlay,
     )
-
-
-def _check_window(window: int) -> None:
-    if window not in WINDOWS:
-        raise ApiError(422, "invalid_window", "window must be 7, 30 or 90 days")
-
-
-def _sold_column(window: int) -> Any:
-    return {7: GroupMetric.sold_7d, 30: GroupMetric.sold_30d, 90: GroupMetric.sold_90d}[window]
-
-
-def _price_column(window: int) -> Any:
-    return {
-        7: GroupMetric.median_price_7d,
-        30: GroupMetric.median_price_30d,
-        90: GroupMetric.median_price_90d,
-    }[window]
-
-
-def _order(sort: str, desc: bool, sold: Any, price: Any) -> list[Any]:
-    columns: dict[str, Any] = {
-        "trend": GroupMetric.trend_score,
-        "growth": GroupMetric.growth,
-        "sales": sold,
-        "price": price,
-        "supply": GroupMetric.active_now,
-        "new": GroupMetric.first_seen_at,
-        "liquidity": GroupMetric.liquidity_score,
-        "p30": GroupMetric.p30,
-    }
-    if sort == "speed":
-        # "Fastest first" means the shortest median time to sell.
-        primary = GroupMetric.median_days_to_sell
-        ordered = primary.asc() if desc else primary.desc()
-    else:
-        primary = columns[sort]
-        ordered = primary.desc() if desc else primary.asc()
-    return [ordered.nulls_last(), GroupMetric.sold_30d.desc(), GroupMetric.id]
 
 
 def _row(
