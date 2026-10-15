@@ -522,3 +522,72 @@ export type WatchItem = {
 };
 
 export type WatchlistResponse = { data: WatchItem[] };
+
+/** A deal; money in cents, `roi` and the scores are decimal strings (0.25 = 25%). */
+export type DealVerdict = 'good' | 'bad';
+export type DealItem = {
+  id: number;
+  listing_id: number;
+  grailed_id: number;
+  title: string;
+  url: string;
+  photo: string | null;
+  size: string | null;
+  condition: string | null;
+  listing_status: string;
+  seller_rating: string | null;
+  seller_ratings: number | null;
+  brand: string | null;
+  group_id: number;
+  group: string;
+  bucket: 'new' | 'used';
+  price: number;
+  shipping: number | null;
+  p25: number;
+  p50: number;
+  net: number;
+  roi: string;
+  liquidity_score: string | null;
+  found_at: string;
+  updated_at: string;
+  verdict: DealVerdict | null;
+};
+export type DealSummary = {
+  total: number;
+  good: number;
+  bad: number;
+  unrated: number;
+  hit_rate: string | null;
+};
+export type DealScanReport = {
+  started_at: string;
+  finished_at: string;
+  brands: number;
+  hits: number;
+  stored: number;
+  failed: Record<string, string>;
+  truncated: string[];
+  deals: { evaluated: number; deals: number; new: number; dropped: number; reasons: Record<string, number> } | null;
+};
+export type DealScanner = {
+  enabled: boolean;
+  interval_minutes: number;
+  scope: 'all' | 'watchlist';
+  running: boolean;
+  last: DealScanReport | null;
+  last_error: string | null;
+  skipped_at: string | null;
+  brands: { brand_id: number; brand: string; scanned_to: string; hits: number; error: string | null }[];
+};
+export type DealsResponse = {
+  items: DealItem[];
+  total: number;
+  summary: DealSummary;
+  scanner: DealScanner;
+};
+export type DealFilters = {
+  verdict: 'all' | 'unrated' | DealVerdict;
+  sort: 'found' | 'roi';
+  includeInactive: boolean;
+  offset: number;
+};

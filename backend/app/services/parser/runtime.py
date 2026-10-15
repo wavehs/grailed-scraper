@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.db.models import ParserRun, ParserRunTask, SourceCredential
+from app.db.models import ParserRun, ParserRunTask
 from app.db.session import checkpoint_database
 from app.domain.listings import ListingStatus
 from app.repositories.fetching import FetchReportRepository
@@ -23,15 +23,15 @@ from app.repositories.runs import RunRepository
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
+from app.services.parser.credentials import as_algolia, credential_refresher, stored_credential
 from app.services.parser.fetching import FetchApi
 from app.services.parser.incremental import IncrementalPlanner, RefreshActiveService
 from app.services.parser.observability import RunMetrics
 from app.services.per_brand import recompute_brands, regroup_brands
 from app.services.sources.base.models import CoverageReport
 from app.services.sources.grailed.algolia.client import AlgoliaClient
-from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
+from app.services.sources.grailed.algolia.models import AlgoliaQuery
 from app.services.sources.grailed.algolia.pagination import PaginationPlanner, PaginationSpec
-from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
@@ -314,8 +314,7 @@ class ParserRuntime:
                 secondary_attrs=("id", "objectID", "price_i"),
                 pagination_limit=int(spec_data.get("pagination_limit", 1_000)),
                 hits_per_page=int(
-                    dict(spec_data["query"]).get("hits_per_page")
-                    or settings.algolia_hits_per_page
+                    dict(spec_data["query"]).get("hits_per_page") or settings.algolia_hits_per_page
                 ),
                 fetch_tier="T1",
                 resume_cursor=prior_cursor,
@@ -417,9 +416,7 @@ class ParserRuntime:
 
         async with self._write_lock, self._sessions() as session:
             run = await session.get(ParserRun, run_id)
-            credential = await session.scalar(
-                select(SourceCredential).where(SourceCredential.source == "grailed")
-            )
+            credential = await stored_credential(session)
             if run is None or credential is None or credential.sold_index is None:
                 return
             result = await RefreshActiveService(
@@ -457,9 +454,7 @@ class ParserRuntime:
         settings: Settings,
     ) -> None:
         async with self._sessions() as session:
-            credential = await session.scalar(
-                select(SourceCredential).where(SourceCredential.source == "grailed")
-            )
+            credential = await stored_credential(session)
             if credential is None or credential.sold_index is None:
                 raise RuntimeError("discovery_incomplete")
             sold_index = credential.sold_index
@@ -514,9 +509,7 @@ class ParserRuntime:
 
     async def _resources(self, run_id: int, settings: Settings) -> _Resources:
         async with self._sessions() as session:
-            credential = await session.scalar(
-                select(SourceCredential).where(SourceCredential.source == "grailed")
-            )
+            credential = await stored_credential(session)
             run = await session.get(ParserRun, run_id)
             snapshot = dict(run.stats.get("observability", {})) if run is not None else {}
         metrics = RunMetrics.resume(
@@ -527,26 +520,9 @@ class ParserRuntime:
         if credential is None:
             raise RuntimeError("discovery_required")
         transport = create_http_transport(settings)
-        seed = AlgoliaCredentialsData(
-            credential.app_id, credential.api_key, credential.algolia_agent
-        )
-
-        async def refresh_credentials() -> AlgoliaCredentialsData:
-            async with self._sessions() as session:
-                service = DiscoveryService(session, settings, transport)
-                await service.invalidate_and_refresh()
-                refreshed = await session.scalar(
-                    select(SourceCredential).where(SourceCredential.source == "grailed")
-                )
-                if refreshed is None:
-                    raise RuntimeError("discovery_required")
-                return AlgoliaCredentialsData(
-                    refreshed.app_id, refreshed.api_key, refreshed.algolia_agent
-                )
-
         t1 = AlgoliaClient(
             transport,
-            seed,
+            as_algolia(credential),
             requests_per_minute=settings.requests_per_minute,
             max_concurrency=settings.max_concurrent_requests,
             max_retries=settings.parser_max_retries,
@@ -555,7 +531,7 @@ class ParserRuntime:
             timeout_s=settings.parser_request_timeout_s,
             metrics=metrics,
             tier="T1",
-            refresh_credentials=refresh_credentials,
+            refresh_credentials=credential_refresher(self._sessions, settings, transport),
         )
         return _Resources(t1, transport, metrics, t1)
 

@@ -136,7 +136,7 @@ class ParserPlanner:
         tasks: list[PlannedTask] = []
         warnings: list[str] = []
         for brand in brands:
-            mappings = _verified_mappings(brand.source_mappings, brand.include_subbrands)
+            mappings = verified_mappings(brand.source_mappings, brand.include_subbrands)
             if not mappings:
                 warnings.append(f"brand_mapping_required:{brand.name}")
                 continue
@@ -184,7 +184,7 @@ class ParserPlanner:
         return FetchPlan(run_mode, tuple(tasks), tuple(warnings))
 
 
-def _verified_mappings(
+def verified_mappings(
     mappings: list[BrandSourceMap], include_subbrands: bool
 ) -> list[BrandSourceMap]:
     return [

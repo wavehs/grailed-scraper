@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Compass, Save, Shield, SlidersHorizontal } from 'lucide-react';
+import { BadgePercent, CalendarClock, Compass, Save, Shield, SlidersHorizontal } from 'lucide-react';
 import { Badge, statusVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,8 +18,11 @@ import type { DiscoveryResponse, SettingEntry, SettingValue, SettingsResponse } 
 
 const selects: Record<string, string[]> = {
   store_seller_identity: ['none', 'hashed', 'plain'],
+  deals_scope: ['all', 'watchlist'],
 };
 const optionalNumbers = new Set(['collect_price_min_usd', 'collect_price_max_usd']);
+// The API sends these Decimals as strings; the form edits them as numbers.
+const decimals = new Set(['deals_min_margin']);
 type Bounds = { min: number; max?: number; integer: boolean };
 // Mirrors the API's validation so an out-of-range value never reaches a 422.
 const bounds: Record<string, Bounds> = {
@@ -30,6 +33,9 @@ const bounds: Record<string, Bounds> = {
   collect_price_max_usd: { min: 1, integer: false },
   schedule_hour: { min: 0, max: 23, integer: true },
   schedule_rpm: { min: 1, integer: true },
+  deals_interval_minutes: { min: 5, max: 1440, integer: true },
+  deals_rpm: { min: 1, integer: true },
+  deals_min_margin: { min: 0, max: 10, integer: false },
 };
 
 /** The message for an invalid number, or null when the value is acceptable. */
@@ -51,6 +57,7 @@ const groupIcons: Record<string, JSX.Element> = {
   collection: <SlidersHorizontal size={16} />,
   privacy: <Shield size={16} />,
   schedule: <CalendarClock size={16} />,
+  deals: <BadgePercent size={16} />,
 };
 
 export default function SettingsPage() {
@@ -67,7 +74,10 @@ export default function SettingsPage() {
       setValues(
         Object.fromEntries(
           Object.values(settings.data.groups).flatMap((group) =>
-            Object.entries(group).map(([key, entry]) => [key, entry.value]),
+            Object.entries(group).map(([key, entry]) => [
+              key,
+              decimals.has(key) ? Number(entry.value) : entry.value,
+            ]),
           ),
         ),
       );
@@ -84,6 +94,7 @@ export default function SettingsPage() {
       client.invalidateQueries({ queryKey: ['parser-health'] });
       // The hour, rate and switch change what the schedule card reports.
       client.invalidateQueries({ queryKey: ['schedule'] });
+      client.invalidateQueries({ queryKey: ['deals'] });
     },
   });
   const discovery = useMutation({
@@ -189,7 +200,7 @@ function SettingField({
 }) {
   const { t } = useI18n();
   const label = t(name);
-  const numeric = typeof entry.value === 'number' || optionalNumbers.has(name);
+  const numeric = typeof entry.value === 'number' || optionalNumbers.has(name) || decimals.has(name);
   const limit = bounds[name];
   const problem = rangeError(name, value, t);
   const header = (

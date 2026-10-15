@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -28,6 +29,13 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
     ),
     "privacy": ("store_seller_identity",),
     "schedule": ("schedule_enabled", "schedule_hour", "schedule_rpm", "schedule_brand_ids"),
+    "deals": (
+        "deals_enabled",
+        "deals_interval_minutes",
+        "deals_scope",
+        "deals_rpm",
+        "deals_min_margin",
+    ),
 }
 EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in keys)
 # Null clears an optional bound instead of being ignored.
@@ -49,6 +57,11 @@ class SettingsPatch(BaseModel):
     schedule_hour: int | None = Field(default=None, ge=0, le=23)
     schedule_rpm: int | None = Field(default=None, ge=1)
     schedule_brand_ids: list[int] | None = None
+    deals_enabled: bool | None = None
+    deals_interval_minutes: int | None = Field(default=None, ge=5, le=1440)
+    deals_scope: Literal["all", "watchlist"] | None = None
+    deals_rpm: int | None = Field(default=None, ge=1)
+    deals_min_margin: Decimal | None = Field(default=None, ge=0, le=10)
     confirm_plain_seller_identity: bool = False
 
 
@@ -120,8 +133,9 @@ async def update_settings(
 ) -> SettingsResponse:
     updates = {
         key: value
+        # JSON mode: a Decimal is stored as its string, which Settings parses back.
         for key, value in payload.model_dump(
-            exclude_unset=True, exclude={"confirm_plain_seller_identity"}
+            mode="json", exclude_unset=True, exclude={"confirm_plain_seller_identity"}
         ).items()
         if value is not None or key in NULLABLE_SETTINGS
     }

@@ -59,7 +59,8 @@ class ListingData(BaseModel):
     seller_country: str | None = Field(default=None, min_length=2, max_length=2)
     quality_flags: list[str] = Field(default_factory=list)
     fetch_tier: FetchTier
-    parser_run_id: int = Field(gt=0)
+    # None for a listing seen by the deal scanner, which runs outside collection runs.
+    parser_run_id: int | None = Field(default=None, gt=0)
     raw_json: dict[str, Any]
     raw_json_purged_at: datetime | None = None
     schema_version: int = Field(ge=1)

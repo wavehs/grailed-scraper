@@ -60,7 +60,7 @@ _FOOTWEAR_EU_TO_US = {
 @dataclass(frozen=True, slots=True)
 class NormalizationContext:
     status: ListingStatus
-    parser_run_id: int
+    parser_run_id: int | None
     observed_at: datetime
     brand_id: int | None = None
     schema_version: int | None = None

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
 from app.api.brands import router as brands_router
+from app.api.deals import router as deals_router
 from app.api.discovery import router as discovery_router
 from app.api.errors import ApiError
 from app.api.fees import router as fees_router
@@ -38,6 +39,7 @@ router.include_router(listings_router)
 router.include_router(trend_export_router)
 router.include_router(trends_router)
 router.include_router(watchlist_router)
+router.include_router(deals_router)
 router.include_router(groups_router)
 router.include_router(settings_router)
 router.include_router(fees_router)

@@ -31,6 +31,7 @@ from app.core.runtime import (
     require_startup_ready,
 )
 from app.db.session import close_database, get_engine, get_session_factory
+from app.services.deals.scanner import DealScanner
 from app.services.parser.runtime import ParserRuntime
 from app.services.scheduler import Scheduler
 
@@ -46,6 +47,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     pid_file = settings.data_directory / "app.pid"
     runtime: ParserRuntime | None = None
     scheduler: Scheduler | None = None
+    deal_scanner: DealScanner | None = None
     try:
         # Alembic owns the schema: create_all would pre-create new tables and make the
         # next migration fail, leaving old tables without their new columns.
@@ -75,9 +77,21 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         )
         scheduler.start()
         application.state.scheduler = scheduler
+        # Off unless deals_enabled (D12); a scan asked for on the Deals page still runs.
+        deal_scanner = DealScanner(
+            get_session_factory(),
+            settings,
+            load_settings=effective_settings,
+            market_lock=market_lock,
+            grouping_lock=runtime.grouping_lock,
+        )
+        deal_scanner.start()
+        application.state.deal_scanner = deal_scanner
         yield
     finally:
         try:
+            if deal_scanner is not None:
+                await deal_scanner.close()
             if scheduler is not None:
                 await scheduler.close()
             if runtime is not None:

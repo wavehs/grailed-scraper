@@ -14,6 +14,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.cli_deals import deals_scan
 from app.core.config import Settings
 from app.db.models import (
     Brand,
@@ -691,6 +692,14 @@ def main() -> int:
         help="fill price path, shipping and seller-score columns from raw_json (resumable)",
     )
     backfill_parser.add_argument("--batch-size", type=int, default=BACKFILL_BATCH)
+    deals_parser = subparsers.add_parser(
+        "deals-scan",
+        help="scan Grailed for deals now, or re-judge recent listings offline (app stopped)",
+    )
+    deals_parser.add_argument(
+        "--offline", action="store_true", help="no network: listings created or repriced lately"
+    )
+    deals_parser.add_argument("--since-days", type=int, default=1)
     backtest_parser = subparsers.add_parser(
         "metrics-backtest",
         help="score the liquidity metrics as of N days ago against the sales since",
@@ -831,6 +840,10 @@ def main() -> int:
         if args.batch_size < 1:
             parser.error("--batch-size must be positive")
         return _print(backfill_market(Settings(), batch_size=args.batch_size))
+    if args.command == "deals-scan":
+        if args.since_days < 1:
+            parser.error("--since-days must be positive")
+        return _print(deals_scan(Settings(), offline=args.offline, since_days=args.since_days))
     if args.command == "metrics-backtest":
         if args.as_of_days < 1:
             parser.error("--as-of-days must be positive")

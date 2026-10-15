@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -73,6 +74,15 @@ class Settings(BaseSettings):
     schedule_brand_ids: list[int] | None = None
     # Unattended runs use the compliance default, whatever the manual rate is.
     schedule_rpm: int = Field(default=90, ge=1)
+    # Deal scanner (v2 plan 4.1; off by default, see docs/OPERATIONS.md).
+    deals_enabled: bool = False
+    deals_interval_minutes: int = Field(default=20, ge=5, le=1440)
+    # "watchlist" = only brands of watched models; "all" = every brand with a verified mapping.
+    deals_scope: Literal["all", "watchlist"] = "all"
+    deals_rpm: int = Field(default=30, ge=1)
+    deals_min_margin: Decimal = Field(default=Decimal("0.20"), ge=0, le=10)
+    deals_min_bucket_sales: int = Field(default=20, ge=5)
+    deals_min_liquidity_score: Decimal = Field(default=Decimal("50"), ge=0, le=100)
 
     @model_validator(mode="after")
     def check_price_band(self) -> Settings:

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app import cli
 from app.api import (
     brands,
+    deals,
     discovery,
     fees,
     groups,
@@ -119,6 +120,7 @@ def test_reads_and_other_database_errors_are_not_retried() -> None:
     "module",
     [
         brands,
+        deals,
         discovery,
         fees,
         groups,

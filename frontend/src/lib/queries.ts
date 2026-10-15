@@ -5,6 +5,8 @@ import { periodRange } from '@/lib/periods';
 import type {
   ApiHealth,
   BrandList,
+  DealFilters,
+  DealsResponse,
   FeeSchedule,
   GroupDetail,
   GroupList,
@@ -159,6 +161,25 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
     params.set('month_to', months.to);
   }
   return params;
+}
+
+export const DEALS_PAGE = 100;
+
+export function useDealsQuery(filters: DealFilters) {
+  const params = new URLSearchParams({
+    verdict: filters.verdict,
+    sort: filters.sort,
+    limit: String(DEALS_PAGE),
+    offset: String(filters.offset),
+  });
+  if (filters.includeInactive) params.set('include_inactive', 'true');
+  return useQuery({
+    queryKey: ['deals', filters],
+    queryFn: ({ signal }) => getApi<DealsResponse>(`/deals?${params}`, signal),
+    placeholderData: (previous) => previous,
+    // Poll fast while a scan runs so its result shows up without a reload.
+    refetchInterval: (query) => (query.state.data?.scanner.running ? 5_000 : 60_000),
+  });
 }
 
 export function useWatchlistQuery() {

@@ -677,3 +677,53 @@ class WatchlistItem(Base):
     )
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500))
+
+
+class DealCandidate(Base):
+    """A listing that passed the deal rules (v2 plan 4.1), one row per listing.
+
+    Amounts are USD; ``verdict`` is a person's rating ("good" = worth opening) for the
+    acceptance check of the first 50 candidates.
+    """
+
+    __tablename__ = "deal_candidates"
+    __table_args__ = (
+        CheckConstraint("bucket IN ('new', 'used')", name="ck_deal_candidates_bucket"),
+        CheckConstraint(
+            "verdict IS NULL OR verdict IN ('good', 'bad')", name="ck_deal_candidates_verdict"
+        ),
+        Index("ix_deal_candidates_found", "found_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bucket: Mapped[str] = mapped_column(String(8), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    shipping: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    p25: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    p50: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    net: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    roi: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    found_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verdict: Mapped[str | None] = mapped_column(String(8))
+
+
+class DealScan(Base):
+    """Where the scanner stopped for a brand: hits created or repriced after ``scanned_to``."""
+
+    __tablename__ = "deal_scans"
+
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True
+    )
+    scanned_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(String(500))
+
