@@ -103,7 +103,7 @@ trend  = growth × speed × sell_through_30d × 100
 ## 4. API
 
 - `GET /api/trends` — `level=model|type|brand`, фильтры `brand_ids`, `section`,
-  `product_type`, `window=7|30|90`, `price_min`/`price_max` (USD, по медиане окна),
+  `product_type` (один тип или список через запятую — «гардероб» сезона), `window=7|30|90`, `price_min`/`price_max` (USD, по медиане окна),
   `new_only`, `min_sales`, `search`, `condition=all|new|used` (только области с продажами
   этого состояния за 90 дней), `department=menswear|womenswear`, `hide_low_data`
   (`sold_90d ≥ 5`); сортировка `sort=trend|growth|speed|sales|price|supply|new|liquidity|p30`.
@@ -217,6 +217,15 @@ SI_rel(t, m) = [sales(t, m) / Σ sales(t)] / [sales(all, m) / Σ sales(all)]
 
 **Прогноз на сезон X:** `sold_30d × SI_abs(t, X) / SI_abs(t, окно)`, где окно — полные
 месяцы, пересекающиеся с последними 30 днями, а если таких нет — соседние полные месяцы.
+
+**Гардероб сезона** (`config/seasons.yaml`, `season_presets.py`): сезон → список типов для
+кнопок 🍂/❄️/🌱/☀️ на странице трендов (фильтр `product_type=a,b,…` и период — последний
+завершённый сезон). Файл отдельный от `taxonomy.yaml`, потому что таксономия входит в хэш
+политики группировки и её правка вызвала бы перегруппировку. Черновик даёт
+`python -m app.cli seasons-suggest [--min-si-rel 1.15]`: типы вне раздела `other`, у которых
+`SI_rel` профиля `type:{тип}:*` в сезоне ≥ порога, по убыванию; список правится руками.
+Загрузчик отклоняет неизвестный сезон или тип; нет файла — нет кнопок. Список отдаёт
+`GET /api/grouping/taxonomy` в поле `seasons`.
 
 ## 11. Калькулятор ресейлера (`fees.py`, `config/fees.yaml`)
 

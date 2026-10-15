@@ -1,4 +1,4 @@
-import type { TrendPeriod } from '@/lib/periods';
+import type { Season, TrendPeriod } from '@/lib/periods';
 
 export type SourceMode = 'live';
 export type RunStatus =
@@ -211,7 +211,13 @@ export type CatalogListingList = CursorPage<CatalogListing>;
 
 export type TaxonomySection = { id: string; ru: string; en: string };
 export type TaxonomyType = { id: string; section: string; ru: string; en: string };
-export type Taxonomy = { version: string; sections: TaxonomySection[]; types: TaxonomyType[] };
+export type Taxonomy = {
+  version: string;
+  sections: TaxonomySection[];
+  types: TaxonomyType[];
+  /** Wardrobe season presets: season → product type ids. */
+  seasons?: Record<string, string[]>;
+};
 
 export type GroupStatus = 'confirmed' | 'auto' | 'ignored';
 /** model: a model line; descriptor: a description such as "Baggy"; collab: a collaboration
@@ -387,6 +393,9 @@ export type TrendFilters = {
   brandIds: number[];
   section: string;
   productType: string;
+  /** The wardrobe preset whose types `productTypes` holds; null = the selects decide. */
+  wardrobe: Season | null;
+  productTypes: string[];
   window: 7 | 30 | 90;
   /** "window" keeps the 7/30/90-day window; the rest request calendar months. */
   period: TrendPeriod;

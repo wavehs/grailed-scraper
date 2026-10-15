@@ -47,6 +47,10 @@ export const liquidityEn: Record<string, string> = {
   coverageToDay: '{month} up to day {day}',
   coverageLateBrands: 'brands collected later: {count}',
   noModelSharePeriod: '{part} of {total} sales in the period have no model.',
+  wardrobe: 'Wardrobe',
+  wardrobeHelp: 'Types that sell above their yearly average in the season (config/seasons.yaml); the period switches to that season.',
+  wardrobeTypes: '{count} types',
+  wardrobeClear: 'Clear the wardrobe preset',
 };
 
 export const liquidityRu: Record<string, string> = {
@@ -97,4 +101,8 @@ export const liquidityRu: Record<string, string> = {
   coverageToDay: '{month} по {day}-е',
   coverageLateBrands: 'брендов со сбором позже: {count}',
   noModelSharePeriod: 'Без модели {part} из {total} продаж за период.',
+  wardrobe: 'Гардероб',
+  wardrobeHelp: 'Типы, которые в этот сезон продаются выше среднего за год (config/seasons.yaml); период переключается на этот сезон.',
+  wardrobeTypes: 'типов: {count}',
+  wardrobeClear: 'Сбросить гардероб',
 };

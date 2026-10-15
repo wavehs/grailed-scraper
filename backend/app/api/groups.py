@@ -36,6 +36,7 @@ from app.services.grouping.kinds import (
     is_service_slug,
 )
 from app.services.grouping.policy import load_policy
+from app.services.metrics.season_presets import load_season_presets
 from app.services.per_brand import recompute_brands, regroup_brands
 
 router = APIRouter(tags=["groups"], route_class=MutationRoute)
@@ -59,6 +60,8 @@ class TaxonomyResponse(BaseModel):
     version: str
     sections: list[SectionInfo]
     types: list[TypeInfo]
+    # Wardrobe season presets of config/seasons.yaml: season -> type ids (v2 plan 3.3).
+    seasons: dict[str, list[str]] = {}
 
 
 class RegroupRequest(BaseModel):
@@ -127,6 +130,7 @@ async def taxonomy() -> TaxonomyResponse:
             TypeInfo(id=item.id, section=item.section, ru=item.ru, en=item.en)
             for item in policy.types.values()
         ],
+        seasons={season: list(types) for season, types in load_season_presets().items()},
     )
 
 

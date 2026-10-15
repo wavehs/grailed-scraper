@@ -34,6 +34,13 @@ from app.services.grouping.reports import (
 )
 from app.services.grouping.scratch import make_scratch
 from app.services.metrics.backtest import AS_OF_DAYS, run_backtest, write_report
+from app.services.metrics.season_presets import (
+    SI_REL_MIN,
+    render_yaml,
+    suggest_presets,
+    type_profiles,
+    wardrobe_types,
+)
 from app.services.normalization.backfill import BACKFILL_BATCH, backfill_market_fields
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
@@ -323,6 +330,19 @@ async def backfill_market(settings: Settings, *, batch_size: int) -> dict[str, o
             )
     finally:
         await engine.dispose()
+
+
+async def seasons_suggest(settings: Settings, *, minimum: float) -> str:
+    """The ``seasons:`` block that the type profiles suggest for ``config/seasons.yaml``."""
+
+    engine = create_database_engine(settings)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            profiles = await type_profiles(session)
+    finally:
+        await engine.dispose()
+    return render_yaml(suggest_presets(profiles, wardrobe_types(), minimum=minimum), minimum)
 
 
 async def metrics_backtest(
@@ -677,6 +697,11 @@ def main() -> int:
     )
     backtest_parser.add_argument("--as-of-days", type=int, default=AS_OF_DAYS)
     backtest_parser.add_argument("--out", type=Path, default=None)
+    seasons_parser = subparsers.add_parser(
+        "seasons-suggest",
+        help="print the wardrobe season presets that the type profiles suggest (SI_rel)",
+    )
+    seasons_parser.add_argument("--min-si-rel", type=float, default=SI_REL_MIN)
     reflag_parser = subparsers.add_parser(
         "reflag-replicas",
         help="re-check stored possible_replica flags with the current rule and recompute metrics",
@@ -812,6 +837,11 @@ def main() -> int:
         return _print(
             metrics_backtest(Settings(), as_of_days=args.as_of_days, directory=args.out)
         )
+    if args.command == "seasons-suggest":
+        if args.min_si_rel <= 0:
+            parser.error("--min-si-rel must be positive")
+        print(asyncio.run(seasons_suggest(Settings(), minimum=args.min_si_rel)), end="")
+        return 0
     if args.command == "reflag-replicas":
         return _print(reflag(Settings(), tuple(args.brand_ids)))
     if args.command == "regroup":

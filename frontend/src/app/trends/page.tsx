@@ -13,6 +13,7 @@ import {
 } from '@/components/liquidity-cells';
 import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
 import { Sparkline } from '@/components/trend-charts';
+import { CLEAR_WARDROBE, WardrobePresets } from '@/components/wardrobe-presets';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -30,6 +31,8 @@ const DEFAULT_FILTERS: TrendFilters = {
   brandIds: [],
   section: '',
   productType: '',
+  wardrobe: null,
+  productTypes: [],
   window: 30,
   period: 'window',
   monthFrom: '',
@@ -118,7 +121,12 @@ export default function TrendsPage() {
   const drill = (row: TrendRow) => {
     if (row.scope === 'brand') update({ level: 'model', brandIds: [row.brand_id] });
     if (row.scope === 'type')
-      update({ level: 'model', brandIds: [row.brand_id], productType: row.product_type ?? '' });
+      update({
+        ...CLEAR_WARDROBE,
+        level: 'model',
+        brandIds: [row.brand_id],
+        productType: row.product_type ?? '',
+      });
   };
   const total = trends.data?.total ?? 0;
   const periodMode = filters.period !== 'window' && Boolean(trends.data?.period);
@@ -195,7 +203,7 @@ export default function TrendsPage() {
             <select
               aria-label={t('section')}
               value={filters.section}
-              onChange={(event) => update({ section: event.target.value, productType: '' })}
+              onChange={(event) => update({ ...CLEAR_WARDROBE, section: event.target.value, productType: '' })}
             >
               <option value="">{t('allSections')}</option>
               {(taxonomy?.sections ?? [])
@@ -210,7 +218,7 @@ export default function TrendsPage() {
           <select
             aria-label={t('productType')}
             value={filters.productType}
-            onChange={(event) => update({ productType: event.target.value })}
+            onChange={(event) => update({ ...CLEAR_WARDROBE, productType: event.target.value })}
           >
             <option value="">{t('allTypes')}</option>
             {types.map((item) => (
@@ -220,6 +228,7 @@ export default function TrendsPage() {
             ))}
           </select>
         </div>
+        <WardrobePresets presets={taxonomy?.seasons} filters={filters} update={update} />
         <div className="flex flex-wrap items-end gap-3 text-sm">
           <PeriodPicker filters={filters} update={update} />
           <label className="flex items-center gap-1 text-xs text-[var(--text-muted)]">

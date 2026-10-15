@@ -138,7 +138,8 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   });
   if (filters.brandIds.length) params.set('brand_ids', filters.brandIds.join(','));
   if (filters.section) params.set('section', filters.section);
-  if (filters.productType) params.set('product_type', filters.productType);
+  const productType = filters.productTypes.length ? filters.productTypes.join(',') : filters.productType;
+  if (productType) params.set('product_type', productType);
   if (filters.priceMin) params.set('price_min', filters.priceMin);
   if (filters.priceMax) params.set('price_max', filters.priceMax);
   if (filters.newOnly) params.set('new_only', 'true');

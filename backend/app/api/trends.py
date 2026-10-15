@@ -143,7 +143,8 @@ async def list_trends(
     level: Literal["model", "type", "brand"] = "model",
     brand_ids: Annotated[str, Query(max_length=500, pattern=r"^[0-9,]*$")] = "",
     section: Annotated[str | None, Query(max_length=32)] = None,
-    product_type: Annotated[str | None, Query(max_length=32)] = None,
+    # One type id or a comma-separated list (a wardrobe season preset).
+    product_type: Annotated[str | None, Query(max_length=500, pattern=r"^[a-z0-9_,]*$")] = None,
     window: Annotated[int, Query()] = 30,
     month_from: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
     month_to: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
@@ -183,8 +184,9 @@ async def list_trends(
     ids = [int(value) for value in brand_ids.split(",") if value]
     if ids:
         scope.append(GroupMetric.brand_id.in_(ids))
-    if product_type:
-        scope.append(GroupMetric.product_type == product_type)
+    types = [value for value in (product_type or "").split(",") if value]
+    if types:
+        scope.append(GroupMetric.product_type.in_(types))
     elif level != "brand":
         filters.append(GroupMetric.product_type != REVIEW_TYPE)
     if section:
@@ -252,7 +254,7 @@ async def list_trends(
         ],
         total=total,
         computed_at=computed_at,
-        no_model=await _no_model_share(session, scope, product_type, sold_column, totals),
+        no_model=await _no_model_share(session, scope, bool(types), sold_column, totals),
         period=await period_coverage(session, period, ids, computed_at) if period else None,
     )
 
@@ -462,18 +464,18 @@ async def _parent_pricing(
 async def _no_model_share(
     session: AsyncSession,
     scope: list[ColumnElement[bool]],
-    product_type: str | None,
+    typed: bool,
     sold_column: Any,
     totals: Subquery | None = None,
 ) -> NoModelShare:
     """Listings and window sales in "No model" groups against all listings of the scope.
 
     The totals are the type rows, so a listing is counted once; the review type is left out
-    unless it is the requested type, as in the list itself.
+    unless it is among the requested types, as in the list itself.
     """
 
     where = list(scope)
-    if not product_type:
+    if not typed:
         where.append(GroupMetric.product_type != REVIEW_TYPE)
     sums = (
         func.coalesce(func.sum(GroupMetric.listings), 0),
