@@ -37,6 +37,12 @@ duration_s`.
 `GET /api/parser/runs/{id}/report` возвращает это же значение типизированным полем
 `metrics`, сохраняя исходный `stats` для обратной совместимости.
 
+После фазы метрик прогон делает обслуживание SQLite (`PRAGMA optimize` и
+`wal_checkpoint(TRUNCATE)`) и пишет итог в `parser_runs.stats.maintenance.checkpoint`:
+`busy` (1 — читатель не дал обрезать WAL), `wal_pages`, `checkpointed_pages`. Ошибка
+обслуживания не валит прогон: там `null`, в лог — `wal_checkpoint_failed`. API-запись,
+проигравшая блокировку, логируется как `database_locked_retry` (warning, `where`, `attempt`).
+
 
 ### 15.3. Прогресс для UI
 

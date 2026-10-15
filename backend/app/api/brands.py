@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.discovery import ensure_discovery
 from app.api.errors import ApiError
+from app.api.mutation import MutationRoute
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.db.models import (
@@ -35,7 +36,7 @@ from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
-router = APIRouter(prefix="/brands", tags=["brands"])
+router = APIRouter(prefix="/brands", tags=["brands"], route_class=MutationRoute)
 
 
 class MappingResponse(BaseModel):

@@ -61,6 +61,22 @@ listings           + first_seen_at, last_seen_at, removed_checked_at,
 - `first_seen_at` пишется только при вставке.
 - WAL-режим, `synchronous=NORMAL`, индексы на `(brand_id, status, sold_at)`, `(grailed_id)`, `(status, last_seen_at)`.
 
+**Блокировки записи.** В SQLite один писатель, поэтому длинные транзакции дробятся:
+
+- Все движки (API, парсер, CLI) создаются через `create_database_engine`: WAL,
+  `busy_timeout`, `foreign_keys`, `journal_size_limit` = 64 МиБ (WAL не растёт без предела).
+- Перегруппировка и пересчёт метрик коммитят каждый бренд отдельно
+  (`services/per_brand.py`) — в прогоне, в `cli regroup` и в `POST /api/groups/regroup`.
+- Ручная правка группы сначала коммитит само правило коротким запросом, затем
+  перегруппировывает бренд. Перегруппировка Balenciaga (286 тыс. листингов) идёт ~13 с,
+  но держит блокировку только последние ~4 с (запись результатов), метрики — ~0,6 с.
+- Изменяющие API-запросы (`MutationRoute`) при `database is locked` повторяются до 3 раз
+  с паузой 0,5 → 1 с, каждый раз с новой сессией; потом — `503 database_locked`. Если
+  после сохранения правила перегруппировка так и не получила блокировку — `503
+  regroup_pending`: правило сохранено и меняет хэш правил бренда, поэтому следующая
+  перегруппировка (прогон или `cli regroup`) будет полной и применит его.
+- После каждого прогона — `PRAGMA optimize` и `wal_checkpoint(TRUNCATE)`.
+
 ### 14.3. Resume
 
 Прогон падает → `parser_run.status='interrupted'`. Кнопка «Resume»: берутся `parser_run_tasks` со статусом `pending|running|failed`, курсоры восстанавливаются, добор продолжается. Повторная запись безопасна благодаря upsert.

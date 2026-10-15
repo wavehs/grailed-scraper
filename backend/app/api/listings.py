@@ -14,12 +14,13 @@ from sqlalchemy.orm import load_only
 
 from app.api.cursors import decode_cursor, encode_cursor, require_int
 from app.api.errors import ApiError
+from app.api.mutation import MutationRoute
 from app.db.models import Listing, ListingModelAssignment, ListingPriceHistory, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
 from app.services.grouping.kinds import NONE_SLUG, GroupKind, group_kind
 
-router = APIRouter(prefix="/listings", tags=["listings"])
+router = APIRouter(prefix="/listings", tags=["listings"], route_class=MutationRoute)
 
 
 class ListingDetail(BaseModel):

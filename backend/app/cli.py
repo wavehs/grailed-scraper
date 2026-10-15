@@ -21,7 +21,7 @@ from app.db.models import (
     ModelGroup,
     SourceCredential,
 )
-from app.db.session import get_database_url
+from app.db.session import create_database_engine
 from app.services.grouping import GroupingService, evaluation
 from app.services.grouping.kinds import is_collab_slug, is_descriptor_slug, is_service_slug
 from app.services.grouping.policy import load_policy
@@ -32,7 +32,6 @@ from app.services.grouping.reports import (
     model_candidates,
 )
 from app.services.grouping.scratch import make_scratch
-from app.services.metrics import MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.operations import (
@@ -44,6 +43,7 @@ from app.services.operations import (
 )
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import collection_filters
+from app.services.per_brand import recompute_brands, regroup_brands
 from app.services.sources.base.models import RawHit
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
@@ -56,7 +56,7 @@ from app.services.transport.protocols import HttpTransport
 async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, object]:
     """Fetch and normalize a bounded compatibility sample without persistence."""
 
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         cached = await session.scalar(
@@ -118,7 +118,7 @@ async def run_canary(settings: Settings, brand: str, limit: int) -> dict[str, ob
 async def run_collection_canary(settings: Settings, brand: str) -> dict[str, object]:
     """Collect one live brand without persisting listing payloads."""
 
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         cached = await session.scalar(
@@ -217,7 +217,7 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
 async def run_discovery(settings: Settings) -> dict[str, object]:
     """Read the public search key from Grailed's page config and probe indices and facets."""
 
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     transport: HttpTransport = create_http_transport(settings)
     try:
@@ -243,7 +243,7 @@ async def run_discovery(settings: Settings) -> dict[str, object]:
 async def run_taxonomy_check(settings: Settings) -> dict[str, object]:
     """One bounded request: real category_path values that config/taxonomy.yaml lacks."""
 
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         cached = await session.scalar(
@@ -289,14 +289,12 @@ async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]
     """Back up, then regroup every brand and recompute all group metrics."""
 
     backup = backup_database(settings)
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
-            result = await GroupingService(session).regroup(full=full)
-            await session.commit()
-            metrics = await MetricsService(session).recompute()
-            await session.commit()
+            result = await regroup_brands(session, None, full=full)
+            metrics = await recompute_brands(session, None)
         return {
             "status": "ok",
             "backup": str(backup),
@@ -327,7 +325,7 @@ async def grouping_report(
     a person marks the real models, which then go into ``config/models/<brand>.yaml``.
     """
 
-    engine = create_async_engine(get_database_url(settings))
+    engine = create_database_engine(settings)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:

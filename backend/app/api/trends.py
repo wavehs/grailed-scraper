@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.api.groups import GroupDetail, group_detail_data
+from app.api.mutation import MutationRoute
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
@@ -20,7 +21,7 @@ from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
 
-router = APIRouter(prefix="/trends", tags=["trends"])
+router = APIRouter(prefix="/trends", tags=["trends"], route_class=MutationRoute)
 WINDOWS = (7, 30, 90)
 SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new"]
 

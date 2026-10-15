@@ -316,5 +316,6 @@ async def test_finished_collection_regroups_and_recomputes_metrics(tmp_path: Pat
     assert finished is not None and finished.status == "completed"
     assert finished.stats["grouping"]["listings"] == 1
     assert finished.stats["metrics"]["rows"] >= 3
+    assert finished.stats["maintenance"]["checkpoint"]["busy"] == 0
     assert listing is not None and listing.product_type == "hitop_sneakers"
     assert metric is not None and metric.sold_30d == 1

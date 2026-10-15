@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -15,20 +14,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.models import ParserRun, ParserRunTask, SourceCredential
+from app.db.session import checkpoint_database
 from app.domain.listings import ListingStatus
 from app.repositories.fetching import FetchReportRepository
 from app.repositories.lifecycle import LifecycleRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.runs import RunRepository
-from app.services.grouping import GroupingResult, GroupingService
-from app.services.grouping.service import BrandGroupingStats
-from app.services.metrics import MetricsResult, MetricsService
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
 from app.services.normalization.quality import QualityProcessor
 from app.services.parser.fetching import FetchApi
 from app.services.parser.incremental import IncrementalPlanner, RefreshActiveService
 from app.services.parser.observability import RunMetrics
+from app.services.per_brand import recompute_brands, regroup_brands
 from app.services.sources.base.models import CoverageReport
 from app.services.sources.grailed.algolia.client import AlgoliaClient
 from app.services.sources.grailed.algolia.models import AlgoliaCredentialsData, AlgoliaQuery
@@ -178,32 +176,12 @@ class ParserRuntime:
                     await repository.heartbeat(run_id)
                     await session.commit()
                     brand_ids = await repository.brand_ids(run_id)
-                    # One commit per brand keeps SQLite's write lock short for other writers.
-                    grouping_stats: list[BrandGroupingStats] = []
-                    grouping_started = time.perf_counter()
                     async with self.grouping_lock:
-                        for brand_id in brand_ids:
-                            grouped = await GroupingService(session).regroup([brand_id])
-                            grouping_stats.extend(grouped.brands)
-                            await session.commit()
-                    grouping_result = GroupingResult(
-                        grouping_stats, time.perf_counter() - grouping_started
-                    )
+                        grouping_result = await regroup_brands(session, brand_ids)
                     await repository.set_phase(run_id, "metrics")
                     await session.commit()
-                    metric_rows = metric_listings = 0
-                    metrics_started = time.perf_counter()
-                    for brand_id in brand_ids:
-                        computed = await MetricsService(session).recompute([brand_id])
-                        metric_rows += computed.rows
-                        metric_listings += computed.listings
-                        await session.commit()
-                    metrics_result = MetricsResult(
-                        len(brand_ids),
-                        metric_rows,
-                        metric_listings,
-                        time.perf_counter() - metrics_started,
-                    )
+                    metrics_result = await recompute_brands(session, brand_ids)
+                    checkpoint = await self._checkpoint(session)
                     run = await repository.get(run_id)
                     assert run is not None
                     metric_snapshot = resources.metrics.snapshot()
@@ -211,6 +189,7 @@ class ParserRuntime:
                         **run.stats,
                         "grouping": grouping_result.summary(),
                         "metrics": metrics_result.summary(),
+                        "maintenance": {"checkpoint": checkpoint},
                         "observability": metric_snapshot,
                         "persistence": {
                             "inserted": metric_snapshot["listings_inserted"],
@@ -575,6 +554,16 @@ class ParserRuntime:
                 # SQLite's single writer is busy (e.g. regrouping a large brand); the next
                 # beat retries instead of ending the heartbeat for the rest of the run.
                 structlog.get_logger(__name__).info("parser_heartbeat_deferred", run_id=run_id)
+
+    async def _checkpoint(self, session: AsyncSession) -> dict[str, int] | None:
+        """Shrink the WAL the run grew; a failure here must not fail a finished collection."""
+
+        try:
+            return await checkpoint_database(session)
+        except OperationalError as exc:
+            await session.rollback()
+            structlog.get_logger(__name__).warning("wal_checkpoint_failed", error=str(exc))
+            return None
 
     async def _persist_metrics(self, run_id: int, metrics: RunMetrics) -> None:
         async with self._sessions() as session:

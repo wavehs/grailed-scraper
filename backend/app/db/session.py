@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,6 +16,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import PROJECT_ROOT, Settings, get_settings
+
+# A long read keeps the WAL from being reset; after a checkpoint it shrinks back to this size.
+JOURNAL_SIZE_LIMIT_BYTES = 64 * 1024 * 1024
 
 
 def get_database_url(settings: Settings) -> str:
@@ -44,11 +47,30 @@ def create_database_engine(settings: Settings) -> AsyncEngine:
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.execute("PRAGMA foreign_keys=ON")
                 cursor.execute(f"PRAGMA busy_timeout={timeout}")
+                cursor.execute(f"PRAGMA journal_size_limit={JOURNAL_SIZE_LIMIT_BYTES}")
             finally:
                 cursor.close()
 
         event.listen(engine.sync_engine, "connect", configure_sqlite)
     return engine
+
+
+async def checkpoint_database(session: AsyncSession) -> dict[str, int]:
+    """Fold the WAL back into the database and refresh planner statistics.
+
+    Run after a commit, outside a transaction. ``busy`` is 1 when a reader kept the WAL from
+    being truncated; the next checkpoint catches up, so it is reported, not raised.
+    """
+
+    bind = session.get_bind()
+    if bind.dialect.name != "sqlite":
+        return {"busy": 0, "wal_pages": 0, "checkpointed_pages": 0}
+    # ``optimize`` may run ANALYZE, which writes: it goes first so the checkpoint takes it too.
+    await session.execute(text("PRAGMA optimize"))
+    await session.commit()
+    row = (await session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))).one()
+    await session.commit()
+    return {"busy": int(row[0]), "wal_pages": int(row[1]), "checkpointed_pages": int(row[2])}
 
 
 @lru_cache

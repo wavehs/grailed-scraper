@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
+from app.api.mutation import MutationRoute
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.db.session import get_db
@@ -23,7 +24,7 @@ from app.services.sources.grailed.discovery.service import (
 )
 from app.services.transport.factory import create_http_transport
 
-router = APIRouter(prefix="/sources/grailed", tags=["sources"])
+router = APIRouter(prefix="/sources/grailed", tags=["sources"], route_class=MutationRoute)
 
 
 class DiscoveryRefreshRequest(BaseModel):

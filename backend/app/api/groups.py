@@ -9,9 +9,11 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
+from app.api.mutation import MutationRoute, is_database_locked, retry_locked
 from app.db.models import (
     Brand,
     Listing,
@@ -22,7 +24,6 @@ from app.db.models import (
     ParentOverride,
 )
 from app.db.session import get_db
-from app.services.grouping import GroupingService
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
 from app.services.grouping.kinds import (
     NONE_SLUG,
@@ -33,9 +34,9 @@ from app.services.grouping.kinds import (
     is_service_slug,
 )
 from app.services.grouping.policy import load_policy
-from app.services.metrics import MetricsService
+from app.services.per_brand import recompute_brands, regroup_brands
 
-router = APIRouter(tags=["groups"])
+router = APIRouter(tags=["groups"], route_class=MutationRoute)
 _fallback_lock = asyncio.Lock()
 
 
@@ -134,8 +135,7 @@ async def regroup(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
     async with _lock(request):
-        result = await GroupingService(session).regroup(payload.brand_ids, full=payload.full)
-        await session.commit()
+        result = await regroup_brands(session, payload.brand_ids, full=payload.full)
     await _refresh_metrics(session, {item.brand_id for item in result.brands})
     return result.summary()
 
@@ -441,19 +441,38 @@ def _lock(request: Request) -> asyncio.Lock:
 
 
 async def _apply(request: Request, session: AsyncSession, brand_id: int) -> None:
-    """Persist the rule, regroup the brand from scratch and refresh its metrics."""
+    """Persist the rule, regroup the brand from scratch and refresh its metrics.
+
+    The rule commits in its own short transaction: the regroup of a large brand reads for
+    seconds before it writes, and holding the write lock over that blocks the parser. A
+    saved rule changes the brand's rules hash, so if the regroup keeps losing the lock the
+    next regroup (parser run or ``cli regroup``) is a full pass that applies it anyway.
+    """
 
     async with _lock(request):
-        await session.flush()
-        await GroupingService(session).regroup([brand_id], full=True)
         await session.commit()
-    await _refresh_metrics(session, {brand_id})
+        try:
+            await retry_locked(
+                session,
+                lambda: regroup_brands(session, [brand_id], full=True),
+                where="groups.regroup",
+            )
+            await retry_locked(
+                session, lambda: _refresh_metrics(session, {brand_id}), where="groups.metrics"
+            )
+        except OperationalError as error:
+            if not is_database_locked(error):
+                raise
+            raise ApiError(
+                503,
+                "regroup_pending",
+                "The change is saved; the brand will be regrouped on the next run",
+            ) from error
 
 
 async def _refresh_metrics(session: AsyncSession, brand_ids: set[int]) -> None:
     if brand_ids:
-        await MetricsService(session).recompute(brand_ids)
-        await session.commit()
+        await recompute_brands(session, brand_ids)
 
 
 async def _counts(session: AsyncSession, group_ids: list[int]) -> dict[int, dict[str, int]]:

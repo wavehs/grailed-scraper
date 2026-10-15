@@ -69,6 +69,7 @@ async def test_sqlite_pragmas_and_single_instance_lock(tmp_path) -> None:  # typ
             assert await connection.scalar(text("PRAGMA synchronous")) == 1
             assert await connection.scalar(text("PRAGMA foreign_keys")) == 1
             assert await connection.scalar(text("PRAGMA busy_timeout")) == 3_210
+            assert await connection.scalar(text("PRAGMA journal_size_limit")) == 64 * 1024 * 1024
     finally:
         await engine.dispose()
 

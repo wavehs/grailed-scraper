@@ -10,11 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.mutation import MutationRoute
 from app.core.config import Settings, get_settings
 from app.db.models import AppSetting
 from app.db.session import get_db
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"], route_class=MutationRoute)
 SettingOrigin = Literal["default", "env", "database"]
 
 SETTING_GROUPS: dict[str, tuple[str, ...]] = {

@@ -21,6 +21,7 @@ from app.api.discovery import (
     refresh_discovery,
 )
 from app.api.errors import ApiError
+from app.api.mutation import MutationRoute
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.core.privacy import compliance_reasons
@@ -44,7 +45,7 @@ from app.services.parser.planner import ParserPlanner
 from app.services.parser.runtime import ParserRuntime
 from app.services.sources.grailed.discovery.service import DiscoveryService
 
-router = APIRouter(prefix="/parser", tags=["parser"])
+router = APIRouter(prefix="/parser", tags=["parser"], route_class=MutationRoute)
 RunStatus = Literal[
     "pending", "running", "completed", "partial", "failed", "interrupted", "cancelled"
 ]
