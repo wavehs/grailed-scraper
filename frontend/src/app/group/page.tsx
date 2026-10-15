@@ -8,6 +8,8 @@ import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } 
 import { AskVsSoldPanel } from '@/components/ask-vs-sold';
 import { formatRatio } from '@/components/liquidity-cells';
 import { MetricBadges } from '@/components/metric-badges';
+import { WatchSummary } from '@/components/watch-changes';
+import { WatchStar, useWatchItem } from '@/components/watch-star';
 import { MonthCharts } from '@/components/month-charts';
 import { ResaleCalculator } from '@/components/resale-calculator';
 import { WeeklyCharts } from '@/components/trend-charts';
@@ -32,6 +34,7 @@ function GroupCard() {
   const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
   const [condition, setCondition] = useState<TrendCondition>('all');
   const card = useTrendCardQuery(groupId, windowDays, condition);
+  const watched = useWatchItem(groupId);
   if (groupId === null) return <EmptyState />;
   if (card.isLoading) return <LoadingState />;
   if (!card.data) return <ErrorState error={card.error} retry={() => card.refetch()} />;
@@ -71,7 +74,9 @@ function GroupCard() {
         <GroupKindBadge kind={group.kind} />
         {metrics?.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
         <MetricBadges badges={metrics?.badges} />
+        <WatchStar groupId={group.id} />
       </div>
+      {watched && <WatchSummary item={watched} />}
 
       {metrics ? (
         <>

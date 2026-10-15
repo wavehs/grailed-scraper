@@ -458,6 +458,8 @@ export type TrendFilters = {
   department: TrendDepartment;
   /** Hide rows with fewer than five sales in 90 days. */
   hideLowData: boolean;
+  /** Models on the watchlist only. */
+  watchedOnly: boolean;
   sort: TrendSort;
   desc: boolean;
 };
@@ -486,3 +488,37 @@ export type ScheduleStatus = {
   paused_until: string | null;
   last_run: ScheduledRun | null;
 };
+
+/** A watched model's numbers on a day; `median_price` is the 30-day median in cents. */
+export type WatchPoint = {
+  as_of: string;
+  liquidity_score: string | null;
+  median_price: number | null;
+  sold_30d: number;
+  active_now: number;
+  active_effective: number | null;
+};
+
+/** Now minus the baseline; `median_price` is a ratio (0.1 = 10% dearer). */
+export type WatchChanges = {
+  liquidity_score: string | null;
+  median_price: string | null;
+  sold_30d: number;
+  active_now: number;
+  active_effective: number | null;
+};
+
+export type WatchItem = {
+  group_id: number;
+  brand: string;
+  name: string;
+  product_type: string | null;
+  retired: boolean;
+  added_at: string;
+  note: string | null;
+  baseline: WatchPoint | null;
+  current: WatchPoint | null;
+  changes: WatchChanges | null;
+};
+
+export type WatchlistResponse = { data: WatchItem[] };

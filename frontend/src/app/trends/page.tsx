@@ -13,6 +13,7 @@ import {
 } from '@/components/liquidity-cells';
 import { ExportCsvLink } from '@/components/export-csv-link';
 import { MetricBadges } from '@/components/metric-badges';
+import { WatchStar } from '@/components/watch-star';
 import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
 import { Sparkline } from '@/components/trend-charts';
 import { CLEAR_WARDROBE, WardrobePresets } from '@/components/wardrobe-presets';
@@ -48,6 +49,7 @@ const DEFAULT_FILTERS: TrendFilters = {
   condition: 'all',
   department: '',
   hideLowData: false,
+  watchedOnly: false,
   sort: 'trend',
   desc: true,
 };
@@ -277,6 +279,16 @@ export default function TrendsPage() {
               {t('showDescriptors')}
             </label>
           )}
+          {filters.level === 'model' && (
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]" title={t('watchedOnlyHelp')}>
+              <input
+                type="checkbox"
+                checked={filters.watchedOnly}
+                onChange={(event) => update({ watchedOnly: event.target.checked })}
+              />
+              {t('watchedOnly')}
+            </label>
+          )}
           <span className="ml-auto flex items-center gap-1">
             <select aria-label={t('sortBy')} value={filters.sort} onChange={(event) => update({ sort: event.target.value as TrendSort })}>
               {SORTS.map(([value, label]) => (
@@ -399,9 +411,12 @@ function TrendTableRow({
     <TableRow>
       <TableCell>
         {row.scope === 'model' && row.group_id ? (
-          <Link className="font-medium text-[var(--accent)] hover:underline" href={`/group?id=${row.group_id}`}>
-            {title}
-          </Link>
+          <span className="flex items-start gap-1.5">
+            <WatchStar groupId={row.group_id} />
+            <Link className="font-medium text-[var(--accent)] hover:underline" href={`/group?id=${row.group_id}`}>
+              {title}
+            </Link>
+          </span>
         ) : (
           <button type="button" className="text-left font-medium text-[var(--accent)] hover:underline" onClick={() => onDrill(row)}>
             {title}

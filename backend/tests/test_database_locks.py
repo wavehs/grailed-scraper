@@ -32,6 +32,7 @@ from app.api import (
     settings,
     trend_export,
     trends,
+    watchlist,
 )
 from app.api.errors import install_exception_handlers
 from app.api.mutation import MutationRoute
@@ -128,6 +129,7 @@ def test_reads_and_other_database_errors_are_not_retried() -> None:
         settings,
         trend_export,
         trends,
+        watchlist,
     ],
 )
 def test_every_api_router_retries_locked_writes(module: ModuleType) -> None:

@@ -9,6 +9,7 @@ import {
   Moon,
   Play,
   Settings,
+  Star,
   Sun,
   Tags,
   TrendingUp,
@@ -26,6 +27,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { key: 'trends', href: '/trends', icon: <TrendingUp size={18} />, group: 'analytics' },
+  { key: 'watchlist', href: '/watchlist', icon: <Star size={18} />, group: 'analytics' },
   { key: 'catalog', href: '/listings', icon: <Database size={18} />, group: 'analytics' },
   { key: 'brands', href: '/brands', icon: <Tags size={18} />, group: 'management' },
   { key: 'collect', href: '/collect', icon: <Play size={18} />, group: 'management' },

@@ -24,6 +24,7 @@ from app.api.settings import get_effective_settings
 from app.api.settings import router as settings_router
 from app.api.trend_export import router as trend_export_router
 from app.api.trends import router as trends_router
+from app.api.watchlist import router as watchlist_router
 from app.core.config import Settings
 from app.core.runtime import resolve_revision
 from app.db.session import get_db
@@ -36,6 +37,7 @@ router.include_router(parser_router)
 router.include_router(listings_router)
 router.include_router(trend_export_router)
 router.include_router(trends_router)
+router.include_router(watchlist_router)
 router.include_router(groups_router)
 router.include_router(settings_router)
 router.include_router(fees_router)

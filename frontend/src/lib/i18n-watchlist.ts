@@ -1,0 +1,43 @@
+/** Strings of the watchlist (v2 plan 3.7). */
+
+export const watchlistEn: Record<string, string> = {
+  watchlist: 'Watchlist',
+  watchlistIntro: 'Models you follow and how they moved since you added them.',
+  watch: 'Watch this model',
+  unwatch: 'Stop watching',
+  watchedOnly: 'Watched only',
+  watchedOnlyHelp: 'Show only models on your watchlist.',
+  watchEmpty: 'Nothing watched yet: star a model in Trends or on its card.',
+  watchModel: 'Model',
+  watchAdded: 'Added',
+  watchScore: 'Liquidity Score',
+  watchPrice: 'Median price, 30 d',
+  watchSupply: 'Supply',
+  watchSold: 'Sales, 30 d',
+  watchNote: 'Note',
+  watchRemove: 'Remove',
+  watchSince: 'Since {date}',
+  watchNoHistory: 'No snapshot from the day it was added yet: changes appear after the next recompute.',
+  watchRetired: 'merged or retired',
+};
+
+export const watchlistRu: Record<string, string> = {
+  watchlist: 'Отслеживаемые',
+  watchlistIntro: 'Модели, за которыми вы следите, и как они изменились с момента добавления.',
+  watch: 'Отслеживать модель',
+  unwatch: 'Не отслеживать',
+  watchedOnly: 'Только отслеживаемые',
+  watchedOnlyHelp: 'Показать только модели из списка отслеживаемых.',
+  watchEmpty: 'Пока ничего не отслеживается: отметьте модель звёздочкой в трендах или в карточке.',
+  watchModel: 'Модель',
+  watchAdded: 'Добавлена',
+  watchScore: 'Liquidity Score',
+  watchPrice: 'Медиана цены, 30 дн',
+  watchSupply: 'Предложение',
+  watchSold: 'Продажи, 30 дн',
+  watchNote: 'Заметка',
+  watchRemove: 'Убрать',
+  watchSince: 'С {date}',
+  watchNoHistory: 'Снимка со дня добавления ещё нет: изменения появятся после следующего пересчёта.',
+  watchRetired: 'объединена или выведена',
+};

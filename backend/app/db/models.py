@@ -665,3 +665,15 @@ class ParserWatermark(Base):
     last_key_value: Mapped[str | None] = mapped_column(Text)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     full_refresh_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WatchlistItem(Base):
+    """A model the user follows (v2 plan 3.7); changes are measured from ``added_at``."""
+
+    __tablename__ = "watchlist"
+
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))

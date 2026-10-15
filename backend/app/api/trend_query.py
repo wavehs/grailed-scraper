@@ -11,7 +11,7 @@ from sqlalchemy import ColumnElement, Select, Subquery, func, or_, select
 from app.api.errors import ApiError
 from app.api.trend_fields import LOW_DATA_SALES, Condition, Department
 from app.api.trend_periods import MONTH_PATTERN, MonthRange, parse_period, period_totals
-from app.db.models import Brand, GroupMetric, ModelGroup
+from app.db.models import Brand, GroupMetric, ModelGroup, WatchlistItem
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.policy import REVIEW_TYPE
 
@@ -39,6 +39,7 @@ class TrendQuery:
     include_fallback: bool = False
     include_descriptors: bool = False
     search: str = ""
+    watched_only: bool = False
     sort: SortKey = "trend"
     desc: bool = True
 
@@ -62,6 +63,8 @@ def trend_query(
     include_fallback: bool = False,
     include_descriptors: bool = False,
     search: Annotated[str, Query(max_length=200)] = "",
+    # Models on the watchlist only (v2 plan 3.7); other levels ignore it.
+    watched_only: bool = False,
     sort: SortKey = "trend",
     desc: bool = True,
 ) -> TrendQuery:
@@ -86,6 +89,7 @@ def trend_query(
         include_fallback=include_fallback,
         include_descriptors=include_descriptors,
         search=search,
+        watched_only=watched_only,
         sort=sort,
         desc=desc,
     )
@@ -164,6 +168,8 @@ def _level_filters(query: TrendQuery, typed: bool) -> list[ColumnElement[bool]]:
         if not query.include_descriptors:
             # Descriptions ("Baggy", "Wide Leg") are no models: hidden unless asked for.
             filters.append(~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
+        if query.watched_only:
+            filters.append(GroupMetric.group_id.in_(select(WatchlistItem.group_id)))
     if not typed and query.level != "brand":
         filters.append(GroupMetric.product_type != REVIEW_TYPE)
     return filters

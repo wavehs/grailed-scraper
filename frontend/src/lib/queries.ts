@@ -17,6 +17,7 @@ import type {
   TrendCondition,
   TrendFilters,
   TrendList,
+  WatchlistResponse,
 } from '@/lib/types';
 
 export function useApiHealth() {
@@ -151,12 +152,20 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (filters.condition !== 'all') params.set('condition', filters.condition);
   if (filters.department) params.set('department', filters.department);
   if (filters.hideLowData) params.set('hide_low_data', 'true');
+  if (filters.watchedOnly) params.set('watched_only', 'true');
   const months = periodRange(filters.period, filters.monthFrom, filters.monthTo);
   if (months) {
     params.set('month_from', months.from);
     params.set('month_to', months.to);
   }
   return params;
+}
+
+export function useWatchlistQuery() {
+  return useQuery({
+    queryKey: ['watchlist'],
+    queryFn: ({ signal }) => getApi<WatchlistResponse>('/watchlist', signal),
+  });
 }
 
 export function useTrendsQuery(filters: TrendFilters, offset = 0) {

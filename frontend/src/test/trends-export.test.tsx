@@ -24,6 +24,7 @@ const filters: TrendFilters = {
   condition: 'used',
   department: '',
   hideLowData: true,
+  watchedOnly: true,
 };
 
 describe('trendExportHref', () => {
@@ -41,6 +42,7 @@ describe('trendExportHref', () => {
       search: 'Geo',
       condition: 'used',
       hide_low_data: 'true',
+      watched_only: 'true',
     });
     expect(url.searchParams.has('limit')).toBe(false);
     expect(url.searchParams.has('offset')).toBe(false);
