@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
+from app.db.models import Base, Listing
 from app.domain.listings import ListingData
 from app.services.normalization.fx import StaticFxRateProvider
 from app.services.normalization.mapping import load_source_mapping, resolve_path
@@ -15,6 +20,7 @@ from app.services.normalization.normalizer import (
     normalize_size,
 )
 from app.services.normalization.quality import QualityProcessor
+from app.services.normalization.reflag import ReflagResult, reflag_replicas
 from app.services.sources.base.models import RawHit
 
 
@@ -138,7 +144,7 @@ def test_quality_processor_flags_each_supported_case() -> None:
     listings = [
         _listing(1, "Maison Margiela jacket", Decimal("100"), now, photos=1),
         _listing(2, "Maison Margiela jacket", Decimal("105"), now + timedelta(days=1), photos=1),
-        _listing(3, "Replica inspired jacket", Decimal("100"), now, photos=1),
+        _listing(3, "1:1 replica jacket", Decimal("100"), now, photos=1),
         _listing(4, "Lot of jackets read description", Decimal("300"), now, photos=1),
         _listing(5, "Rick Owens jacket", Decimal("100"), now, photos=0),
         _listing(6, "Maison Margiela jacket", Decimal("10000"), now, photos=1),
@@ -156,6 +162,53 @@ def test_quality_processor_flags_each_supported_case() -> None:
     assert "price_outlier" in flags[6]
 
 
+def test_only_an_inspired_by_title_marks_a_replica() -> None:
+    now = datetime(2026, 8, 8, tzinfo=UTC)
+    listings = [
+        _listing(1, "Vans-inspired sneakers", Decimal("100"), now, photos=1),
+        _listing(2, "Robe-inspired coat", Decimal("100"), now, photos=1),
+        _listing(3, "Jacket inspired by Rick Owens", Decimal("100"), now, photos=1),
+        _listing(4, "Leather jacket", Decimal("100"), now, photos=1, description="Inspired by RO"),
+        _listing(5, "Leather jacket", Decimal("100"), now, photos=1, description="1:1 replica"),
+    ]
+
+    processed = QualityProcessor(Settings()).apply(listings)
+    flagged = {item.grailed_id for item in processed if "possible_replica" in item.quality_flags}
+
+    assert flagged == {3, 5}
+
+
+async def test_stored_replica_flags_are_rechecked_with_the_current_rule(tmp_path: Path) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'reflag.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 8, 8, tzinfo=UTC)
+    stored = [
+        (_listing(1, "Robe-inspired coat", Decimal("100"), now, photos=1), ["possible_replica"]),
+        (_listing(2, "Coat inspired by RO", Decimal("100"), now, photos=1), ["possible_replica"]),
+        (
+            _listing(3, "Coat", Decimal("100"), now, photos=0, description="inspired lines"),
+            ["no_photos", "possible_replica"],
+        ),
+        (_listing(4, "Robe-inspired coat", Decimal("100"), now, photos=1), []),
+    ]
+    async with factory() as session:
+        for listing, initial in stored:
+            session.add(
+                Listing(**listing.model_copy(update={"quality_flags": initial}).model_dump())
+            )
+        await session.commit()
+
+        result = await reflag_replicas(session)
+        rows = await session.execute(select(Listing.grailed_id, Listing.quality_flags))
+        flags = dict(rows.tuples().all())
+    await engine.dispose()
+
+    assert result == ReflagResult(checked=3, cleared=2, brand_ids=(1,))
+    assert flags == {1: [], 2: ["possible_replica"], 3: ["no_photos"], 4: []}
+
+
 def _listing(
     identifier: int,
     title: str,
@@ -163,12 +216,14 @@ def _listing(
     created_at: datetime,
     *,
     photos: int,
+    description: str | None = None,
 ) -> ListingData:
     return ListingData(
         grailed_id=identifier,
         status="active",
         url=f"https://example.test/{identifier}",
         title=title,
+        description=description,
         brand_name_raw="Maison Margiela",
         brand_id=1,
         category="outerwear",

@@ -39,10 +39,10 @@
 | `parser_refresh_active_limit` | null | только для bounded canary |
 | `discovery_ttl_hours` | 12 | нижняя граница; `validUntil` ключа имеет приоритет |
 | `discovery_sample_size` | 200 | объём выборки для схемы |
-| `quality_price_outlier_mad_k` | 6 | |
+| `quality_price_outlier_mad_k` | 6 | грубый фильтр при сборе; выбросы области — в METRICS.md |
 | `quality_filter_replicas` | true | |
 | `quality_lot_price_multiplier` | 1.5 | |
-| `fx_provider` | `static` | локальная `fx_rates` |
+| `fx_provider` | `static` | пустой набор курсов: не-USD хиты отклоняются (`missing_fx_rate`), см. DATA_MODEL.md |
 | `seller_identity_salt` | generated | секрет из env или `data/secrets/`; не доступен через API |
 | `raw_data_retention_days` | 90 | применяется явной CLI-командой |
 | `backup_retention_days` | 30 | применяется явной CLI-командой |

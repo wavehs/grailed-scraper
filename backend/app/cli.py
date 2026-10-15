@@ -35,6 +35,7 @@ from app.services.grouping.scratch import make_scratch
 from app.services.normalization.backfill import BACKFILL_BATCH, backfill_market_fields
 from app.services.normalization.mapping import load_source_mapping
 from app.services.normalization.normalizer import ListingNormalizer, NormalizationContext
+from app.services.normalization.reflag import reflag_replicas
 from app.services.operations import (
     backup_database,
     restore_database,
@@ -317,6 +318,27 @@ async def backfill_market(settings: Settings, *, batch_size: int) -> dict[str, o
             return await backfill_market_fields(
                 session, load_source_mapping(), batch_size=batch_size
             )
+    finally:
+        await engine.dispose()
+
+
+async def reflag(settings: Settings) -> dict[str, object]:
+    """Clear replica flags the current rule no longer sets, then recompute those brands."""
+
+    engine = create_database_engine(settings)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            result = await reflag_replicas(session)
+            brand_ids = result.brand_ids
+            metrics = await recompute_brands(session, brand_ids) if brand_ids else None
+        return {
+            "status": "ok",
+            "checked": result.checked,
+            "cleared": result.cleared,
+            "brand_ids": list(brand_ids),
+            "metrics": metrics.summary() if metrics else None,
+        }
     finally:
         await engine.dispose()
 
@@ -607,6 +629,10 @@ def main() -> int:
         help="fill price path, shipping and seller-score columns from raw_json (resumable)",
     )
     backfill_parser.add_argument("--batch-size", type=int, default=BACKFILL_BATCH)
+    subparsers.add_parser(
+        "reflag-replicas",
+        help="re-check stored possible_replica flags with the current rule and recompute metrics",
+    )
     report_parser = subparsers.add_parser(
         "grouping-report", help="grouping quality per brand (offline)"
     )
@@ -717,6 +743,8 @@ def main() -> int:
         if args.batch_size < 1:
             parser.error("--batch-size must be positive")
         return _print(backfill_market(Settings(), batch_size=args.batch_size))
+    if args.command == "reflag-replicas":
+        return _print(reflag(Settings()))
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
     if args.command == "grouping-report":

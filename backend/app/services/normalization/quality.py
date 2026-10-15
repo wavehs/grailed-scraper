@@ -11,7 +11,9 @@ from statistics import median
 from app.core.config import Settings
 from app.domain.listings import ListingData
 
-_REPLICA = re.compile(r"\b(rep|replica|inspired|1:1|unauthorized|dhgate)\b", re.I)
+_REPLICA = re.compile(r"\b(rep|replica|1:1|unauthorized|dhgate)\b", re.I)
+# "Vans-inspired", "Robe-inspired" describe a style; only a title saying "inspired by" is a copy.
+_INSPIRED_BY = re.compile(r"\binspired\s+by\b", re.I)
 _LOT = re.compile(r"\b(bundle|lot of|x\s?\d+|set of|read description)\b", re.I)
 
 
@@ -38,7 +40,9 @@ class QualityProcessor:
         for listing in sorted(listings, key=lambda item: item.created_at or item.first_seen_at):
             flags = set(listing.quality_flags)
             text = f"{listing.title}\n{listing.description or ''}"
-            if self._settings.quality_filter_replicas and _looks_replica(listing, text):
+            if self._settings.quality_filter_replicas and looks_replica(
+                listing.title, listing.description, listing.brand_name_raw
+            ):
                 flags.add("possible_replica")
             group_key = (listing.brand_id, listing.category)
             group_median = medians[group_key]
@@ -62,12 +66,12 @@ class QualityProcessor:
         return result
 
 
-def _looks_replica(listing: ListingData, text: str) -> bool:
-    matches = {match.casefold() for match in _REPLICA.findall(text)}
+def looks_replica(title: str, description: str | None, brand_name_raw: str) -> bool:
+    matches = {match.casefold() for match in _REPLICA.findall(f"{title}\n{description or ''}")}
     # "Replica" is a Maison Margiela line (Replica sneakers), not a counterfeit marker.
-    if "margiela" in listing.brand_name_raw.casefold():
+    if "margiela" in brand_name_raw.casefold():
         matches.discard("replica")
-    return bool(matches)
+    return bool(matches) or bool(_INSPIRED_BY.search(title))
 
 
 def _is_outlier(price: Decimal, center: Decimal, mad: Decimal, k: Decimal) -> bool:

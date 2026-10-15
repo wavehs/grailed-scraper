@@ -85,7 +85,7 @@ photo_urls: list[str] = []
 photo_count: int = 0
 seller_id: int | None
 seller_username_hash: str | None   # см. §14
-seller_country: str | None
+seller_country: str | None         # недоступно: в хитах нет `location`, всегда NULL
 quality_flags: list[str] = []      # ["outlier_price","possible_replica","lot",...]
 fetch_tier: Literal["T1"]
 parser_run_id: int
@@ -133,8 +133,14 @@ schema_version: int
 Перед persistence из `raw_json` рекурсивно удаляются поля `username` и
 `seller_username`; seller username в открытом виде не сохраняется.
 
-Курсы валют в MVP берутся только из локальной `fx_rates` за точную календарную
-дату. Если курс отсутствует, hit получает причину `missing_fx_rate` и не вызывает
-скрытый сетевой запрос.
+Курсы валют: нормализатор получает пустой `StaticFxRateProvider`, поэтому любой
+не-USD hit получает причину `missing_fx_rate` и не сохраняется; скрытого сетевого
+запроса нет. Это осознанно: на Grailed почти все лоты в USD (в run 5 — один такой hit).
+`DatabaseFxRateProvider` (таблица `fx_rates`, курс за точную календарную дату) готов, но
+не подключён; подключать его стоит, только если не-USD лотов станет заметно (число
+`missing_fx_rate` видно в отчёте прогона).
+
+`seller_country` всегда пуст: в хитах Algolia нет поля `location`. Колонка и маппинг
+оставлены на случай, если источник его добавит; в API и интерфейсе поля нет.
 
 ---

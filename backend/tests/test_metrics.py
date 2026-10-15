@@ -106,6 +106,33 @@ def test_trend_needs_three_sales_and_smooths_growth() -> None:
     assert single.is_new
 
 
+_TYPICAL = ("100", "105", "95", "110", "90", "100", "102", "98")
+
+
+def test_a_far_sale_price_is_left_out_of_medians_once_a_scope_has_eight_sales() -> None:
+    sales = [_item(index, price=price, sold_days=index) for index, price in enumerate(_TYPICAL)]
+    far = [_item(20, price="2000", sold_days=3), _item(21, price="5", sold_days=4)]
+
+    metrics = compute_metrics([*sales, *far], AS_OF)
+
+    assert metrics.sold_7d == 10 and metrics.sold_90d == 10  # still counted as sales
+    assert metrics.median_price_90d == Decimal("100.00")
+    assert metrics.median_price_7d == Decimal("100.00")
+    assert metrics.weekly_median_price[-1] == Decimal("100.00")
+
+
+def test_a_scope_with_fewer_than_eight_recent_sales_keeps_every_price() -> None:
+    recent = [_item(index, price=price, sold_days=10) for index, price in enumerate(_TYPICAL[:6])]
+    # Sales older than 90 days neither count towards the eight nor move the median.
+    old = [_item(10 + index, price="100", sold_days=120) for index in range(5)]
+    far = _item(20, price="2000", sold_days=3)
+
+    metrics = compute_metrics([*recent, *old, far], AS_OF)
+
+    assert metrics.median_price_90d == Decimal("100.00")  # 7 prices, 2000 among them
+    assert metrics.median_price_7d == Decimal("2000.00")
+
+
 def _listing(
     listing_id: int,
     brand_id: int,

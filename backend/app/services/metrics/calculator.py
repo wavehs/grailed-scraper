@@ -14,6 +14,13 @@ NEW_MODEL_DAYS = 60
 NEW_LISTING_DAYS = 14
 MIN_TREND_SALES = 3
 VARIANT_LIMIT = 12
+# A sale is a scope-level price outlier when its log price is more than OUTLIER_MAD_K robust
+# deviations from the median of the scope's last OUTLIER_DAYS of sales (D8 in the v2 plan).
+OUTLIER_MIN_SALES = 8
+OUTLIER_DAYS = 90
+OUTLIER_MAD_K = Decimal(4)
+_MAD_SCALE = Decimal("1.4826")
+_FLAT_LIMIT = Decimal(20).ln()  # all prices equal: only a 20x jump is an outlier
 _CENT = Decimal("0.01")
 _RATIO = Decimal("0.0001")
 _SHARE = Decimal("0.000001")
@@ -72,6 +79,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
     """All windows end at ``as_of``; see docs/METRICS.md for every formula."""
 
     result = ScopeMetrics(listings=len(listings))
+    outliers = price_outliers(listings, as_of)
     prices: dict[int, list[Decimal]] = {7: [], 30: [], 90: []}
     weekly_prices: list[list[Decimal]] = [[] for _ in range(WEEKS)]
     days_30: list[Decimal] = []
@@ -87,14 +95,15 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
         if item.status != "sold" or item.sold_at is None or item.sold_at > as_of:
             continue
         age = as_of - item.sold_at
+        priced = item.price_usable and item.id not in outliers
         if age <= timedelta(days=90):
             result.sold_90d += 1
             variants.append(item)
-            if item.price_usable:
+            if priced:
                 prices[90].append(item.sale_price)
         if age <= timedelta(days=30):
             result.sold_30d += 1
-            if item.price_usable:
+            if priced:
                 prices[30].append(item.sale_price)
             if item.exact_sale:
                 days = Decimal((item.sold_at - item.item_created_at).total_seconds()) / 86_400
@@ -103,12 +112,12 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
             result.sold_prev_30d += 1
         if age <= timedelta(days=7):
             result.sold_7d += 1
-            if item.price_usable:
+            if priced:
                 prices[7].append(item.sale_price)
         week = age.days // 7
         if week < WEEKS:
             result.weekly_sales[WEEKS - 1 - week] += 1
-            if item.price_usable:
+            if priced:
                 weekly_prices[WEEKS - 1 - week].append(item.sale_price)
     result.weekly_median_price = [_median(values, _CENT) for values in weekly_prices]
     result.median_price_7d = _median(prices[7], _CENT)
@@ -137,6 +146,31 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
     result.colors = variant_rows(variants, "color")
     result.sizes = variant_rows(variants, "size")
     return result
+
+
+def price_outliers(listings: Sequence[MetricListing], as_of: datetime) -> frozenset[int]:
+    """Ids of sales whose price is far from the scope's own recent sales.
+
+    The fetch-time ``price_outlier`` flag compares a page of one brand and category; this
+    compares like with like. Log prices: resale prices are skewed, a 2x sale is ordinary.
+    """
+
+    window = timedelta(days=OUTLIER_DAYS)
+    sales = [
+        (item.id, item.sale_price.ln())
+        for item in listings
+        if item.status == "sold"
+        and item.price_usable
+        and item.sold_at is not None
+        and timedelta(0) <= as_of - item.sold_at <= window
+        and item.sale_price > 0
+    ]
+    if len(sales) < OUTLIER_MIN_SALES:
+        return frozenset()
+    center = median(value for _, value in sales)
+    mad = median(abs(value - center) for _, value in sales)
+    limit = OUTLIER_MAD_K * _MAD_SCALE * mad if mad else _FLAT_LIMIT
+    return frozenset(item_id for item_id, value in sales if abs(value - center) > limit)
 
 
 def trend_score(
