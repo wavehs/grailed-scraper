@@ -18,6 +18,7 @@ from app.services.grouping import GroupingResult, GroupingService
 from app.services.grouping.service import BrandGroupingStats
 from app.services.metrics import MetricsResult, MetricsService
 from app.services.metrics.ranking import rank_metrics
+from app.services.metrics.season_profiles import write_season_profiles
 
 
 async def _selected(session: AsyncSession, brand_ids: Iterable[int] | None) -> list[int]:
@@ -45,7 +46,8 @@ async def recompute_brands(
 ) -> MetricsResult:
     """Recompute group metrics of the brands (all when ``None``) with one commit per brand.
 
-    A last commit ranks every brand's groups together: smoothed P30 and Liquidity Score.
+    A last commit ranks every brand's groups together (smoothed P30 and Liquidity Score)
+    and rebuilds the seasonal profiles, which span brands too.
     """
 
     started = time.perf_counter()
@@ -58,5 +60,6 @@ async def recompute_brands(
         listings += computed.listings
         await session.commit()
     await rank_metrics(session, moment.date())
+    await write_season_profiles(session, moment)
     await session.commit()
     return MetricsResult(len(selected), rows, listings, time.perf_counter() - started)

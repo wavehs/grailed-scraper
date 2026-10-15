@@ -425,6 +425,40 @@ class GroupMetricDaily(Base):
     liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
 
 
+class SeasonProfile(Base):
+    """Sales by calendar month of the market, a type, a brand's type or a model (plan 2.5).
+
+    Rebuilt from every sale after each recompute. ``months`` and ``seasons`` hold the
+    indices; a NULL ``department`` or ``product_type`` spans all of them.
+    """
+
+    __tablename__ = "season_profiles"
+    __table_args__ = (
+        UniqueConstraint("profile_key", name="uq_season_profiles_key"),
+        CheckConstraint(
+            "kind IN ('market', 'type', 'brand', 'model')", name="ck_season_profiles_kind"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    brand_id: Mapped[int | None] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"))
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE")
+    )
+    product_type: Mapped[str | None] = mapped_column(String(32))
+    department: Mapped[str | None] = mapped_column(String(32))
+    months: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    seasons: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    months_covered: Mapped[int] = mapped_column(Integer, nullable=False)
+    sales_year: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    correlation: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    stable: Mapped[bool | None] = mapped_column(Boolean)
+    blend_weight: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class GroupMonthStat(Base):
     """Sales of one scope in one calendar month (UTC) by condition; rebuilt with the metrics."""
 
