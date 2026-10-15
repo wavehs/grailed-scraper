@@ -1,14 +1,16 @@
-# grouping-v7: план, редакция 3 (с отметками о ходе работ)
+# grouping-v7: план, редакция 4 (с отметками о ходе работ)
 
-Обновлено: 2026-10-08, ветка `grouping-v7`, последний коммит `c544497`.
-Редакция 3 заменяет реконструкцию от 22:39. Что изменилось и почему — в последнем разделе.
+Обновлено: 2026-10-15, перенос на macOS завершён (сценарий А). Шаги 5–6 и точка v7b — ветка
+`grouping-v7-step5`, коммит `6ee7f73` от `main` `010f85e`; рабочая БД с Windows на месте. См. раздел
+«Перенос на macOS». Редакция 4 — финальный текст редакции 3 с Windows (восстановлен из
+стенограмм) плюс этот раздел. В тот же день закрыты решения 5 и 6: план выполнен, код в `main`.
+Что изменилось — в последних разделах.
 
 Как продолжить в новой сессии (Claude Code CLI, из корня репозитория):
 
 ```
-Прочитай prompts/grouping-v7-plan.md и продолжай с первого невыполненного пункта:
-сначала «Перед стартом», затем «Шаг 1 — что осталось». Решения 5 и 6 и вопросы В1–В2
-без моего явного «да» не выполняй.
+Прочитай prompts/grouping-v7-plan.md: сводку и «Решения 5 и 6 → Итог решения 5». План выполнен.
+Правки словаря для Rick Owens, сбор данных и коммиты без моего явного «да» не выполняй.
 ```
 
 ---
@@ -16,7 +18,7 @@
 ## Источники
 
 План собран из редакций 1 и 2, файлов которых в репозитории больше нет. Тексты лежат в
-`~/.claude-mem/claude-mem.db` (читать с `mode=ro`):
+`~/.claude-mem/claude-mem.db` (читать с `mode=ro`; база осталась на Windows-компьютере, на Mac её нет):
 
 - редакция 1 целиком: таблица `tool_uses`, id 161 (Write) и 162 (Edit);
 - первые 4 000 символов редакции 2, по которой сделан шаг 0: таблица `user_prompts`, сессия
@@ -43,20 +45,116 @@
 | Шаг 4 (v7b): правило линейки | ✅ в main (`010f85e`). Dev: `model_precision` 64,9% → 67,2%, мусор и дубли топ-100 18% → 12% строк. Итоги в разделе шага |
 | Шаг 5 (v7b): дубли и написания | ✅ ветка `grouping-v7-step5` от main `010f85e`, не закоммичено. Dev: дубли и мусор топ-50 10% → 2% строк, топ-100 12% → 8% (цели v7b по дублям на dev выполнены), `model_precision` 67,2% → 70,4%. Итоги в разделе шага |
 | Шаг 6 (v7b): подтверждение моделей, ленивые `any`, точка v7b | ✅ 2026-10-09, та же ветка, не закоммичено. Холдаут v7b запущен один раз: 11 из 12 целей пройдены, `model_precision` 70,8% при цели 0,90 — не пройдена. Отчёт `eval/balenciaga/checkpoint-v7b.md` |
-| Решение 5: живой сбор Rick Owens | ⏸ ждёт явного «да» |
-| Решение 6: перегруппировать рабочую БД и слить в main | ⏸ ждёт явного «да» |
+| Решение 5: живой сбор Rick Owens | ✅ 2026-10-15: сбор сделан 2026-10-09, разбор словаря и generic — на копии. Словарь и цвета работают; найдены `drop` в шуме (модель «Crotch») и `vintage` в шуме (модель Vintage разбита). Логику не меняли — ждёт решения. См. «Решения 5 и 6 → Итог решения 5» |
+| Решение 6: перегруппировать рабочую БД и слить в main | ✅ 2026-10-15: `grouping-v7-step5` влита в `main` (fast-forward). Перегруппировка не нужна: рабочая БД уже сгруппирована этим кодом (дельта на копии: changed 0, mined 0) |
+| Перенос на macOS (2026-10-15) | ✅ сценарий А: ветка `grouping-v7-step5` (`6ee7f73`) запушена с Windows, рабочая БД перенесена, проверки на Mac зелёные. См. «Перенос на macOS → Итог» |
 
-Готовность всего плана: шаги 0–6 и точка v7b сделаны; остались решения 5 и 6 (ждут «да») и коммиты шагов 5–6 (по просьбе).
+Готовность всего плана: всё сделано (2026-10-15). Шаги 0–6, точка v7b и решения 5–6 закрыты, код в
+`main`. Открыто только то, что разбор Rick Owens предлагает как следующую работу (не начата, ждёт «да»).
+
+---
+
+## Перенос на macOS (2026-10-15)
+
+### Итог: сценарий А выполнен (2026-10-15)
+
+- **Код.** С Windows запушена ветка `grouping-v7-step5`: коммит `6ee7f73` «Add spelling merges,
+  model confirmation and lazy seed types to grouping» от `010f85e`, 35 файлов, +2 141 / −107. На Mac
+  локальная ветка `grouping-v7-step5` отслеживает `origin`. Файл плана в ветке совпал байт в байт с
+  текстом, восстановленным из стенограмм; поверх него — эта редакция 4 (не закоммичена).
+- **В тот же коммит попала работа по сбору от 2026-10-09** (была незакоммичена рядом): нет потолка
+  90 запросов в минуту (дефолт 90, выше — явной настройкой), полный перечит проданных
+  (`ParserPlanner.build(full=True)`), оценка времени сбора `parser/eta.py`, `expected_hits` из
+  ответа источника, `conftest.py` фиксирует настройки сбора для тестов. Файлы: `api/parser.py`,
+  `api/settings.py`, `core/config.py`, `parser/{eta,planner,runtime}.py`, их тесты,
+  `docs/CONFIGURATION.md`, `docs/OPERATIONS.md`.
+- **База.** `data/grailed.db` с Windows (снимок 2026-10-09 21:45, 2,1 ГБ): `quick_check` ok,
+  363 198 объявлений (Balenciaga 278 494, Rick Owens 77 101, ERD 7 603), миграция `0020`.
+  База уже перегруппирована кодом v7 прогоном сбора 4 (2026-10-09): 14 406 групп, из них 5 327
+  описаний, 223 коллаб-линейки, 2 019 retired. Пустая база Mac — `data/backups/grailed-empty-mac-20261015.db`.
+- **`data/cache/eval/`:** `step5.patch`, `cp_v7b_code.patch`, `s7_threshold.py`, `run_regroup.py`.
+  Копий `cp_v7b.db` и `s*_*.db` на Mac нет — для новых замеров делать свежую копию рабочей БД.
+- **Проверки на Mac** (ветка `grouping-v7-step5`): `ruff check app tests` и `mypy` (122 файла) чисты,
+  `pytest` 197 passed. Известного провала из-за `.env` больше нет: `conftest.py` задаёт настройки сбора.
+- **Что это значит для решений** (оба закрыты 2026-10-15 после «да» заказчика, см. «Решения 5 и 6»):
+  - 5 — сбор Rick Owens фактически сделан по просьбе заказчика 2026-10-09 (77 101 объявление).
+    Разбор словаря описаний и generic на Rick Owens — в «Итог решения 5»;
+  - 6 — рабочая БД уже сгруппирована v7; `grouping-v7-step5` влита в `main`.
+- **WAL.** Рабочая БД в режиме WAL, а файлов `-wal`/`-shm` рядом нет. Поэтому `sqlite3 -readonly`
+  и `?mode=ro` падают с «unable to open database file». Для чтения при остановленном приложении:
+  `?mode=ro&immutable=1`. Копию снимать через `Connection.backup` с этим URI.
+
+### Что было на Mac до переноса
+
+- Репозиторий `~/Develop/grailed-scraper`, `main` = `origin/main` = `010f85e` (шаг 4). Ветки
+  `grouping-v7-step5` нет ни локально, ни на `origin`.
+- `data/grailed.db` пустая (0 объявлений). Папки `data/cache/eval/` нет: нет копий `s*_*.db` и
+  `cp_v7b.db`, `step5.patch`, `cp_v7b_code.patch`, `run_regroup.py`, `s7_threshold.py`.
+- `eval/balenciaga/`: в `holdout_runs.csv` только строка точки 0, `checkpoint-v7b.md` нет,
+  `phrases.csv` и `MANIFEST` — версии до шага 6 (без 170 новых строк разметки).
+- Ветка `worktree-macos-tooling` (`58b7784`, «Move development tooling to macOS», worktree
+  `.claude/worktrees/macos-tooling`) в `main` не влита. Она тоже правит этот файл:
+  `.venv/Scripts` → `.venv/bin`. Здесь это уже учтено, при слиянии оставить эту редакцию.
+- Память проекта перенесена: `~/.claude/projects/-Users-rodion-Develop-grailed-scraper/memory/`.
+- Резервная копия `~/.claude` с Windows: `~/Downloads/AyuGram Desktop/claude-full/dotclaude/`.
+  **Не удалять, пока не выполнен сценарий А или Б** — кроме Windows-компьютера, следы шагов 5–6
+  есть только там.
+
+### Что осталось на Windows (по стенограмме, 2026-10-09)
+
+Незакоммиченные изменения на ветке `grouping-v7-step5` (`C:\Users\Rodion\Documents\ide\projects\grailed-scraper`),
+код — 19 файлов, +1 639 / −87:
+
+- изменены: `backend/app/cli.py`, `backend/app/services/grouping/{assign,mining,reports,service,text}.py`,
+  `backend/tests/test_grouping_{collabs,descriptors,v7}.py`, `config/grouping.yaml`,
+  `config/models/README.md`, `config/models/balenciaga.yaml`, `docs/GROUPING.md`, `docs/TESTING.md`,
+  `eval/balenciaga/{MANIFEST,holdout_runs.csv,phrases.csv}`, `prompts/grouping-v7-plan.md`;
+- новые: `backend/app/services/grouping/seeds.py`, `backend/tests/test_grouping_seeds.py`,
+  `backend/tests/test_grouping_spellings.py`, `eval/balenciaga/checkpoint-v7b.md`;
+- вне git: `data/grailed.db` (~300 МБ, 275 852 объявления Balenciaga), `data/cache/eval/`.
+
+Ожидаемые проверки на этом коде: ruff и mypy чисты, pytest 192 passed + известный провал `.env`.
+
+### Сценарий А — Windows-компьютер снова доступен (предпочтительно)
+
+1. На Windows, в папке проекта: `git status` — работа лежит незакоммиченной на ветке
+   `grouping-v7-step5`. Закоммитить без `.claude/worktrees/`:
+   `git add backend config docs eval prompts`, сообщение по правилам ниже (например «Add spelling
+   merges, model confirmation and lazy seed types to grouping»), `git push -u origin grouping-v7-step5`.
+2. Скопировать на Mac `data/grailed.db` (приложение закрыть или сделать `db-backup`) и, если
+   получится, `data/cache/eval/` — минимум `cp_v7b.db`, `step5.patch`, `s7_threshold.py`.
+3. На Mac: `git fetch`, `git switch grouping-v7-step5`, сверить `git diff --stat main` с перечнем
+   выше. Файл плана в ветке — Windows-версия без этого раздела: оставить редакцию 4.
+4. Проверки на Mac: `ruff check app tests`, `mypy`, `pytest`; фронтенд не менялся.
+5. Дальше — только решения 5 и 6, каждое после явного «да».
+
+### Сценарий Б — Windows-компьютер недоступен
+
+1. **Код.** Восстановить шаги 5–6 в ветке `grouping-v7-step5` от `010f85e` из резервной копии:
+   стенограмма `projects/C--Users-Rodion-Documents-ide-projects-grailed-scraper/c302b279-….jsonl`
+   с её `subagents/` и `tool-results/`, патч-скрипты `jobs/88b2f421/tmp/patch_*.py`, снимки
+   `file-history/`. Сверять с перечнем файлов и итогами шагов 5–6 ниже, критерий — те же
+   проверки (pytest 192 passed). Что восстановить не удалось — переделать по пунктам шагов 5–6.
+2. **Разметка.** 170 новых строк `phrases.csv` и `MANIFEST` — из стенограммы; если не
+   найдутся — переразметить и запечатать с `--seal`, записав причину.
+3. **Данные.** Наполнить базу обычным сбором Balenciaga в штатных лимитах — только после явного
+   «да». Эталон (`labels.csv`) привязан к `grailed_id`: перед оценкой проверить, какая доля
+   эталона нашлась в новой базе, и записать это в отчёт.
+4. **Оценка.** На новой базе — только dev: сравнить с цифрами шагов 5–6 ниже. Холдаут v7b
+   израсходован (строка журнала осталась на Windows). Проверка холдаута на новых данных — это
+   новая контрольная точка (например, `v7b-mac`) со своей строкой журнала и отчётом.
+5. **Решение 6** — только после «да» и прохождения целей на копии новой базы.
 
 ---
 
 ## Перед стартом
 
-1. **`TASKS.md` удалён в рабочем дереве** (`git status`: ` D TASKS.md`), заказчик решил его
+1. **`TASKS.md` удалён** (на Mac его нет), заказчик решил его
    не восстанавливать (2026-10-08). Не восстанавливать, не обновлять и не включать удаление в
    коммиты шагов без отдельной просьбы. `CLAUDE.md` всё ещё называет его каноническим списком задач.
-2. Папка памяти проекта `~/.claude/projects/…/memory/` пуста после сброса `~/.claude`. Правило
-   «не отправлять работу в Codex без спроса» из прежней памяти перенесено в ограничения ниже.
+2. Память проекта на Mac: `~/.claude/projects/-Users-rodion-Develop-grailed-scraper/memory/`
+   (`grouping-v7-status.md`, `collection-settings-2026-10-09.md`). Правило «не отправлять работу
+   в Codex без спроса» из прежней памяти перенесено в ограничения ниже.
 
 ## Решения заказчика (2026-10-07)
 
@@ -122,7 +220,7 @@
 
 ## Жёсткие ограничения (CLAUDE.md, решения и прежняя память)
 
-- Python только `backend/.venv/Scripts/python`. Не запускать `ruff format` или `prettier --write` на весь репозиторий.
+- Python только `backend/.venv/bin/python` (на Windows был `backend/.venv/Scripts/python`). Не запускать `ruff format` или `prettier --write` на весь репозиторий.
 - Рабочую `data/grailed.db` открывать только с `mode=ro`, потому что приложение может быть запущено.
   Эксперименты — на копиях в `data/cache/eval/` (папка в .gitignore).
 - Holdout запускается **только** на контрольных точках (`--checkpoint`), и каждый запуск пишется в
@@ -208,7 +306,7 @@
 
    ```
    cp s1_base.db s1_v7.db
-   PYTHONPATH=../../../backend PYTHONIOENCODING=utf-8 ../../../backend/.venv/Scripts/python run_regroup.py s1_v7.db full full full full delta delta
+   PYTHONPATH=../../../backend PYTHONIOENCODING=utf-8 ../../../backend/.venv/bin/python run_regroup.py s1_v7.db full full full full delta delta
    ```
 
    Ожидание:
@@ -485,7 +583,7 @@ Trompe, cocoon, Mini и остальные) метрики не изменили
 - Хук сессии переформатирует файл после Edit (Prettier): правки фронтенда делать скриптом и
   сверять `git diff`.
 
-## Контрольная точка v7a — ⬜
+## Контрольная точка v7a — ✅ объединена с v7b
 
 1. **База для оценки.** Свежая копия рабочей БД (`db-backup --destination …` или копия с `mode=ro`).
    Базой (`--baseline-db`) служит эта копия до перегруппировки. Текущее состояние — та же копия
@@ -502,7 +600,7 @@ Trompe, cocoon, Mini и остальные) метрики не изменили
 
 ---
 
-## v7b — ⬜ дубли и обрывки
+## v7b — ✅ дубли и обрывки (шаг 4 в `main`, шаги 5–6 — только на Windows)
 
 Цель v7b — метрики `garbage_dup` для топ-50 и топ-100 при сохранении целей v7a.
 
@@ -728,22 +826,96 @@ Oval стал отдельной линейкой (Fennec — обрывок). �
   непосредственно перед перегруппировкой: первый сбор после обновления сам перегруппирует бренд
   (меняется `rules_hash`). Затем `python -m app.cli regroup` — он сам делает резервную копию.
 
+### Итог решения 6 (2026-10-15)
+
+- `main` перемотан на `grouping-v7-step5` (fast-forward от `010f85e`, вместе с этим коммитом
+  плана) и запушен. Перед слиянием на Mac: ruff и mypy (122 файла) чисты, pytest 197 passed.
+- `regroup` не запускался: рабочую БД сгруппировал этот же код в прогоне сбора 4 (2026-10-09).
+  Проверка — дельта на копии `data/cache/eval/d5_rick.db`: `changed` 0, `mined` 0,
+  `groups_created` 0, то есть `rules_hash` всех 21 бренда совпадает с кодом.
+- Цели v7b: 11 из 12, `model_precision` 70,8% принят решением 8.
+- Ветка `worktree-macos-tooling` (`58b7784`) в `main` не влита — это отдельное решение. Пробное
+  слияние с `main` проходит без конфликтов (общие файлы: `conftest.py`, `docs/TESTING.md`, этот план;
+  в плане оставить эту редакцию).
+
+### Итог решения 5 (2026-10-15)
+
+Сбор Rick Owens сделан 2026-10-09 по просьбе заказчика (77 101 объявление). Разбор — на копии
+`data/cache/eval/d5_rick.db` (резервная копия рабочей БД через `immutable=1`), отчёт
+`grouping-report --brand "Rick Owens" --descriptors --merge-candidates --candidates` →
+`data/cache/eval/d5_rick_report.json`. Эталона у Rick Owens нет, поэтому это аудит, а не замер:
+цифр precision/recall нет. Логику и конфиги не меняли.
+
+**Сводка по бренду:** с моделью 57,9% (Balenciaga на `s2_h` — 50,2%), описания 15 015 (19,5%),
+без модели 15 787 (20,5%), на проверке 1 681, коллабов 0, `mixed_type_assignments` = 0,
+конфликтов generic/seed 0.
+
+**Что работает**
+
+- Словарь описаний переносится на другой бренд: 30 групп описаний — материалы и детали
+  (Leather, Cropped, Wide Leg, Drawstring, Cargo, Waxed, Canvas, Suede), ни одной модели среди них.
+- Цвета бренда (`brand_colors.rick-owens`: milk, dust, pearl…) убираются: в топ-50 кандидатов
+  нет ни одной цветовой группы, хотя «Black Milk», «Dust», «Pearl» есть в заголовках.
+- Подавленные фразы (топ-30, `suppressed_candidates`) — описания: Lace, Cut, Waxed, Cargo,
+  Drawstring, Toe, Wide. Настоящие модели, которые их содержат, находятся целиком: Jumbo Lace,
+  Megalace, Jim Cut, Cargobelas, Cargobasket.
+- Seed-ы бренда в топе: Ramones, Geobasket, Detroit, Bolan, Pods, Tractor, Level, Geth.
+- Поиск дублей шага 5 ловит опечатки Rick Owens: Mastadon/Mastodon (в трёх типах), Molino/Mollino,
+  Torrence/Torrance, Beetle/Beatle, Cargobela/Cargobelas, Capri/Capris. Склейка — по решению человека.
+
+**Что не работает (по убыванию продаж)**
+
+1. **`vintage` в шуме (`noise`) разбивает модель Vintage.** У Rick Owens Vintage — настоящая модель
+   низких кроссовок. После удаления слова около 820 объявлений (~350 продаж) расходятся по
+   «Без модели» (206), «Low» (185), «Vans» (149), «Sneaks» (118), «Tower» (85) и описаниям
+   Leather/Suede. Это крупнейшая модель бренда после Ramones и Geobasket без своей группы.
+2. **`drop` в шуме (как «price drop») рождает модель «Crotch».** Из «drop crotch» остаётся
+   «crotch»: 586 объявлений и 104 продажи в группах «Crotch» (pants, shorts, sweatpants). Слитное
+   «Dropcrotch» живёт отдельной группой. Drop crotch — это посадка (fit).
+3. **Высота как модель у кроссовок:** «Low» (lowtop, 777 объявлений / 174 продажи) и «High»
+   (hitop, 318 / 56). В словаре `Low` есть только для низа (`only_types: *bottoms`). «Low» во
+   многом — остаток Vintage Low и Hollywood Low (п. 1).
+4. **Описания, которых нет в словаре:** Lamb (кожаные куртки, 84 продажи; `lambskin` в словаре
+   есть), Sneaks, Ribbed, Pony Hair, Double Layer, Outershirt, «Sole Steel Toe» (обрывок
+   «Quad Sole Steel Toe»).
+5. **Коллабов 0:** в `config/models/rick-owens.yaml` нет раздела `collabs`. Партнёры, видные в
+   кандидатах: Dr. Martens (Quad Sole, Megalace, Bex, «Doc Martens» как модель), Adidas (Runner,
+   Mastodon), Champion (Mountain, Tommy), Converse (TURBOWPN, DRKSTAR), Birkenstock (Arizona,
+   Pony Hair). Модели внутри коллабов находятся. Коллаб-линейка нужна для остатка без модели
+   и чтобы «Doc Martens» не был моделью.
+6. **Generic бренда не задан:** «Main Line» (13 объявлений) майнится как модель; DRKSHDW в топ
+   не попал. Мелко, но список generic для Rick Owens стоит завести (mainline, drkshdw, rick, owens).
+
+**Что предлагается (не начато, нужно «да»)**
+
+- Перенести `vintage` из глобального `noise` в описания (`style`) для всех брендов, кроме
+  Rick Owens, и добавить seed `Vintage` (lowtop_sneakers, hitop_sneakers) в `rick-owens.yaml`.
+  Проверить на Balenciaga: «vintage» там шум, и правка не должна менять dev-метрики.
+- Добавить в словарь фразу `drop crotch` (fit) и `dropcrotch`, а «drop» в `noise` оставить,
+  но не применять внутри фразы словаря, или убрать «drop» из `noise`. Выбор — по тесту.
+- `Low` / `High` как описания для `*sneakers`; Lamb, Sneaks, Ribbed, Pony Hair, Double Layer,
+  Outershirt — в словарь.
+- Раздел `collabs` и `generic` в `rick-owens.yaml`.
+- После любой правки правил — переразметить хвост и потерянные группы Balenciaga (иначе `--strict`
+  падает) и перемерить dev. Холдаут не трогать: новый замер холдаута — новая контрольная точка.
+
 ---
 
 ## Полезное для следующей сессии
 
-- **Временные файлы** в `data/cache/eval/` (gitignored):
+- **Временные файлы** в `data/cache/eval/` (gitignored; остались на Windows-компьютере):
   - `run_regroup.py` — замер проходов `full` и `delta` тем бэкендом, что лежит в `PYTHONPATH`;
   - `proto_scratch.py`, `patch_*.py`, `*.py.txt`;
   - копии БД: `s1_base.db` (v6, схема v7), `s1_v6.db` (с `brand_stopwords`, уже прогнана v6 при
     замерах выше), `s1_v7.db`, `v0_scratch.db`. Каждая около 300 МБ.
-- **Git worktree** `../grailed-scraper-v6` на `c544497` — для замеров v6. Удалить, когда не нужен:
+- **Git worktree** `../grailed-scraper-v6` на `c544497` — для замеров v6 (на Mac его нет; при
+  нужде: `git worktree add ../grailed-scraper-v6 c544497`). Удалить, когда не нужен:
   `git worktree remove ../grailed-scraper-v6`.
-- **claude-mem** (`~/.claude-mem/claude-mem.db`, читать с `mode=ro`) хранит наблюдения и вызовы
+- **claude-mem** (`~/.claude-mem/claude-mem.db`, читать с `mode=ro`; только на Windows) хранит наблюдения и вызовы
   инструментов сессий до 2026-10-07 22:10. Адреса текстов редакций — в разделе «Источники».
   Удалённое по просьбе заказчика исходное задание (`prompts/improve-grouping.md`) тоже там:
   `tool_uses` с id 84 (Write) и 86 (Edit).
-- **Подводные камни Windows:**
+- **Подводные камни Windows** (для сценария А; на Mac не мешают):
   - Python `write_text` пишет CRLF — писать с `newline="\n"`;
   - CSV меток писать с `lineterminator="\n"`;
   - heredoc в Bash с нечётным числом апострофов ломается — патч-скрипт класть в файл или брать `<<"EOF"`;
@@ -769,3 +941,16 @@ Oval стал отдельной линейкой (Fennec — обрывок). �
 | v7a: база не определена | Свежая копия: до и после прохода v7 | Чтобы разница была только в коде |
 | «eval в CI» без пояснения | Только юнит-тесты | CLAUDE.md запрещает офлайн-приёмку |
 | — | «Перед стартом»: `TASKS.md` удалён, не восстанавливать | Найдено в `git status`; решение заказчика 2026-10-08 |
+
+---
+
+## Что изменилось в редакции 4 (2026-10-15)
+
+| Было | Стало | Почему |
+|---|---|---|
+| На Mac лежала редакция 3 от 2026-10-08 (шаги 4–6 ⬜) | Финальный текст редакции 3 с Windows (2026-10-09): итоги шагов 4–6, точки v7b, решение 8 | Восстановлен из стенограммы `c302b279`: полный текст плана на 2026-10-08 21:18 UTC плюс две последующие правки скриптами |
+| — | Раздел «Перенос на macOS»: что есть на Mac, что осталось на Windows, сценарии А и Б | Код шагов 5–6, разметка и база не перенесены |
+| `backend/.venv/Scripts/python` | `backend/.venv/bin/python` | macOS; так же в ветке `worktree-macos-tooling` |
+| «Контрольная точка v7a — ⬜», «v7b — ⬜» в заголовках | ✅ | Сводка уже отмечала их сделанными, заголовки не обновили |
+| Ссылки на claude-mem, `../grailed-scraper-v6`, `data/cache/eval/` | Помечено, что на Mac их нет | Остались на Windows-компьютере |
+| Решения 5 и 6 ⏸ | ✅, разделы «Итог решения 5» и «Итог решения 6» | «Да» заказчика 2026-10-15: разбор Rick Owens на копии, слияние `grouping-v7-step5` в `main` |
