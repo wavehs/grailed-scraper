@@ -1,2 +1,27 @@
+# Named graphics and pieces confirmed from `grouping-report --candidates` on the live index
+# (v2 plan 1.2). Graphics are "any": a group appears in each type whose titles name them.
 models:
   - {name: Crimes de l'Amour, aliases: [crimes de lamour], types: any}
+  - {name: Teenage Snuff Film, types: any}
+  - {name: Devil in Disguise, aliases: [devil disguise], types: any}
+  - {name: You Are Nothing, types: any}
+  - {name: Well of Loneliness, types: any}
+  - {name: Benny's Video, aliases: [bennys video, benny video], types: any}
+  - {name: Anti Public Library, types: any}
+  - {name: My Role in the War, aliases: [role in the war], types: any}
+  - {name: School Days, types: any}
+  - {name: Pharmacist's Daughter, aliases: [pharmacists daughter, pharmacist daughter], types: any}
+  - {name: Bonds of Matrimony, types: any}
+  - {name: Exposed Christina, types: any}
+  - {name: King of Hate, types: any}
+  - {name: Slave Girl, types: any}
+  - {name: Le Rosey, types: any}
+  - {name: Menendez, types: any}
+  - {name: Viper Room, types: any}
+  - {name: Classique, types: any}
+  - {name: Isolar, types: [sunglasses]}
+  - {name: Midnight Cowboy, types: [boots]}
+  - {name: Rose, aliases: [rose buckle], types: [belt]}
+
+collabs:
+  - {name: Jacques Marie Mage, aliases: [jmm], designers: [Jacques Marie Mage]}

@@ -1,0 +1,29 @@
+# Confirmed from `grouping-report --candidates` on the live index (v2 plan 1.2): the mined
+# lines by sales and title counts. Sneakers are listed under three types; "shoes" is the
+# category Grailed gives many of them.
+models:
+  - {name: Superstar, aliases: [super star, sstar], types: [lowtop_sneakers, hitop_sneakers, shoes, slip_ons]}
+  - {name: Ball Star, aliases: [ballstar], types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Hi Star, aliases: [histar], types: [lowtop_sneakers, hitop_sneakers, shoes, platforms]}
+  - {name: Mid Star, aliases: [midstar], types: [hitop_sneakers, lowtop_sneakers, shoes]}
+  # The "Slide Penstar": "slide" is a sandals word and never names a model.
+  - {name: Penstar, aliases: [pen star], types: [hitop_sneakers, lowtop_sneakers, shoes]}
+  - {name: Purestar, aliases: [pure star], types: [lowtop_sneakers, shoes]}
+  - {name: Stardan, aliases: [star dan], types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Dad Star, aliases: [dadstar], types: [lowtop_sneakers, shoes]}
+  # "Running" alone is the Running Sole; "Dad Star Running" keeps the longer Dad Star.
+  - {name: Running Sole, aliases: [running], types: [lowtop_sneakers, shoes]}
+  - {name: Francy, types: [hitop_sneakers, lowtop_sneakers, shoes]}
+  - {name: Sky Star, aliases: [skystar], types: [hitop_sneakers, lowtop_sneakers, shoes]}
+  - {name: V-Star, aliases: [v star], types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Space-Star, aliases: [space star], types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Marathon, types: [lowtop_sneakers, shoes]}
+  - {name: Lightstar, aliases: [light star], types: [lowtop_sneakers, shoes]}
+  - {name: Starter, types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Wish Star, aliases: [wishstar], types: [boots]}
+  - {name: Journey, types: any}
+
+# The house name: "Golden Goose Deluxe Brand", "GGDB".
+generic:
+  - deluxe
+  - ggdb

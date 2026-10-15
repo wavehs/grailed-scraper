@@ -1,8 +1,36 @@
 models:
-  - {name: Tabi, types: [boots, shoes, lowtop_sneakers, hitop_sneakers, sandals, heels, flats, mules, socks_underwear]}
-  - {name: GAT, aliases: [german army trainer], types: [lowtop_sneakers]}
-  - {name: Replica, types: [lowtop_sneakers, hitop_sneakers]}
-  - {name: Future, types: [hitop_sneakers]}
+  - {name: Tabi, types: [boots, shoes, lowtop_sneakers, hitop_sneakers, sandals, heels, flats, mules, slip_ons, socks_underwear]}
+  # The GAT is sold as the "Replica GAT"; mid and high versions are listed as hi-tops.
+  - {name: GAT, aliases: [german army trainer, replica gat], types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Replica, types: [lowtop_sneakers, hitop_sneakers, shoes]}
+  - {name: Future, types: [hitop_sneakers, lowtop_sneakers, boots]}
   - {name: Glam Slam, types: [bag]}
   - {name: 5AC, types: [bag]}
   - {name: Paint Splatter, types: any}
+  # Confirmed from `grouping-report --candidates` on the live index (v2 plan 1.2).
+  - {name: Evolution, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: DDSTCK, aliases: [ddstcks], types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Sprinter, types: [lowtop_sneakers]}
+  - {name: Fusion, types: [lowtop_sneakers, hitop_sneakers]}
+  - {name: Triple Strap, types: [hitop_sneakers, lowtop_sneakers]}
+  - {name: Question, types: [hitop_sneakers]}
+  - {name: Four Stitches, aliases: [four stitch, 4 stitch, 4 stitches, stitch, stitches], types: [wallet]}
+  - {name: Elbow Patch, types: [sweater]}
+  - {name: AIDS, types: [tshirt, longsleeve, hoodie, sweatshirt]}
+  - {name: Numbers, aliases: [number, numeric], types: [tshirt, longsleeve, hoodie, sweatshirt]}
+
+# The house names: "Maison Martin Margiela", "MM6"; never a model on their own.
+generic:
+  - maison
+  - martin
+  - maison martin
+  - mm6
+
+# Whitelisted collaborations; "Hermès" is the house Margiela designed for (1997–2003).
+collabs:
+  - {name: Reebok, designers: [Reebok]}
+  - {name: Salomon, designers: [Salomon]}
+  - {name: Supreme, designers: [Supreme]}
+  - {name: Converse, designers: [Converse]}
+  - {name: H&M, aliases: [h m, h and m], designers: [H&M]}
+  - {name: Hermès, aliases: [hermes], designers: [Hermes, Hermès]}

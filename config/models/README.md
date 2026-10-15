@@ -56,3 +56,8 @@ These seeds were written from known product names, not from mined live data. Aft
 first live collection, review `python -m app.cli grouping-report --brand <name> --candidates`
 (top mined lines with example titles and possible merges) and the "auto" groups in the UI,
 then add confirmed names here: the seed takes the mined group with its id.
+
+`golden-goose`, `enfants-riches-deprimes` and `maison-margiela` were extended this way from
+the live candidates; `backend/tests/test_brand_dictionaries.py` pins their seeds to real titles
+and checks that no alias is eaten by the title normalizer (a dropped alias silently matches
+nothing).
