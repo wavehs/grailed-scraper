@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     seller_identity_salt: str | None = None
     raw_data_retention_days: int = 90
     backup_retention_days: int = 30
+    # Rotation by count as well as age: each backup is a full copy of the database.
+    backup_keep_count: int = 3
 
     @model_validator(mode="after")
     def check_price_band(self) -> Settings:
@@ -99,6 +101,7 @@ class Settings(BaseSettings):
         "quality_lot_price_multiplier",
         "raw_data_retention_days",
         "backup_retention_days",
+        "backup_keep_count",
         "sqlite_busy_timeout_ms",
     )
     @classmethod

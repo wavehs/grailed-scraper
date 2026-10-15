@@ -141,13 +141,15 @@ async def test_reconcile_and_resume_preserve_checkpoints_in_each_phase(tmp_path)
 
 
 def test_verified_backup_restore_apply_and_integrity(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr(operations, "PROJECT_ROOT", tmp_path)
+    del monkeypatch
     database = tmp_path / "grailed.db"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE marker (value TEXT NOT NULL)")
         connection.execute("INSERT INTO marker VALUES ('before')")
         connection.commit()
-    settings = Settings(database_url=f"sqlite+aiosqlite:///{database}")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{database}", data_directory=tmp_path / "data"
+    )
     backup = operations.backup_database(
         settings, destination=tmp_path / "data" / "backups" / "manual.sqlite3"
     )

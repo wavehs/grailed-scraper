@@ -43,6 +43,7 @@ from app.services.operations import (
     result_dict,
     retention,
     sqlite_path,
+    vacuum_database,
 )
 from app.services.parser.observability import RunMetrics
 from app.services.parser.planner import collection_filters
@@ -620,6 +621,9 @@ def main() -> int:
         "retention", help="preview or apply raw-data and backup retention"
     )
     retention_parser.add_argument("--apply", action="store_true")
+    subparsers.add_parser(
+        "db-vacuum", help="rebuild the SQLite file (app stopped, 2x its size free on disk)"
+    )
     backup_parser = subparsers.add_parser("db-backup", help="create a verified SQLite backup")
     backup_parser.add_argument("--destination", type=Path)
     restore_parser = subparsers.add_parser("db-restore", help="verify or restore SQLite backup")
@@ -751,6 +755,14 @@ def main() -> int:
     if args.command == "db-backup":
         target = backup_database(Settings(), destination=args.destination)
         print(json.dumps({"status": "ok", "backup": str(target)}, indent=2))
+        return 0
+    if args.command == "db-vacuum":
+        try:
+            vacuum_result = vacuum_database(Settings())
+        except RuntimeError as exc:
+            print(json.dumps({"status": "error", "message": str(exc)}))
+            return 1
+        print(json.dumps(vacuum_result, indent=2))
         return 0
     if args.command == "db-restore":
         print(json.dumps(restore_database(Settings(), args.source, apply=args.apply), indent=2))
