@@ -36,6 +36,7 @@ from app.core.config import Settings
 from app.db.models import Base, Brand, ModelGroup
 from app.db.session import checkpoint_database, create_database_engine, get_db
 from app.main import app
+from app.services import per_brand
 from app.services.per_brand import recompute_brands, regroup_brands
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
@@ -287,3 +288,92 @@ async def _group_name(factory: async_sessionmaker[AsyncSession], group_id: int) 
     async with factory() as session:
         group = await session.get(ModelGroup, group_id)
         return group.name if group else None
+
+
+def _client_for(factory: async_sessionmaker[AsyncSession], commits: list[bool]) -> TestClient:
+    """A client whose sessions record, per commit, whether the grouping lock was held."""
+
+    async def override_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            original = session.commit
+
+            async def recording() -> None:
+                commits.append(groups._fallback_lock.locked())
+                await original()
+
+            session.commit = recording  # type: ignore[method-assign]
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    return TestClient(app)
+
+
+def test_a_rule_commits_before_waiting_for_the_grouping_lock(tmp_path: Path) -> None:
+    factory = asyncio.run(_brands(tmp_path))
+    group_id = asyncio.run(_model_group(factory))
+    commits: list[bool] = []
+    try:
+        response = _client_for(factory, commits).patch(
+            f"/api/groups/{group_id}", json={"name": "Le Cagole"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    # The rule's write lock is released before the request queues behind a parser regroup.
+    assert commits[0] is False
+
+
+def test_marking_not_a_model_survives_a_retried_regroup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = asyncio.run(_brands(tmp_path))
+    group_id = asyncio.run(_model_group(factory))
+    attempts: list[int] = []
+    real_regroup = per_brand.regroup_brands
+
+    async def flaky_regroup(*args: object, **kwargs: object) -> object:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise _locked()
+        return await real_regroup(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(groups, "regroup_brands", flaky_regroup)
+    try:
+        response = _client_for(factory, []).post(f"/api/groups/{group_id}/not-model")
+    finally:
+        app.dependency_overrides.clear()
+
+    # The rollback before the retry expires the group; the response must not read it stale.
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "ignored" and len(attempts) == 2
+
+
+def test_a_regroup_is_not_repeated_when_only_its_metrics_lose_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = asyncio.run(_brands(tmp_path))
+    regroups: list[int] = []
+    metrics: list[int] = []
+    real_regroup = per_brand.regroup_brands
+
+    async def counting_regroup(*args: object, **kwargs: object) -> object:
+        regroups.append(1)
+        return await real_regroup(*args, **kwargs)  # type: ignore[arg-type]
+
+    async def locked_metrics(*_: object, **__: object) -> None:
+        metrics.append(1)
+        raise _locked()
+
+    monkeypatch.setattr(groups, "regroup_brands", counting_regroup)
+    monkeypatch.setattr(groups, "recompute_brands", locked_metrics)
+    try:
+        response = _client_for(factory, []).post(
+            "/api/grouping/regroup", json={"brand_ids": [2], "full": True}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503, response.text
+    assert response.json()["error"]["code"] == "database_locked"
+    assert len(regroups) == 1 and len(metrics) == 3

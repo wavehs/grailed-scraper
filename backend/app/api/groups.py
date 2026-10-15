@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
@@ -24,6 +25,7 @@ from app.db.models import (
     ParentOverride,
 )
 from app.db.session import get_db
+from app.services.grouping import GroupingResult
 from app.services.grouping.brands import brand_normalizer, load_brand_terms
 from app.services.grouping.kinds import (
     NONE_SLUG,
@@ -135,8 +137,7 @@ async def regroup(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
     async with _lock(request):
-        result = await regroup_brands(session, payload.brand_ids, full=payload.full)
-    await _refresh_metrics(session, {item.brand_id for item in result.brands})
+        result = await _regroup_and_refresh(session, payload.brand_ids, full=payload.full)
     return result.summary()
 
 
@@ -339,6 +340,8 @@ async def mark_not_model(
     group.parent_id = None
     group.updated_at = now
     await _apply(request, session, group.brand_id)
+    # A retried regroup rolls back first, which expires every loaded instance.
+    await session.refresh(group)
     brand = await session.get(Brand, group.brand_id)
     return _summary(group, brand.name if brand else "", {})
 
@@ -443,26 +446,18 @@ def _lock(request: Request) -> asyncio.Lock:
 async def _apply(request: Request, session: AsyncSession, brand_id: int) -> None:
     """Persist the rule, regroup the brand from scratch and refresh its metrics.
 
-    The rule commits in its own short transaction: the regroup of a large brand reads for
-    seconds before it writes, and holding the write lock over that blocks the parser. A
-    saved rule changes the brand's rules hash, so if the regroup keeps losing the lock the
-    next regroup (parser run or ``cli regroup``) is a full pass that applies it anyway.
+    The rule commits in its own short transaction before queueing for the grouping lock:
+    the parser holds that lock through its regroup and needs to write meanwhile, and the
+    regroup of a large brand reads for seconds before it writes. A saved rule changes the
+    brand's rules hash, so if the regroup keeps losing the lock the next regroup (parser
+    run or ``cli regroup``) is a full pass that applies it anyway.
     """
 
+    await session.commit()
     async with _lock(request):
-        await session.commit()
         try:
-            await retry_locked(
-                session,
-                lambda: regroup_brands(session, [brand_id], full=True),
-                where="groups.regroup",
-            )
-            await retry_locked(
-                session, lambda: _refresh_metrics(session, {brand_id}), where="groups.metrics"
-            )
-        except OperationalError as error:
-            if not is_database_locked(error):
-                raise
+            await _regroup_and_refresh(session, [brand_id], full=True)
+        except ApiError as error:
             raise ApiError(
                 503,
                 "regroup_pending",
@@ -470,9 +465,31 @@ async def _apply(request: Request, session: AsyncSession, brand_id: int) -> None
             ) from error
 
 
-async def _refresh_metrics(session: AsyncSession, brand_ids: set[int]) -> None:
-    if brand_ids:
-        await recompute_brands(session, brand_ids)
+async def _regroup_and_refresh(
+    session: AsyncSession, brand_ids: Iterable[int] | None, *, full: bool
+) -> GroupingResult:
+    """Regroup, then refresh metrics, retrying each step alone while it loses the lock.
+
+    A step that keeps losing it is a 503: the route must not re-run the whole request and
+    redo a regroup that already committed.
+    """
+
+    try:
+        result = await retry_locked(
+            session,
+            lambda: regroup_brands(session, brand_ids, full=full),
+            where="groups.regroup",
+        )
+        regrouped = {item.brand_id for item in result.brands}
+        if regrouped:
+            await retry_locked(
+                session, lambda: recompute_brands(session, regrouped), where="groups.metrics"
+            )
+    except OperationalError as error:
+        if not is_database_locked(error):
+            raise
+        raise ApiError(503, "database_locked", "The database is busy, try again shortly") from error
+    return result
 
 
 async def _counts(session: AsyncSession, group_ids: list[int]) -> dict[int, dict[str, int]]:
