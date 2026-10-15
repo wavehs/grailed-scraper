@@ -16,6 +16,7 @@ from app.api.mutation import MutationRoute
 from app.api.settings import get_effective_settings
 from app.core.config import Settings
 from app.db.session import get_db
+from app.services.parser.launch import refresh_stale_discovery
 from app.services.sources.grailed.discovery.client import DiscoveryHttpError
 from app.services.sources.grailed.discovery.models import DiscoveryResult
 from app.services.sources.grailed.discovery.service import (
@@ -137,13 +138,9 @@ async def source_status(
 async def ensure_discovery(session: AsyncSession, settings: Settings) -> None:
     """Reuse cached credentials; refresh them (one page GET plus probes) when stale."""
 
-    transport = create_http_transport(settings)
     try:
-        await DiscoveryService(session, settings, transport).refresh(force=False)
-        await session.commit()
+        await refresh_stale_discovery(session, settings)
     except DiscoveryUnavailableError as exc:
         raise ApiError(503, "discovery_unavailable", "Grailed discovery is unavailable") from exc
     except DiscoveryHttpError as exc:
         raise ApiError(503, "discovery_failed", "Grailed discovery request failed") from exc
-    finally:
-        await transport.close()

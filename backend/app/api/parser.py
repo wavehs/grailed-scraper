@@ -41,7 +41,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.repositories.runs import RunRepository
 from app.services.parser.eta import estimate_eta
-from app.services.parser.planner import ParserPlanner
+from app.services.parser.launch import RUN_RPM_KEY, LaunchError, create_run, run_settings
 from app.services.parser.runtime import ParserRuntime
 from app.services.sources.grailed.discovery.service import DiscoveryService
 
@@ -56,6 +56,8 @@ class RunRequest(BaseModel):
 
     brand_ids: list[int] | None = None
     full: bool = False
+    # A slower or faster rate for this run only; resume keeps it.
+    rpm: int | None = Field(default=None, ge=1)
 
 
 class ClearDataRequest(BaseModel):
@@ -210,27 +212,14 @@ async def start_run(
     ):
         raise ApiError(409, "run_active", "A collection run is already in progress")
     await ensure_discovery(session, settings)
+    stats = {RUN_RPM_KEY: payload.rpm} if payload.rpm is not None else None
     try:
-        plan = await ParserPlanner(session, settings).build(
-            brand_ids=payload.brand_ids, full=payload.full
+        run = await create_run(
+            session, settings, brand_ids=payload.brand_ids, full=payload.full, stats=stats
         )
-    except LookupError as exc:
-        raise ApiError(404, "brand_not_found", "One or more brands do not exist") from exc
-    except RuntimeError as exc:
-        code = str(exc)
-        status = 409 if code in {"brand_mapping_required", "brands_required"} else 503
-        raise ApiError(status, code, "Parser prerequisites are incomplete") from exc
-    run = await RunRepository(session).create(
-        mode=plan.mode,
-        budget=plan.budget,
-        tasks=[item.persisted() for item in plan.tasks],
-        warnings=plan.warnings,
-    )
-    await session.commit()
-    if isinstance(runtime, ParserRuntime):
-        runtime.start(run.id, settings=settings)
-    else:
-        runtime.start(run.id)
+    except LaunchError as exc:
+        raise ApiError(exc.status, exc.code, exc.message) from exc
+    runtime.start(run.id, settings=run_settings(settings, run))
     return {"run": _summary(run).model_dump(mode="json")}
 
 
@@ -453,10 +442,7 @@ async def resume_run(
     except ValueError as exc:
         raise ApiError(409, "run_not_resumable", "Parser run cannot be resumed") from exc
     await session.commit()
-    if isinstance(runtime, ParserRuntime):
-        runtime.start(run_id, settings=settings)
-    else:
-        runtime.start(run_id)
+    runtime.start(run_id, settings=run_settings(settings, run))
     return _summary(run)
 
 

@@ -35,6 +35,12 @@ from app.services.sources.grailed.discovery.service import DiscoveryService
 from app.services.transport.factory import create_http_transport
 from app.services.transport.protocols import HttpTransport
 
+# Failures that mean the source is pushing back, not that one bucket is broken.
+THROTTLE_ERRORS = frozenset({"AlgoliaRateLimited", "WafChallenge", "CircuitOpenError"})
+# This many in a row stop the run (CLAUDE.md: stop on repeated 429).
+THROTTLE_STREAK_LIMIT = 3
+THROTTLED = "throttled"
+
 
 @dataclass(slots=True)
 class _Resources:
@@ -66,6 +72,8 @@ class ParserRuntime:
         self._jobs: dict[int, asyncio.Task[None]] = {}
         self._cancel: dict[int, asyncio.Event] = {}
         self._resources_by_run: dict[int, _Resources] = {}
+        self._throttle_streak: dict[int, int] = {}
+        self._throttled: set[int] = set()
         self._write_lock = asyncio.Lock()
         self._last_health: dict[str, Any] = {
             "circuits": [],
@@ -169,7 +177,8 @@ class ParserRuntime:
             await asyncio.gather(*workers, return_exceptions=True)
             async with self._sessions() as session:
                 repository = RunRepository(session)
-                if cancelled.is_set():
+                throttled = run_id in self._throttled
+                if cancelled.is_set() and not throttled:
                     await repository.finish(run_id, "cancelled")
                 else:
                     await repository.set_phase(run_id, "grouping")
@@ -197,7 +206,16 @@ class ParserRuntime:
                         },
                     }
                     run.requests_made = sum(resources.metrics.requests_by_tier.values())
-                    await repository.finish(run_id, await repository.aggregate_status(run_id))
+                    status = await repository.aggregate_status(run_id)
+                    if throttled:
+                        # Unstarted tasks stay pending; resuming the partial run picks them up.
+                        status = "partial"
+                        run.stats = {**run.stats, "stop_reason": THROTTLED}
+                        run.warnings = [
+                            *run.warnings,
+                            f"run stopped: throttled {THROTTLE_STREAK_LIMIT} times in a row",
+                        ]
+                    await repository.finish(run_id, status)
                 await session.commit()
             logger.info("parser_run_completed", run_id=run_id, source="grailed")
         except asyncio.CancelledError:
@@ -241,6 +259,7 @@ class ParserRuntime:
                     structlog.get_logger(__name__).info("parser_task_started")
                     await self._process_task(run_id, task_id, fetcher, cancelled, settings)
                     structlog.get_logger(__name__).info("parser_task_completed")
+                    self._throttle_streak[run_id] = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -252,6 +271,7 @@ class ParserRuntime:
                     error_type=type(exc).__name__,
                 )
                 await self._fail_task(task_id, type(exc).__name__)
+                self._count_throttle(run_id, type(exc).__name__, cancelled)
             finally:
                 queue.task_done()
 
@@ -618,9 +638,24 @@ class ParserRuntime:
                 await RunRepository(session).finish(run_id, "interrupted")
                 await session.commit()
 
+    def _count_throttle(self, run_id: int, error: str, cancelled: asyncio.Event) -> None:
+        if error not in THROTTLE_ERRORS:
+            self._throttle_streak[run_id] = 0
+            return
+        streak = self._throttle_streak.get(run_id, 0) + 1
+        self._throttle_streak[run_id] = streak
+        if streak >= THROTTLE_STREAK_LIMIT and run_id not in self._throttled:
+            self._throttled.add(run_id)
+            cancelled.set()
+            structlog.get_logger(__name__).warning(
+                "parser_run_throttled", run_id=run_id, streak=streak, error_type=error
+            )
+
     def _forget(self, run_id: int, _: asyncio.Task[None]) -> None:
         self._jobs.pop(run_id, None)
         self._cancel.pop(run_id, None)
+        self._throttle_streak.pop(run_id, None)
+        self._throttled.discard(run_id)
 
 
 def _query(payload: dict[str, Any]) -> AlgoliaQuery:
