@@ -31,6 +31,7 @@ class FetchReportRepository:
             raise LookupError(f"Parser run task {task_id} does not exist")
         task.hits_collected = report.collected_hits
         task.expected_hits = report.expected_hits
+        task.expected_source = report.expected_source
         task.coverage = report.coverage
         task.cursor = cursor
         task.fetch_tier = fetch_tier
@@ -78,6 +79,7 @@ class FetchReportRepository:
                     task.coverage is not None and task.coverage < Decimal("0.70") for task in tasks
                 ),
                 "truncated": sum(task.status == "truncated" for task in tasks),
+                "estimated": sum(task.expected_source == "estimated" for task in tasks),
             },
         }
         await self._session.flush()

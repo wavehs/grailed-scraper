@@ -9,6 +9,8 @@ from typing import Any, Literal
 from app.domain.listings import FetchTier
 
 CoverageStatus = Literal["complete", "partial", "poor", "skipped"]
+# "estimated": the source could not count the result set exactly (Algolia exhaustiveNbHits).
+ExpectedSource = Literal["exact", "estimated"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +50,7 @@ class CoverageReport:
     status: CoverageStatus
     truncated: bool = False
     warnings: tuple[str, ...] = ()
+    expected_source: ExpectedSource = "exact"
 
     @classmethod
     def calculate(
@@ -57,11 +60,12 @@ class CoverageReport:
         collected_hits: int,
         truncated: bool = False,
         warnings: tuple[str, ...] = (),
+        expected_source: ExpectedSource = "exact",
     ) -> CoverageReport:
         if expected_hits < 0 or collected_hits < 0:
             raise ValueError("Coverage counts cannot be negative")
         if expected_hits == 0:
-            return cls(0, collected_hits, None, "skipped", truncated, warnings)
+            return cls(0, collected_hits, None, "skipped", truncated, warnings, expected_source)
         ratio = min(Decimal(collected_hits) / Decimal(expected_hits), Decimal(1))
         if ratio >= Decimal("0.98") and not truncated:
             status: CoverageStatus = "complete"
@@ -69,4 +73,6 @@ class CoverageReport:
             status = "partial"
         else:
             status = "poor"
-        return cls(expected_hits, collected_hits, ratio, status, truncated, warnings)
+        return cls(
+            expected_hits, collected_hits, ratio, status, truncated, warnings, expected_source
+        )

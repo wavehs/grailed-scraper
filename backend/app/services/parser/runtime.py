@@ -350,12 +350,15 @@ class ParserRuntime:
         async with self._sessions() as session:
             task = await session.get(ParserRunTask, task_id)
             assert task is not None
-            collected = min(prior_hits + report.collected_hits, report.expected_hits)
+            collected = prior_hits + report.collected_hits
+            if report.expected_source == "exact":
+                collected = min(collected, report.expected_hits)
             combined = CoverageReport.calculate(
                 expected_hits=report.expected_hits,
                 collected_hits=collected,
                 truncated=report.truncated,
                 warnings=report.warnings,
+                expected_source=report.expected_source,
             )
             await FetchReportRepository(session).finish_task(
                 task_id,

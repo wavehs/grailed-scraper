@@ -41,6 +41,9 @@ const en: Record<string, string> = {
   transports: 'Transports',
   recentRuns: 'Recent runs',
   coverage: 'Coverage',
+  estimate: 'estimate',
+  coverageEstimateHint:
+    'Grailed could not count this result set exactly, so coverage is measured against an estimate.',
   warnings: 'Warnings',
   keyMetrics: 'Key metrics',
   opportunity: 'Opportunity',
@@ -449,6 +452,9 @@ const ru: Record<string, string> = {
   transports: 'Транспорты',
   recentRuns: 'Последние запуски',
   coverage: 'Покрытие',
+  estimate: 'оценка',
+  coverageEstimateHint:
+    'Grailed не смог точно посчитать выдачу, поэтому покрытие измерено относительно оценки.',
   warnings: 'Предупреждения',
   keyMetrics: 'Ключевые метрики',
   opportunity: 'Возможность',

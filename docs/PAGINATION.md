@@ -83,6 +83,23 @@ coverage = collected / max(expected, 1)
 
 Coverage сохраняется в `parser_run_tasks` и агрегируется в `brand_metrics.data_coverage`.
 
+**Точный и оценочный `expected`.** Для больших выдач Algolia отвечает
+`exhaustiveNbHits=false`: `nbHits` — оценка, а не точный счёт. Тогда:
+
+- при range split `expected` = сумма `nbHits` листовых бакетов (каждый лист
+  достаточно мал, чтобы Algolia посчитала его точно); при прерванном сборе
+  (лимит `max_hits`) и других стратегиях остаётся верхнеуровневая оценка;
+- отчёт помечается `expected_source="estimated"` и предупреждением
+  «coverage is measured against an estimated expected count»;
+- `expected` **не** подгоняется под собранное (раньше `expected := collected`,
+  и coverage всегда выходила 100%). Пропавшие между пробой и чтением страницы
+  листинги (продан, удалён) честно снижают coverage.
+
+`parser_run_tasks.expected_source` (`exact` | `estimated`, миграция `0021`) и
+`parser_runs.stats.fetching.estimated` (число задач с оценкой) отдаются в API
+как `expected_source` задачи и `coverage_is_estimated` запуска; на странице
+«Сбор» рядом с такой coverage стоит пометка «оценка».
+
 ### 6.6. Реализованный контракт этапа 6
 
 - `PaginationPlanner.fetch()` возвращает одноразовый async-итератор; итоговый

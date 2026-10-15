@@ -219,7 +219,9 @@ export default function CollectPage() {
                       {t(run.status)}
                     </Badge>
                   </TableCell>
-                  <TableCell>{formatPercent(run.coverage)}</TableCell>
+                  <TableCell>
+                    <CoverageValue value={run.coverage} estimated={run.coverage_is_estimated} />
+                  </TableCell>
                   <TableCell>{run.requests_made}</TableCell>
                   <TableCell className="space-x-2 whitespace-nowrap">
                     {['interrupted', 'partial', 'failed', 'cancelled'].includes(run.status) && (
@@ -278,7 +280,12 @@ export default function CollectPage() {
                     {task.hits_collected}
                     {task.expected_hits ? ` / ${task.expected_hits}` : ''}
                   </TableCell>
-                  <TableCell>{formatPercent(task.coverage)}</TableCell>
+                  <TableCell>
+                    <CoverageValue
+                      value={task.coverage}
+                      estimated={task.expected_source === 'estimated'}
+                    />
+                  </TableCell>
                   <TableCell>{task.error ?? '—'}</TableCell>
                 </TableRow>
               ))}
@@ -299,5 +306,19 @@ export default function CollectPage() {
         </Button>
       </Modal>
     </div>
+  );
+}
+
+function CoverageValue({ value, estimated }: { value?: string; estimated?: boolean }) {
+  const { t } = useI18n();
+  return (
+    <>
+      {formatPercent(value)}
+      {estimated && value !== undefined && (
+        <span className="ml-1 text-xs text-[var(--text-muted)]" title={t('coverageEstimateHint')}>
+          {t('estimate')}
+        </span>
+      )}
+    </>
   );
 }

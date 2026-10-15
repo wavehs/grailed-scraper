@@ -501,6 +501,8 @@ class ParserRunTask(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hits_collected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expected_hits: Mapped[int | None] = mapped_column(Integer)
+    # "estimated" when the source could only estimate expected_hits; null before 0021.
+    expected_source: Mapped[str | None] = mapped_column(String(16))
     coverage: Mapped[Decimal | None] = mapped_column(Numeric(6, 5))
     fetch_tier: Mapped[str | None] = mapped_column(String(2))
     error: Mapped[str | None] = mapped_column(Text)

@@ -37,7 +37,8 @@ parser_runs        + mode, status, phase, budget_estimate (бренды/зада
                      requests_made, coverage_avg, warnings(json), stats(json)
 parser_run_tasks   ← НОВАЯ: id, run_id, brand_id, index_type, bucket_spec(json),
                      cursor, status(pending|running|done|failed|skipped|truncated),
-                     attempts, hits_collected, expected_hits, coverage,
+                     attempts, hits_collected, expected_hits,
+                     expected_source(exact|estimated), coverage,
                      fetch_tier, error, started_at, finished_at
 parser_watermarks  ← НОВАЯ
 source_credentials ← НОВАЯ (см. §4.6)

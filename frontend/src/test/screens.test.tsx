@@ -679,6 +679,35 @@ describe('stage 10 screens', () => {
     ).toBe(false);
   });
 
+  it('marks coverage measured against an estimated source count', async () => {
+    const run = {
+      id: 12,
+      mode: 'full',
+      status: 'completed',
+      phase: 'done',
+      degraded: false,
+      coverage: '0.96667',
+      coverage_is_estimated: true,
+      requests_made: 3,
+      warnings: [],
+      created_at: new Date().toISOString(),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
+        if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
+        if (url.includes('/parser/runs?')) return json({ data: [run], total: 1, limit: 30, offset: 0 });
+        return json({});
+      }),
+    );
+    renderApp(<CollectPage />);
+    const mark = await screen.findByText('estimate');
+    expect(mark.closest('td')).toHaveTextContent('96.7%');
+    expect(mark).toHaveAttribute('title', expect.stringContaining('Grailed'));
+  });
+
   it('clears collected data after confirmation', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

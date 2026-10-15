@@ -60,6 +60,9 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
         {column["name"] for column in inspector.get_columns("group_metrics")}
     )
     assert "model_rules" not in inspector.get_table_names()
+    assert "expected_source" in {
+        column["name"] for column in inspector.get_columns("parser_run_tasks")
+    }
     assert "ix_group_metrics_scope_trend" in {
         index["name"] for index in inspector.get_indexes("group_metrics")
     }

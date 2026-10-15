@@ -52,6 +52,7 @@ export type RunSummary = {
   tier?: string;
   budget?: { brands?: number; tasks?: number; full_brands?: string[] };
   coverage?: string;
+  coverage_is_estimated?: boolean;
   requests_made: number;
   warnings: string[];
   created_at: string;
@@ -69,6 +70,7 @@ export type RunTask = {
   attempts: number;
   hits_collected: number;
   expected_hits?: number;
+  expected_source?: 'exact' | 'estimated';
   coverage?: string;
   tier?: string;
   error?: string;
@@ -85,6 +87,7 @@ export type RunProgress = {
   hits_fetched: number;
   requests_made: number;
   coverage?: string;
+  coverage_is_estimated?: boolean;
   partial: boolean;
   truncated: boolean;
   current_brand?: string;

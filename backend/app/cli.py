@@ -181,6 +181,7 @@ async def run_collection_canary(settings: Settings, brand: str) -> dict[str, obj
                 "source_estimated_hits": pagination.source_estimated_hits,
                 "source_estimate_exhaustive": pagination.expected_exhaustive,
                 "expected": report.expected_hits,
+                "expected_source": report.expected_source,
                 "collected_unique": report.collected_hits,
                 "duplicates_removed": pagination.duplicate_hits,
                 "duplicates_in_output": 0,

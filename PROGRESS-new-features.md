@@ -20,7 +20,7 @@
 - [x] 0.2 macOS — cherry-pick `58b7784`; ruff, mypy, pytest (79,3%), фронтенд lint/typecheck/test/build зелёные.
 - [x] 0.3 Документация и конфиг — мёртвые i18n-ключи несуществующих настроек (88), блок `pagination:` удалён, доки PAGINATION/ALGOLIA/LIFECYCLE/OBSERVABILITY/COMPLIANCE исправлены, ссылка на `TASKS.md` заменена, Settings показывает значение из `.env`, скрытое сохранённым (`base_value`). Дубликата `new-features` в репозитории уже нет.
 - [x] 0.4 Причины `database is locked` — общие PRAGMA во всех движках CLI (+`journal_size_limit` 64 МиБ), коммит по брендам (`per_brand.py`), повтор изменяющих API-запросов (`MutationRoute`, 3 попытки, `503 database_locked`), правило коммитится до перегруппировки (`503 regroup_pending`), `optimize` + `wal_checkpoint(TRUNCATE)` после прогона. Решение D7. Перенос `detect_relists` до `_settle` проверен и откатан: он и так вне окна записи.
-- [ ] 0.5 Честное покрытие
+- [x] 0.5 Честное покрытие — `expected := collected` убран; при `exhaustiveNbHits=false` `expected` = сумма листовых проб range split, отчёт `expected_source="estimated"` + предупреждение; колонка `parser_run_tasks.expected_source` (миграция 0021, рыночные поля 0.1 станут 0022), `stats.fetching.estimated`, API `expected_source`/`coverage_is_estimated`, пометка «оценка» на странице «Сбор».
 - [ ] 0.1 Рыночные поля + бэкфилл
 - [ ] 0.6 / 0.7 Флаги качества, мёртвые поля
 - [ ] 0.8 Словарь RO — пропущен (D2)
@@ -33,3 +33,4 @@
 
 ## Журнал
 - 2026-10-15: 0.4 готов; на копии Balenciaga старый и новый код дают одинаковые группы, релисты и отчёт `grouping-eval` (strict-предупреждения — от неполного снапшота, совпадают с HEAD). 214 тестов, покрытие 80%.
+- 2026-10-15: 0.5 готов; миграция 0021 проверена на копии боевой БД (0020 → 0021, 30 старых задач с `expected_source=NULL` = «неизвестно»). 220 тестов, покрытие 80,6%. Ревью 0.4: HIGH/CRITICAL нет; три MEDIUM в `groups.py` чинятся отдельным коммитом.

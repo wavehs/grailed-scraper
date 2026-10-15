@@ -61,6 +61,10 @@ class PaginationRun:
         self.expected_hits = 0
         self.source_estimated_hits = 0
         self.expected_exhaustive = True
+        # Sum of the per-bucket counts at the leaves of a top-level range split: each leaf is
+        # small enough for an exact nbHits, unlike the estimate of the whole result set.
+        self.leaf_probe_hits = 0
+        self.range_split_finished = False
         self.truncated = False
         self.warnings: list[str] = []
 
@@ -77,17 +81,19 @@ class PaginationRun:
         return self._report
 
     def finish(self) -> None:
-        if not self.expected_exhaustive and self.seen_ids and not self.truncated:
+        if not self.expected_exhaustive:
+            if self.range_split_finished:
+                self.expected_hits = self.leaf_probe_hits
             self.warnings.append(
-                "Algolia nbHits was non-exhaustive; expected count reconciled from "
-                "exhausted ID ranges"
+                "Algolia nbHits was non-exhaustive; coverage is measured against an "
+                "estimated expected count"
             )
-            self.expected_hits = len(self.seen_ids)
         self._report = CoverageReport.calculate(
             expected_hits=self.expected_hits,
             collected_hits=len(self.seen_ids),
             truncated=self.truncated,
             warnings=tuple(self.warnings),
+            expected_source="exact" if self.expected_exhaustive else "estimated",
         )
 
 
@@ -126,7 +132,11 @@ class PaginationPlanner:
         else:
             range_attrs = tuple(dict.fromkeys((*spec.secondary_attrs, *spec.key_attrs)))
             iterator = self._range_split(
-                run, replace(spec, key_attrs=range_attrs), spec.index_name, spec.query
+                run,
+                replace(spec, key_attrs=range_attrs),
+                spec.index_name,
+                spec.query,
+                top_level=True,
             )
         remaining = spec.max_hits
         async for batch in iterator:
@@ -242,6 +252,8 @@ class PaginationPlanner:
         spec: PaginationSpec,
         index_name: str,
         base_query: AlgoliaQuery,
+        *,
+        top_level: bool = False,
     ) -> AsyncIterator[FetchBatch]:
         attrs = spec.key_attrs or spec.secondary_attrs
         completed = _range_completed(spec.resume_cursor)
@@ -296,6 +308,7 @@ class PaginationPlanner:
                             ),
                         )
                         if len(page.hits) < spec.hits_per_page:
+                            run.leaf_probe_hits += probe.nb_hits
                             signature = _range_signature(filters, 0)
                             completed.add(signature)
                             batch = self._batch(
@@ -309,6 +322,7 @@ class PaginationPlanner:
                                 yield batch
                             continue
                     else:
+                        run.leaf_probe_hits += probe.nb_hits
                         async for batch in self._fetch_bounded(
                             run,
                             spec,
@@ -345,6 +359,7 @@ class PaginationPlanner:
                     )
                     continue
                 run.truncated = True
+                run.leaf_probe_hits += probe.nb_hits
                 run.warnings.append(
                     f"Bucket {attr}=[{bucket.lo},{bucket.hi}) exceeds pagination limit"
                 )
@@ -359,6 +374,7 @@ class PaginationPlanner:
                     completed=completed,
                 ):
                     yield batch
+        run.range_split_finished = top_level
 
     async def _fetch_bounded(
         self,

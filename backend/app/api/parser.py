@@ -80,6 +80,8 @@ class RunSummary(BaseModel):
     tier: str | None
     budget: dict[str, Any] | None
     coverage: Decimal | None
+    # True when a task's expected count was Algolia's estimate (exhaustiveNbHits=false).
+    coverage_is_estimated: bool = False
     requests_made: int
     warnings: list[str]
     created_at: datetime
@@ -103,6 +105,7 @@ class TaskResponse(BaseModel):
     attempts: int
     hits_collected: int
     expected_hits: int | None
+    expected_source: str | None = None
     coverage: Decimal | None
     tier: str | None
     error: str | None
@@ -120,6 +123,7 @@ class ProgressTask(BaseModel):
     status: str
     hits_collected: int
     expected_hits: int | None
+    expected_source: str | None = None
 
 
 class ProgressResponse(BaseModel):
@@ -134,6 +138,7 @@ class ProgressResponse(BaseModel):
     hits_fetched: int = 0
     requests_made: int = 0
     coverage: Decimal | None = None
+    coverage_is_estimated: bool = False
     partial: bool = False
     truncated: bool = False
     current_brand: str | None = None
@@ -353,6 +358,7 @@ async def run_progress(
         hits_fetched=hits_fetched,
         requests_made=run.requests_made,
         coverage=run.coverage_avg,
+        coverage_is_estimated=_coverage_is_estimated(run),
         partial=run.status == "partial"
         or bool(fetching.get("partial"))
         or bool(fetching.get("poor")),
@@ -380,6 +386,7 @@ async def run_progress(
                 status=item.status,
                 hits_collected=item.hits_collected,
                 expected_hits=item.expected_hits,
+                expected_source=item.expected_source,
             )
             for item in tasks
         ],
@@ -605,6 +612,7 @@ def _summary(run: ParserRun) -> RunSummary:
         tier=run.tier_used,
         budget=run.budget_estimate,
         coverage=run.coverage_avg,
+        coverage_is_estimated=_coverage_is_estimated(run),
         requests_made=run.requests_made,
         warnings=list(run.warnings),
         created_at=run.created_at,
@@ -612,6 +620,10 @@ def _summary(run: ParserRun) -> RunSummary:
         finished_at=run.finished_at,
         heartbeat_at=run.heartbeat_at,
     )
+
+
+def _coverage_is_estimated(run: ParserRun) -> bool:
+    return bool(dict(run.stats.get("fetching", {})).get("estimated"))
 
 
 def _task(task: ParserRunTask) -> TaskResponse:
@@ -623,6 +635,7 @@ def _task(task: ParserRunTask) -> TaskResponse:
         attempts=task.attempts,
         hits_collected=task.hits_collected,
         expected_hits=task.expected_hits,
+        expected_source=task.expected_source,
         coverage=task.coverage,
         tier=task.fetch_tier,
         error=task.error if task.status == "failed" else None,
