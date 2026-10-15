@@ -198,6 +198,29 @@ def test_a_model_added_before_its_history_starts_at_the_first_snapshot(
     assert item["changes"]["liquidity_score"] == "20.00"
 
 
+def test_the_list_gives_each_model_its_own_baseline(client: TestClient) -> None:
+    client.put("/api/watchlist/7", json={})
+    client.put("/api/watchlist/8", json={})
+
+    listed = {row["group_id"]: row for row in client.get("/api/watchlist").json()["data"]}
+
+    assert listed[7]["baseline"]["as_of"] == str(TODAY - timedelta(days=3))
+    assert listed[8]["baseline"] is None
+    assert listed[8]["current"]["liquidity_score"] == "20.00"
+
+
+def test_a_note_edit_never_brings_back_a_removed_model(client: TestClient) -> None:
+    client.put("/api/watchlist/7", json={"note": "a"})
+
+    edited = client.patch("/api/watchlist/7", json={"note": " b "})
+    client.delete("/api/watchlist/7")
+    late = client.patch("/api/watchlist/7", json={"note": "c"})
+
+    assert edited.status_code == 200 and edited.json()["note"] == "b"
+    assert late.status_code == 404 and late.json()["error"]["code"] == "not_watched"
+    assert client.get("/api/watchlist").json()["data"] == []
+
+
 def test_unwatching_is_idempotent(client: TestClient) -> None:
     client.put("/api/watchlist/7", json={})
 

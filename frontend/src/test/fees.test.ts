@@ -64,6 +64,7 @@ describe('grailed fees', () => {
     expect(scaled('0.0349', 1_000_000)).toBe(34_900);
     expect(scaled('120', 100)).toBe(12_000);
     expect(dollarsToCents('12.5')).toBe(1_250);
+    expect(dollarsToCents('12,5')).toBe(1_250);
     expect(dollarsToCents('12.345')).toBeNull();
     expect(dollarsToCents('-3')).toBeNull();
     expect(dollarsToCents('')).toBeNull();

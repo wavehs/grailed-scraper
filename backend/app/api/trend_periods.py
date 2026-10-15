@@ -22,6 +22,8 @@ from app.services.metrics.seasonality import month_range, month_start
 
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 MAX_PERIOD_MONTHS = 24
+# Grailed opened in 2013; the bounds only keep date arithmetic away from year 0 and 9999.
+MIN_YEAR, MAX_YEAR = 2000, 2100
 _CENT = Decimal("0.01")
 
 
@@ -76,8 +78,10 @@ def parse_period(month_from: str | None, month_to: str | None) -> MonthRange | N
 
 
 def _month(value: str) -> date:
-    year, month = value.split("-")
-    return date(int(year), int(month), 1)
+    year, month = (int(part) for part in value.split("-"))
+    if not MIN_YEAR <= year <= MAX_YEAR:
+        raise ApiError(422, "invalid_period", f"years run from {MIN_YEAR} to {MAX_YEAR}")
+    return date(year, month, 1)
 
 
 def period_totals(period: MonthRange, condition: Condition) -> Subquery:

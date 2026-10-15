@@ -26,7 +26,13 @@ AUTUMN_2025 = MonthRange(date(2025, 9, 1), date(2025, 11, 1))
 def test_a_period_needs_both_ends_in_order_and_two_years_at_most() -> None:
     assert parse_period(None, None) is None
     assert parse_period("2025-12", "2026-02") == MonthRange(date(2025, 12, 1), date(2026, 2, 1))
-    for month_from, month_to in (("2025-09", None), ("2026-02", "2025-12"), ("2023-01", "2025-01")):
+    for month_from, month_to in (
+        ("2025-09", None),
+        ("2026-02", "2025-12"),
+        ("2023-01", "2025-01"),
+        ("0000-01", "0000-02"),
+        ("9999-11", "9999-12"),
+    ):
         with pytest.raises(ApiError) as error:
             parse_period(month_from, month_to)
         assert error.value.code == "invalid_period"

@@ -37,10 +37,10 @@ export function scaled(value: string, scale: number): number {
   return Number(match[1]) * scale + Number(fraction.slice(0, digits) || 0);
 }
 
-/** Dollars typed by a person ("12.5") to cents; null when it is not an amount. */
+/** Dollars typed by a person ("12.5" or "12,5") to cents; null when it is not an amount. */
 export function dollarsToCents(value: string): number | null {
   try {
-    return scaled(value, 100);
+    return scaled(value.replace(',', '.'), 100);
   } catch {
     return null;
   }

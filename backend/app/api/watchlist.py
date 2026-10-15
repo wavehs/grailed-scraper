@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -72,17 +72,7 @@ class WatchNote(BaseModel):
 async def list_watchlist(session: Annotated[AsyncSession, Depends(get_db)]) -> WatchlistResponse:
     """Followed models, the most recently added first."""
 
-    rows = (
-        await session.execute(
-            select(WatchlistItem, ModelGroup, Brand.name)
-            .join(ModelGroup, ModelGroup.id == WatchlistItem.group_id)
-            .join(Brand, Brand.id == ModelGroup.brand_id)
-            .order_by(WatchlistItem.added_at.desc(), WatchlistItem.group_id)
-        )
-    ).tuples()
-    return WatchlistResponse(
-        data=[await _item(session, item, group, brand) for item, group, brand in rows]
-    )
+    return WatchlistResponse(data=await _items(session))
 
 
 @router.put("/{group_id}", response_model=WatchItem)
@@ -103,10 +93,25 @@ async def watch(
             raise ApiError(409, "watchlist_full", f"The watchlist holds {WATCHLIST_MAX} models")
         item = WatchlistItem(group_id=group_id, added_at=datetime.now(UTC), note=None)
         session.add(item)
-    item.note = (body.note or "").strip() or None
+    item.note = _note(body)
     await session.commit()
-    brand = await session.get(Brand, group.brand_id)
-    return await _item(session, item, group, brand.name if brand else "")
+    return (await _items(session, group_id))[0]
+
+
+@router.patch("/{group_id}", response_model=WatchItem)
+async def change_note(
+    group_id: int,
+    body: WatchNote,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> WatchItem:
+    """Change the note of a followed model; unlike ``PUT`` it never adds one back."""
+
+    item = await session.get(WatchlistItem, group_id)
+    if item is None:
+        raise ApiError(404, "not_watched", "The model is not on the watchlist")
+    item.note = _note(body)
+    await session.commit()
+    return (await _items(session, group_id))[0]
 
 
 @router.delete("/{group_id}", status_code=204)
@@ -118,45 +123,87 @@ async def unwatch(group_id: int, session: Annotated[AsyncSession, Depends(get_db
     return Response(status_code=204)
 
 
-async def _item(
-    session: AsyncSession, item: WatchlistItem, group: ModelGroup, brand: str
-) -> WatchItem:
-    key = f"model:{group.id}"
-    added = _aware(item.added_at)
-    snapshot = await _baseline(session, key, added.date())
-    metric = await session.scalar(select(GroupMetric).where(GroupMetric.scope_key == key))
-    baseline = _snapshot_point(snapshot) if snapshot is not None else None
-    current = _metric_point(metric) if metric is not None else None
-    return WatchItem(
-        group_id=group.id,
-        brand=brand,
-        name=group.name,
-        product_type=group.product_type,
-        retired=group.retired_at is not None,
-        added_at=added,
-        note=item.note,
-        baseline=baseline,
-        current=current,
-        changes=changes(baseline, current) if baseline and current else None,
-    )
+def _note(body: WatchNote) -> str | None:
+    return (body.note or "").strip() or None
 
 
-async def _baseline(session: AsyncSession, key: str, day: date) -> GroupMetricDaily | None:
-    older = await session.scalar(
-        select(GroupMetricDaily)
-        .where(GroupMetricDaily.scope_key == key, GroupMetricDaily.snapshot_date <= day)
-        .order_by(GroupMetricDaily.snapshot_date.desc())
-        .limit(1)
+async def _items(session: AsyncSession, group_id: int | None = None) -> list[WatchItem]:
+    """Watched models (or one) with their numbers, in four queries however many there are."""
+
+    query = (
+        select(WatchlistItem, ModelGroup, Brand.name)
+        .join(ModelGroup, ModelGroup.id == WatchlistItem.group_id)
+        .join(Brand, Brand.id == ModelGroup.brand_id)
+        .order_by(WatchlistItem.added_at.desc(), WatchlistItem.group_id)
     )
-    if older is not None:
-        return older
-    newer: GroupMetricDaily | None = await session.scalar(
-        select(GroupMetricDaily)
-        .where(GroupMetricDaily.scope_key == key, GroupMetricDaily.snapshot_date > day)
-        .order_by(GroupMetricDaily.snapshot_date)
-        .limit(1)
+    if group_id is not None:
+        query = query.where(WatchlistItem.group_id == group_id)
+    rows = (await session.execute(query)).tuples().all()
+    keys = [f"model:{group.id}" for _, group, _ in rows]
+    metrics = {
+        metric.scope_key: metric
+        for metric in await session.scalars(
+            select(GroupMetric).where(GroupMetric.scope_key.in_(keys))
+        )
+    }
+    newer = await _nearest(session, group_id, older=False)
+    baselines = {**newer, **await _nearest(session, group_id, older=True)}
+    items = []
+    for item, group, brand in rows:
+        key = f"model:{group.id}"
+        snapshot, metric = baselines.get(key), metrics.get(key)
+        baseline = _snapshot_point(snapshot) if snapshot is not None else None
+        current = _metric_point(metric) if metric is not None else None
+        items.append(
+            WatchItem(
+                group_id=group.id,
+                brand=brand,
+                name=group.name,
+                product_type=group.product_type,
+                retired=group.retired_at is not None,
+                added_at=_aware(item.added_at),
+                note=item.note,
+                baseline=baseline,
+                current=current,
+                changes=changes(baseline, current) if baseline and current else None,
+            )
+        )
+    return items
+
+
+async def _nearest(
+    session: AsyncSession, group_id: int | None, *, older: bool
+) -> dict[str, GroupMetricDaily]:
+    """Per watched model, the last snapshot on or before the day it was added (``older``)
+    or the first one after it."""
+
+    day = func.date(WatchlistItem.added_at)
+    snapshot = GroupMetricDaily.snapshot_date
+    ranked = (
+        select(
+            GroupMetricDaily.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=GroupMetricDaily.scope_key,
+                order_by=snapshot.desc() if older else snapshot,
+            )
+            .label("rank"),
+        )
+        .join(
+            WatchlistItem,
+            GroupMetricDaily.scope_key == "model:" + cast(WatchlistItem.group_id, String),
+        )
+        .where(snapshot <= day if older else snapshot > day)
     )
-    return newer
+    if group_id is not None:
+        ranked = ranked.where(WatchlistItem.group_id == group_id)
+    first = ranked.subquery()
+    rows = await session.scalars(
+        select(GroupMetricDaily)
+        .join(first, first.c.id == GroupMetricDaily.id)
+        .where(first.c.rank == 1)
+    )
+    return {row.scope_key: row for row in rows}
 
 
 def _snapshot_point(row: GroupMetricDaily) -> WatchPoint:

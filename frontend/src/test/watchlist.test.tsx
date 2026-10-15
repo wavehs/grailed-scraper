@@ -35,7 +35,7 @@ function stubFetch(items: WatchItem[]) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     calls.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body as string | undefined });
     if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }));
-    if (init?.method === 'PUT') return json(items[0] ?? item);
+    if (init?.method === 'PUT' || init?.method === 'PATCH') return json(items[0] ?? item);
     return json({ data: items });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -91,8 +91,8 @@ describe('watchlist', () => {
     await userEvent.type(note, 'any size');
     note.blur();
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
-    expect(calls.find((call) => call.method === 'PUT')?.body).toBe(JSON.stringify({ note: 'any size' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+    expect(calls.find((call) => call.method === 'PATCH')?.body).toBe(JSON.stringify({ note: 'any size' }));
   });
 
   it('shows an empty state without watched models', async () => {

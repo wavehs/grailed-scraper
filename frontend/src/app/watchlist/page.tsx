@@ -60,7 +60,7 @@ function WatchRow({ item }: { item: WatchItem }) {
     client.invalidateQueries({ queryKey: ['trends'] });
   };
   const save = useMutation({
-    mutationFn: (note: string) => api<WatchItem>(`/watchlist/${item.group_id}`, 'PUT', { note }),
+    mutationFn: (note: string) => api<WatchItem>(`/watchlist/${item.group_id}`, 'PATCH', { note }),
     onSuccess: refresh,
   });
   const remove = useMutation({

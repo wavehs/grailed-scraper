@@ -182,6 +182,7 @@ export function useTrendCardQuery(groupId: number | null, window: number, condit
     queryFn: ({ signal }) =>
       getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}&condition=${condition}`, signal),
     enabled: groupId !== null,
+    placeholderData: (previous) => (previous?.group.id === groupId ? previous : undefined),
   });
 }
 
