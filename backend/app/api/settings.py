@@ -27,10 +27,13 @@ SETTING_GROUPS: dict[str, tuple[str, ...]] = {
         "collect_price_max_usd",
     ),
     "privacy": ("store_seller_identity",),
+    "schedule": ("schedule_enabled", "schedule_hour", "schedule_rpm", "schedule_brand_ids"),
 }
 EDITABLE_SETTINGS = frozenset(key for keys in SETTING_GROUPS.values() for key in keys)
 # Null clears an optional bound instead of being ignored.
-NULLABLE_SETTINGS = frozenset({"collect_price_min_usd", "collect_price_max_usd"})
+NULLABLE_SETTINGS = frozenset(
+    {"collect_price_min_usd", "collect_price_max_usd", "schedule_brand_ids"}
+)
 
 
 class SettingsPatch(BaseModel):
@@ -42,6 +45,10 @@ class SettingsPatch(BaseModel):
     collect_price_min_usd: int | None = Field(default=None, ge=0)
     collect_price_max_usd: int | None = Field(default=None, ge=1)
     store_seller_identity: Literal["none", "hashed", "plain"] | None = None
+    schedule_enabled: bool | None = None
+    schedule_hour: int | None = Field(default=None, ge=0, le=23)
+    schedule_rpm: int | None = Field(default=None, ge=1)
+    schedule_brand_ids: list[int] | None = None
     confirm_plain_seller_identity: bool = False
 
 

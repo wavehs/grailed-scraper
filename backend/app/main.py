@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import __version__
 from app.api.errors import install_exception_handlers
 from app.api.routes import router
+from app.api.settings import effective_settings
 from app.core.config import PROJECT_ROOT, get_settings
 from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
@@ -31,6 +32,7 @@ from app.core.runtime import (
 )
 from app.db.session import close_database, get_engine, get_session_factory
 from app.services.parser.runtime import ParserRuntime
+from app.services.scheduler import Scheduler
 
 
 @asynccontextmanager
@@ -43,6 +45,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     instance_lock.acquire()
     pid_file = settings.data_directory / "app.pid"
     runtime: ParserRuntime | None = None
+    scheduler: Scheduler | None = None
     try:
         # Alembic owns the schema: create_all would pre-create new tables and make the
         # next migration fail, leaving old tables without their new columns.
@@ -62,9 +65,21 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await runtime.reconcile()
         except SQLAlchemyError:
             structlog.get_logger(__name__).warning("parser_reconcile_skipped")
+        # Off unless schedule_enabled; it re-reads the setting on every check.
+        scheduler = Scheduler(
+            get_session_factory(),
+            runtime,
+            settings,
+            load_settings=effective_settings,
+            market_lock=market_lock,
+        )
+        scheduler.start()
+        application.state.scheduler = scheduler
         yield
     finally:
         try:
+            if scheduler is not None:
+                await scheduler.close()
             if runtime is not None:
                 await runtime.close()
             await close_database()

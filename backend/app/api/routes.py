@@ -18,6 +18,7 @@ from app.api.groups import router as groups_router
 from app.api.listings import router as listings_router
 from app.api.mutation import MutationRoute
 from app.api.parser import router as parser_router
+from app.api.schedule import router as schedule_router
 from app.api.settings import get_effective_settings
 from app.api.settings import router as settings_router
 from app.api.trends import router as trends_router
@@ -28,6 +29,7 @@ from app.db.session import get_db
 router = APIRouter(prefix="/api", route_class=MutationRoute)
 router.include_router(discovery_router)
 router.include_router(brands_router)
+router.include_router(schedule_router)
 router.include_router(parser_router)
 router.include_router(listings_router)
 router.include_router(trends_router)

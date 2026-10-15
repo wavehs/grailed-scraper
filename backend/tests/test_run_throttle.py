@@ -174,8 +174,9 @@ async def test_three_throttled_tasks_in_a_row_stop_the_run_as_partial(
     # The untouched tasks stay pending, so a resume picks them up.
     assert await _statuses(sessions, run_id) == ["failed"] * 3 + ["pending"] * 2
     async with sessions() as session:
-        await RunRepository(session).prepare_resume(run_id)
+        resumed = await RunRepository(session).prepare_resume(run_id)
         await session.commit()
+    assert "stop_reason" not in resumed.stats
     assert await _statuses(sessions, run_id) == ["pending"] * TASKS
 
 

@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     backup_retention_days: int = 30
     # Rotation by count as well as age: each backup is a full copy of the database.
     backup_keep_count: int = 3
+    # Daily collection inside the app (off by default; see docs/OPERATIONS.md).
+    schedule_enabled: bool = False
+    schedule_hour: int = Field(default=4, ge=0, le=23)
+    # None (or an empty list) = every brand that already has listings.
+    schedule_brand_ids: list[int] | None = None
+    # Unattended runs use the compliance default, whatever the manual rate is.
+    schedule_rpm: int = Field(default=90, ge=1)
 
     @model_validator(mode="after")
     def check_price_band(self) -> Settings:
@@ -73,6 +80,11 @@ class Settings(BaseSettings):
         if low is not None and high is not None and low > high:
             raise ValueError("collect_price_min_usd must not exceed collect_price_max_usd")
         return self
+
+    @field_validator("schedule_brand_ids")
+    @classmethod
+    def all_brands_when_empty(cls, value: list[int] | None) -> list[int] | None:
+        return sorted(set(value)) if value else None
 
     @field_validator("log_level")
     @classmethod

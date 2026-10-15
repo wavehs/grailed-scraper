@@ -27,6 +27,7 @@ from app.api import (
     mutation,
     parser,
     routes,
+    schedule,
     settings,
     trends,
 )
@@ -112,7 +113,7 @@ def test_reads_and_other_database_errors_are_not_retried() -> None:
 
 
 @pytest.mark.parametrize(
-    "module", [brands, discovery, groups, listings, parser, routes, settings, trends]
+    "module", [brands, discovery, groups, listings, parser, routes, schedule, settings, trends]
 )
 def test_every_api_router_retries_locked_writes(module: ModuleType) -> None:
     declared = [route for route in module.router.routes if isinstance(route, APIRoute)]

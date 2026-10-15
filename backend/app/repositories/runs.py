@@ -155,6 +155,8 @@ class RunRepository:
         )
         run.status = "pending"
         run.phase = "fetching"
+        # A resumed run is judged on how it ends this time.
+        run.stats = {key: value for key, value in run.stats.items() if key != "stop_reason"}
         run.finished_at = None
         run.heartbeat_at = datetime.now(UTC)
         await self._session.flush()
