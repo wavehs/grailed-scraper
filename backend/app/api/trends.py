@@ -14,6 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.errors import ApiError
 from app.api.groups import GroupDetail, group_detail_data
 from app.api.mutation import MutationRoute
+from app.api.trend_fields import (
+    LOW_DATA_SALES,
+    Condition,
+    Department,
+    LiquidityFields,
+    liquidity_fields,
+    parent_key,
+)
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
@@ -23,10 +31,10 @@ from app.services.grouping.policy import REVIEW_TYPE
 
 router = APIRouter(prefix="/trends", tags=["trends"], route_class=MutationRoute)
 WINDOWS = (7, 30, 90)
-SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new"]
+SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new", "liquidity", "p30"]
 
 
-class TrendRow(BaseModel):
+class TrendRow(LiquidityFields):
     scope: Literal["model", "type", "brand"]
     scope_key: str
     group_id: int | None
@@ -131,6 +139,9 @@ async def list_trends(
     price_max: Annotated[int | None, Query(ge=0)] = None,
     new_only: bool = False,
     min_sales: Annotated[int, Query(ge=0, le=10_000)] = 0,
+    condition: Condition = "all",
+    department: Department | None = None,
+    hide_low_data: bool = False,
     include_fallback: bool = False,
     include_descriptors: bool = False,
     search: Annotated[str, Query(max_length=200)] = "",
@@ -171,6 +182,13 @@ async def list_trends(
         filters.append(GroupMetric.is_new.is_(True))
     if min_sales:
         filters.append(sold_column >= min_sales)
+    if hide_low_data:
+        filters.append(GroupMetric.sold_90d >= LOW_DATA_SALES)
+    if department:
+        filters.append(GroupMetric.department == department)
+    if condition != "all":
+        # Only scopes with sales of that condition in the last 90 days.
+        filters.append(func.json_extract(GroupMetric.pricing, f"$.{condition}.n") > 0)
     statement = (
         select(GroupMetric, Brand.name, ModelGroup)
         .join(Brand, Brand.id == GroupMetric.brand_id)
@@ -185,9 +203,7 @@ async def list_trends(
                 func.lower(ModelGroup.name).contains(term, autoescape=True),
             )
         )
-    total = int(
-        await session.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    )
+    total = int(await session.scalar(select(func.count()).select_from(statement.subquery())) or 0)
     rows = list(
         (
             await session.execute(
@@ -198,10 +214,19 @@ async def list_trends(
         ).tuples()
     )
     versions = await _version_counts(session, [group.id for _, _, group in rows if group])
+    parents = await _parent_pricing(session, [metric for metric, _, _ in rows])
     computed_at = await session.scalar(select(func.max(GroupMetric.computed_at)))
     return TrendListResponse(
         data=[
-            _row(metric, brand, group, window, versions.get(group.id, 0) if group else 0)
+            _row(
+                metric,
+                brand,
+                group,
+                window,
+                versions.get(group.id, 0) if group else 0,
+                condition=condition,
+                parent_pricing=parents.get(parent_key(metric) or ""),
+            )
             for metric, brand, group in rows
         ],
         total=total,
@@ -215,6 +240,7 @@ async def trend_card(
     group_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
     window: Annotated[int, Query()] = 30,
+    condition: Condition = "all",
 ) -> TrendCard:
     _check_window(window)
     group = await session.get(ModelGroup, group_id)
@@ -251,7 +277,19 @@ async def trend_card(
     active = await _listings(session, scope_ids, groups_by_id, sold=False, limit=12)
     return TrendCard(
         group=detail,
-        metrics=_row(metric, brand, group, window, len(version_ids)) if metric else None,
+        metrics=(
+            _row(
+                metric,
+                brand,
+                group,
+                window,
+                len(version_ids),
+                condition=condition,
+                parent_pricing=type_metric.pricing if type_metric else None,
+            )
+            if metric
+            else None
+        ),
         computed_at=metric.computed_at if metric else None,
         weekly_median_price=[
             decimal_to_cents(Decimal(value)) if value is not None else None
@@ -269,13 +307,17 @@ async def trend_card(
                     0,
                     name=version_groups[item.group_id].name,
                     kind=version_groups[item.group_id].kind,
+                    condition=condition,
+                    parent_pricing=type_metric.pricing if type_metric else None,
                 )
                 for item in version_metrics
                 if item.group_id in version_groups
             ),
             key=lambda row: (-row.sold_90d, row.name or ""),
         ),
-        type_metrics=_row(type_metric, brand, None, window, 0) if type_metric else None,
+        type_metrics=(
+            _row(type_metric, brand, None, window, 0, condition=condition) if type_metric else None
+        ),
         recent_sales=recent,
         active_listings=active,
     )
@@ -306,6 +348,8 @@ def _order(sort: str, desc: bool, sold: Any, price: Any) -> list[Any]:
         "price": price,
         "supply": GroupMetric.active_now,
         "new": GroupMetric.first_seen_at,
+        "liquidity": GroupMetric.liquidity_score,
+        "p30": GroupMetric.p30,
     }
     if sort == "speed":
         # "Fastest first" means the shortest median time to sell.
@@ -326,6 +370,8 @@ def _row(
     *,
     name: str | None = None,
     kind: GroupKind | None = None,
+    condition: Condition = "all",
+    parent_pricing: dict[str, Any] | None = None,
 ) -> TrendRow:
     sold = {7: metric.sold_7d, 30: metric.sold_30d, 90: metric.sold_90d}[window]
     price = {
@@ -370,7 +416,20 @@ def _row(
         is_new=metric.is_new,
         first_seen_at=metric.first_seen_at,
         weekly_sales=list(metric.weekly_sales),
+        **liquidity_fields(metric, condition, parent_pricing),
     )
+
+
+async def _parent_pricing(
+    session: AsyncSession, metrics: list[GroupMetric]
+) -> dict[str, dict[str, Any] | None]:
+    keys = {key for key in map(parent_key, metrics) if key}
+    if not keys:
+        return {}
+    rows = await session.execute(
+        select(GroupMetric.scope_key, GroupMetric.pricing).where(GroupMetric.scope_key.in_(keys))
+    )
+    return {key: pricing for key, pricing in rows.tuples()}
 
 
 async def _no_model_share(
@@ -458,9 +517,7 @@ async def _listings(
             )
         ).tuples()
     )
-    roots = {
-        item.relist_of_id for item, _ in rows if item.relist_of_id is not None
-    }
+    roots = {item.relist_of_id for item, _ in rows if item.relist_of_id is not None}
     root_created: dict[int, datetime] = {}
     if roots:
         for root_id, created, first_seen in await session.execute(
@@ -502,4 +559,3 @@ async def _listings(
 
 def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-

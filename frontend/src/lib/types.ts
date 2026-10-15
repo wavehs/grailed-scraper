@@ -242,7 +242,35 @@ export type GroupDetail = GroupSummary & {
 export type GroupList = { data: GroupSummary[]; total: number };
 
 export type TrendLevel = 'model' | 'type' | 'brand';
-export type TrendSort = 'trend' | 'growth' | 'speed' | 'sales' | 'price' | 'supply' | 'new';
+export type TrendSort =
+  | 'trend'
+  | 'growth'
+  | 'speed'
+  | 'sales'
+  | 'price'
+  | 'supply'
+  | 'new'
+  | 'liquidity'
+  | 'p30';
+export type TrendCondition = 'all' | 'new' | 'used';
+export type TrendDepartment = '' | 'menswear' | 'womenswear';
+
+/** Sales of 90 days in one condition bucket; amounts in cents, ratios as decimal strings. */
+export type PriceBucket = {
+  n: number;
+  gmv: number;
+  p25: number | null;
+  p50: number | null;
+  p75: number | null;
+  offer_discount: string | null;
+  total_markdown: string | null;
+  days_at_final_price: string | null;
+  fresh_n: number;
+  fresh_ask_p50: number | null;
+  fresh_ask_premium: string | null;
+  /** The medians are the parent type's: too few own sales. */
+  approximate: boolean;
+};
 
 export type TrendRow = {
   scope: TrendLevel;
@@ -276,6 +304,17 @@ export type TrendRow = {
   is_new: boolean;
   first_seen_at: string | null;
   weekly_sales: number[];
+  liquidity_score: string | null;
+  /** Smoothed P30 (β) and the raw rate of its cohort of p30_n listings. */
+  p30: string | null;
+  p30_raw: string | null;
+  p30_n: number | null;
+  expected_days: string | null;
+  active_effective: number | null;
+  active_fresh: number | null;
+  gmv_90d: number | null;
+  department: string | null;
+  price: PriceBucket | null;
 };
 
 /** "No model" against the whole scope; shares are decimal strings, null when the total is 0. */
@@ -341,6 +380,10 @@ export type TrendFilters = {
   search: string;
   /** Show description groups ("Baggy · jeans"); the API hides them by default. */
   descriptors: boolean;
+  condition: TrendCondition;
+  department: TrendDepartment;
+  /** Hide rows with fewer than five sales in 90 days. */
+  hideLowData: boolean;
   sort: TrendSort;
   desc: boolean;
 };

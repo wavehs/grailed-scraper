@@ -144,6 +144,9 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (filters.minSales) params.set('min_sales', String(filters.minSales));
   if (filters.search.trim()) params.set('search', filters.search.trim());
   if (filters.descriptors) params.set('include_descriptors', 'true');
+  if (filters.condition !== 'all') params.set('condition', filters.condition);
+  if (filters.department) params.set('department', filters.department);
+  if (filters.hideLowData) params.set('hide_low_data', 'true');
   return params;
 }
 

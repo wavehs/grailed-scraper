@@ -1,0 +1,66 @@
+/** Strings of the liquidity UI (v2 roadmap, phase 3), merged into the main dictionaries. */
+
+export const liquidityEn: Record<string, string> = {
+  sortLiquidity: 'Liquidity Score',
+  sortP30: 'P30',
+  liquidityScore: 'LS',
+  liquidityScoreHelp:
+    'Liquidity Score 0–100: 60% the chance to sell within 30 days, 40% sales in 90 days, both against the best models of the section.',
+  p30: 'P30',
+  p30Help:
+    'Chance that a listing sells within 30 days (relists count), smoothed towards the type. β: early data overstates it; n is the cohort.',
+  expectedDays: 'expected days',
+  beta: 'β',
+  askVsSold: 'Ask vs sold',
+  askVsSoldHelp: 'Median sale of 90 days in the chosen condition and how far fresh asks sit above it.',
+  approximate: '≈',
+  approximateHelp: 'Too few own sales: the medians are the type’s within the brand.',
+  freshPremium: 'fresh asks',
+  gmv90d: 'GMV 90 d',
+  supplyEffective: 'effective',
+  supplyFresh: 'fresh',
+  supplyHelp: 'All active · without lots and dormant wholesalers · listed or bumped in 60 days',
+  conditionFilter: 'Condition',
+  conditionAll: 'Any',
+  conditionNew: 'New',
+  conditionUsed: 'Used',
+  departmentFilter: 'Department',
+  departmentAll: 'Men & women',
+  departmentMen: 'Men',
+  departmentWomen: 'Women',
+  hideLowData: 'Hide low data',
+  hideLowDataHelp: 'Hide rows with fewer than 5 sales in 90 days.',
+};
+
+export const liquidityRu: Record<string, string> = {
+  sortLiquidity: 'Liquidity Score',
+  sortP30: 'P30',
+  liquidityScore: 'LS',
+  liquidityScoreHelp:
+    'Liquidity Score 0–100: 60% — шанс продать за 30 дней, 40% — продажи за 90 дней, относительно лучших моделей раздела.',
+  p30: 'P30',
+  p30Help:
+    'Вероятность, что объявление продастся за 30 дней (с учётом перевыставлений), сглаженная к типу. β: на ранних данных завышена; n — когорта.',
+  expectedDays: 'ожид. дней',
+  beta: 'β',
+  askVsSold: 'Запрос и продажа',
+  askVsSoldHelp:
+    'Медиана продаж за 90 дней в выбранном состоянии и насколько свежие запросы выше неё.',
+  approximate: '≈',
+  approximateHelp: 'Своих продаж мало: медианы взяты по типу внутри бренда.',
+  freshPremium: 'свежие запросы',
+  gmv90d: 'GMV 90 дн',
+  supplyEffective: 'эффективное',
+  supplyFresh: 'свежее',
+  supplyHelp: 'Все активные · без лотов и спящих оптовиков · выставлены или подняты за 60 дней',
+  conditionFilter: 'Состояние',
+  conditionAll: 'Любое',
+  conditionNew: 'Новые',
+  conditionUsed: 'Б/у',
+  departmentFilter: 'Отдел',
+  departmentAll: 'Муж. и жен.',
+  departmentMen: 'Мужское',
+  departmentWomen: 'Женское',
+  hideLowData: 'Скрыть мало данных',
+  hideLowDataHelp: 'Скрыть строки, где меньше 5 продаж за 90 дней.',
+};

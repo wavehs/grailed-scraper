@@ -104,8 +104,13 @@ trend  = growth × speed × sell_through_30d × 100
 
 - `GET /api/trends` — `level=model|type|brand`, фильтры `brand_ids`, `section`,
   `product_type`, `window=7|30|90`, `price_min`/`price_max` (USD, по медиане окна),
-  `new_only`, `min_sales`, `search`; сортировка `sort=trend|growth|speed|sales|price|supply|new`.
-  На уровне `model` показываются линейки без групп «Без модели».
+  `new_only`, `min_sales`, `search`, `condition=all|new|used` (только области с продажами
+  этого состояния за 90 дней), `department=menswear|womenswear`, `hide_low_data`
+  (`sold_90d ≥ 5`); сортировка `sort=trend|growth|speed|sales|price|supply|new|liquidity|p30`.
+  На уровне `model` показываются линейки без групп «Без модели». Строка несёт `liquidity_score`,
+  `p30` (сглаженный), `p30_raw`, `p30_n`, `expected_days`, `active_effective`, `active_fresh`,
+  `gmv_90d` и `price` — ведро `condition` из §7 (центы); у модели без медиан ведра они берутся
+  у её типа в бренде с `approximate=true` («≈»).
 - `GET /api/trends/groups/{id}` — карточка: метрики, недельные ряды, версии, цвета и
   размеры, последние продажи и активные объявления со ссылками на Grailed.
 - `GET /api/listings?product_type=` — каталог с фильтром по типу.

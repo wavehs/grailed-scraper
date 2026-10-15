@@ -4,6 +4,13 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Search } from 'lucide-react';
 import { GroupKindBadge, RegroupButton, groupLabel, isServiceGroup } from '@/components/group-editor';
+import {
+  AskVsSoldCell,
+  LiquidityFilters,
+  LiquidityScoreCell,
+  P30Cell,
+  SupplyCell,
+} from '@/components/liquidity-cells';
 import { Sparkline } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,11 +36,16 @@ const DEFAULT_FILTERS: TrendFilters = {
   minSales: 0,
   search: '',
   descriptors: false,
+  condition: 'all',
+  department: '',
+  hideLowData: false,
   sort: 'trend',
   desc: true,
 };
 const SORTS: Array<[TrendSort, string]> = [
   ['trend', 'sortTrend'],
+  ['liquidity', 'sortLiquidity'],
+  ['p30', 'sortP30'],
   ['growth', 'sortGrowth'],
   ['speed', 'sortSpeed'],
   ['sales', 'sortSales'],
@@ -249,6 +261,7 @@ export default function TrendsPage() {
               onChange={(event) => update({ minSales: Math.max(0, Number(event.target.value) || 0) })}
             />
           </label>
+          <LiquidityFilters filters={filters} update={update} />
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
             <input type="checkbox" checked={filters.newOnly} onChange={(event) => update({ newOnly: event.target.checked })} />
             {t('newOnly')}
@@ -304,12 +317,16 @@ export default function TrendsPage() {
                 <TableHeaderCell>{t(filters.level === 'model' ? 'model' : filters.level === 'type' ? 'productType' : 'brand')}</TableHeaderCell>
                 <TableHeaderCell>{t('weeklyTrend')}</TableHeaderCell>
                 <TableHeaderCell>{t('trendScore')}</TableHeaderCell>
+                <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
+                <TableHeaderCell>{t('p30')}</TableHeaderCell>
                 <TableHeaderCell>{t('salesGrowth')}</TableHeaderCell>
                 <TableHeaderCell>{t('timeToSell')}</TableHeaderCell>
                 <TableHeaderCell>{t('sellThrough')}</TableHeaderCell>
                 <TableHeaderCell>{`${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}</TableHeaderCell>
                 <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
+                <TableHeaderCell>{t('askVsSold')}</TableHeaderCell>
                 <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
+                <TableHeaderCell>{t('gmv90d')}</TableHeaderCell>
               </tr>
             </TableHead>
             <tbody>
@@ -395,6 +412,12 @@ function TrendTableRow({
         </span>
       </TableCell>
       <TableCell>
+        <LiquidityScoreCell row={row} />
+      </TableCell>
+      <TableCell>
+        <P30Cell row={row} />
+      </TableCell>
+      <TableCell>
         <span className="tabular-nums" title={t('vsPrevious')}>
           ×{Number(row.growth).toFixed(2)}
         </span>
@@ -423,10 +446,13 @@ function TrendTableRow({
         )}
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{row.active_now}</span>
-        <p className="text-xs tabular-nums text-[var(--text-muted)]">
-          +{row.new_listings_14d} {t('newListings14d')}
-        </p>
+        <AskVsSoldCell price={row.price} />
+      </TableCell>
+      <TableCell>
+        <SupplyCell row={row} />
+      </TableCell>
+      <TableCell>
+        <span className="tabular-nums">{formatCurrency(row.gmv_90d, locale)}</span>
       </TableCell>
     </TableRow>
   );

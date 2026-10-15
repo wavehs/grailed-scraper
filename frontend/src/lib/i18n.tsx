@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { liquidityEn, liquidityRu } from '@/lib/i18n-liquidity';
 
 export type Locale = 'en' | 'ru';
 
@@ -461,6 +462,7 @@ const en: Record<string, string> = {
   fullRunHelp: 'Collect everything again instead of only what changed. Much slower.',
   runRpm: 'Rate, requests/min',
   runRpmPlaceholder: 'From settings',
+  ...liquidityEn,
 };
 
 const ru: Record<string, string> = {
@@ -925,6 +927,7 @@ const ru: Record<string, string> = {
   fullRunHelp: 'Собрать всё заново, а не только изменения. Намного дольше.',
   runRpm: 'Скорость, запросов/мин',
   runRpmPlaceholder: 'Из настроек',
+  ...liquidityRu,
 };
 
 type I18nValue = {
