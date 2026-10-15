@@ -96,7 +96,14 @@ def test_impossible_inputs_are_rejected(
     }
 
     with pytest.raises(ValueError):
-        resale(schedule, **arguments)
+        resale(
+            schedule,
+            buy=arguments["buy"],
+            costs_in=arguments["costs_in"],
+            expected=arguments["expected"],
+            ship_buyer=arguments["ship_buyer"],
+            label_cost=arguments["label_cost"],
+        )
 
 
 def test_a_schedule_without_tiers_is_rejected(tmp_path: Path) -> None:
