@@ -10,11 +10,11 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Listing, ListingModelAssignment, ModelGroup, SeasonProfile
@@ -28,6 +28,8 @@ from app.services.metrics.seasonality import (
 
 BRAND_MIN_SALES_YEAR = 600
 MODEL_MIN_SALES_YEAR = 300
+# A partial recompute leaves younger profiles alone: they span every brand's sales.
+PROFILE_MAX_AGE = timedelta(days=1)
 # The per-type "No model" bucket is not a model.
 _NO_MODEL = "_none"
 _INDEX = Decimal("0.0001")
@@ -51,7 +53,18 @@ class _Counts:
     brands: defaultdict[tuple[int, str], Counter[date]]
     models: defaultdict[int, Counter[date]]
     model_departments: defaultdict[int, Counter[str]]
-    model_scope: dict[int, tuple[int, str]]
+    model_scopes: defaultdict[int, Counter[tuple[int, str]]]
+
+
+async def profiles_due(session: AsyncSession, now: datetime) -> bool:
+    """True when no profile exists or the newest is older than ``PROFILE_MAX_AGE``."""
+
+    newest = await session.scalar(select(func.max(SeasonProfile.computed_at)))
+    if newest is None:
+        return True
+    if newest.tzinfo is None:
+        newest = newest.replace(tzinfo=UTC)
+    return now - newest >= PROFILE_MAX_AGE
 
 
 async def write_season_profiles(session: AsyncSession, as_of: datetime) -> int:
@@ -121,7 +134,7 @@ def profile_rows(sales: Sequence[Sale], as_of: datetime) -> list[dict[str, Any]]
             key = f"brand:{brand_id}:{product_type}"
             rows.append(_row(key, "brand", profile, as_of, brand_id, product_type=product_type))
     for group_id, by_month in sorted(counts.models.items()):
-        brand_id, product_type = counts.model_scope[group_id]
+        brand_id, product_type = _majority_scope(counts.model_scopes[group_id])
         own = build_profile(by_month, sorted(covered[brand_id]), counts.market)
         if own.sales_year < MODEL_MIN_SALES_YEAR:
             continue
@@ -157,7 +170,7 @@ def _count(sales: Iterable[Sale], covered: Mapping[int, set[date]]) -> _Counts:
         defaultdict(Counter),
         defaultdict(Counter),
         defaultdict(Counter),
-        {},
+        defaultdict(Counter),
     )
     for sale in sales:
         month = month_start(sale.sold_at)
@@ -172,7 +185,7 @@ def _count(sales: Iterable[Sale], covered: Mapping[int, set[date]]) -> _Counts:
         counts.brands[sale.brand_id, sale.product_type][month] += 1
         if sale.group_id is not None:
             counts.models[sale.group_id][month] += 1
-            counts.model_scope[sale.group_id] = (sale.brand_id, sale.product_type)
+            counts.model_scopes[sale.group_id][sale.brand_id, sale.product_type] += 1
             if sale.department is not None:
                 counts.model_departments[sale.group_id][sale.department] += 1
     return counts
@@ -181,6 +194,12 @@ def _count(sales: Iterable[Sale], covered: Mapping[int, set[date]]) -> _Counts:
 def _type_order(item: tuple[tuple[str, str | None], object]) -> tuple[str, str]:
     (product_type, department), _ = item
     return product_type, department or ""
+
+
+def _majority_scope(scopes: Counter[tuple[int, str]]) -> tuple[int, str]:
+    """The brand and type most of a model's sales carry; ties go to the smallest."""
+
+    return min(scopes, key=lambda scope: (-scopes[scope], scope))
 
 
 def _majority(departments: Counter[str]) -> str | None:

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, update
@@ -21,6 +22,7 @@ from app.db.models import (
     ListingModelAssignment,
     ModelGroup,
 )
+from app.services import per_brand
 from app.services.metrics.service import MetricsService
 from app.services.metrics.supply import WHOLESALE_MIN_ACTIVE
 from app.services.per_brand import recompute_brands
@@ -202,6 +204,24 @@ async def test_recomputing_brands_ranks_them_and_their_snapshots(tmp_path: Path)
     assert (row.liquidity_score, row.ls_ref_scope) == (Decimal(0), "none")
     assert (snapshot.p30, snapshot.liquidity_score) == (row.p30, row.liquidity_score)
     assert (snapshot.active_effective, snapshot.active_fresh) == (2, 0)
+
+
+async def test_a_failed_season_rebuild_keeps_the_ranking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = await _database(tmp_path / "seasons-fail.db")
+
+    async def broken(*_: object, **__: object) -> int:
+        raise RuntimeError("season profiles")
+
+    monkeypatch.setattr(per_brand, "write_season_profiles", broken)
+    async with factory() as session:
+        with pytest.raises(RuntimeError, match="season profiles"):
+            await recompute_brands(session, None)
+    async with factory() as session:
+        row = await session.scalar(select(GroupMetric).where(GroupMetric.scope_key == "model:10"))
+
+    assert row is not None and row.p30 is not None and row.ls_ref_scope == "none"
 
 
 def _columns(database: Path) -> set[str]:

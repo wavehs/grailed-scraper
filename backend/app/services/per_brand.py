@@ -18,7 +18,7 @@ from app.services.grouping import GroupingResult, GroupingService
 from app.services.grouping.service import BrandGroupingStats
 from app.services.metrics import MetricsResult, MetricsService
 from app.services.metrics.ranking import rank_metrics
-from app.services.metrics.season_profiles import write_season_profiles
+from app.services.metrics.season_profiles import profiles_due, write_season_profiles
 
 
 async def _selected(session: AsyncSession, brand_ids: Iterable[int] | None) -> list[int]:
@@ -41,13 +41,12 @@ async def regroup_brands(
     return GroupingResult(stats, time.perf_counter() - started)
 
 
-async def recompute_brands(
-    session: AsyncSession, brand_ids: Iterable[int] | None
-) -> MetricsResult:
+async def recompute_brands(session: AsyncSession, brand_ids: Iterable[int] | None) -> MetricsResult:
     """Recompute group metrics of the brands (all when ``None``) with one commit per brand.
 
-    A last commit ranks every brand's groups together (smoothed P30 and Liquidity Score)
-    and rebuilds the seasonal profiles, which span brands too.
+    A further commit ranks every brand's groups together (smoothed P30 and Liquidity
+    Score). The seasonal profiles span every sale, so a partial recompute rebuilds them only
+    once they are a day old; they get their own commit, and a failure there keeps the ranking.
     """
 
     started = time.perf_counter()
@@ -60,6 +59,8 @@ async def recompute_brands(
         listings += computed.listings
         await session.commit()
     await rank_metrics(session, moment.date())
-    await write_season_profiles(session, moment)
     await session.commit()
+    if brand_ids is None or await profiles_due(session, moment):
+        await write_season_profiles(session, moment)
+        await session.commit()
     return MetricsResult(len(selected), rows, listings, time.perf_counter() - started)

@@ -10,19 +10,21 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.models import (
     Base,
     Brand,
+    GroupMetric,
     Listing,
     ListingModelAssignment,
     ModelGroup,
     SeasonProfile,
 )
+from app.services import per_brand
 from app.services.metrics import season_profiles
-from app.services.metrics.season_profiles import write_season_profiles
+from app.services.metrics.season_profiles import profiles_due, write_season_profiles
 from app.services.metrics.seasonality import month_range
 from app.services.per_brand import recompute_brands
 
@@ -235,6 +237,77 @@ async def test_every_recompute_rebuilds_the_profiles(tmp_path: Path) -> None:
     profiles = await _profiles(factory)
 
     assert "market" in profiles and "type:hoodie:*" in profiles
+
+
+async def test_a_partial_recompute_skips_fresh_profiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = await _database(tmp_path / "fresh.db")
+    built: list[datetime] = []
+    real = write_season_profiles
+
+    async def recording(session: AsyncSession, as_of: datetime) -> int:
+        built.append(as_of)
+        return await real(session, as_of)
+
+    monkeypatch.setattr(per_brand, "write_season_profiles", recording)
+    async with factory() as session:
+        await recompute_brands(session, [2])
+        await recompute_brands(session, [2])
+        assert len(built) == 1
+        await recompute_brands(session, None)
+        assert len(built) == 2
+        await session.execute(update(SeasonProfile).values(computed_at=AS_OF - timedelta(days=400)))
+        await session.commit()
+        await recompute_brands(session, [1])
+
+    assert len(built) == 3
+
+
+async def test_profiles_are_due_when_missing_or_a_day_old(tmp_path: Path) -> None:
+    factory = await _database(tmp_path / "due.db")
+
+    async with factory() as session:
+        assert await profiles_due(session, AS_OF)
+        await write_season_profiles(session, AS_OF)
+        await session.commit()
+        fresh = await profiles_due(session, AS_OF + timedelta(hours=23))
+        stale = await profiles_due(session, AS_OF + timedelta(days=1))
+
+    assert (fresh, stale) == (False, True)
+
+
+@pytest.mark.usefixtures("small_thresholds")
+async def test_a_model_belongs_to_the_brand_of_most_of_its_sales(tmp_path: Path) -> None:
+    factory = await _database(tmp_path / "majority.db")
+    async with factory() as session:
+        # A stray sale of another brand, stored last, must not move the model.
+        stray = _sale(400, datetime(2026, 8, 3, tzinfo=UTC), brand_id=2)
+        session.add(stray)
+        await session.flush()
+        session.add(
+            ListingModelAssignment(
+                listing_id=400, model_group_id=10, method="test", input_hash="x", updated_at=AS_OF
+            )
+        )
+        await write_season_profiles(session, AS_OF)
+        await session.commit()
+
+    assert (await _profiles(factory))["model:10"].brand_id == 1
+
+
+async def test_a_brand_with_a_stale_retired_assignment_recomputes_twice(
+    tmp_path: Path,
+) -> None:
+    factory = await _database(tmp_path / "retired.db")
+
+    async with factory() as session:
+        await recompute_brands(session, [1])
+        await recompute_brands(session, [1])
+        keys = set((await session.scalars(select(GroupMetric.scope_key))).all())
+
+    # Listing 201 still points at the retired group 12: it never gets a fresh row.
+    assert "model:10" in keys and "model:12" not in keys
 
 
 def _alembic(database: Path) -> Config:

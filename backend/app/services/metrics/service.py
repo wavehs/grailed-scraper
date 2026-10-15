@@ -243,15 +243,18 @@ class MetricsService:
         groups, by_scope, scope_meta = scopes.groups, scopes.by_scope, scopes.scope_meta
         now = datetime.now(UTC)
         ranked = await self._ranking(brand_id)
+        # Retired groups have no listings now; their last metrics stay frozen (grouping-v7).
+        # A stale assignment to one must not insert a second row over the frozen one.
+        retired = [group.id for group in groups.values() if group.retired_at is not None]
+        frozen = {f"model:{group_id}" for group_id in retired}
         values = [
             {
                 **self._row(key, scope_meta[key], compute_metrics(items, as_of), now),
                 **ranked.get(key, {}),
             }
             for key, items in by_scope.items()
+            if key not in frozen
         ]
-        # Retired groups have no listings now; their last metrics stay frozen (grouping-v7).
-        retired = [group.id for group in groups.values() if group.retired_at is not None]
         await self._session.execute(
             delete(GroupMetric).where(
                 GroupMetric.brand_id == brand_id,

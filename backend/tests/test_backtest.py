@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app import cli
 from app.cli import metrics_backtest
 from app.core.config import Settings
 from app.db.models import Base, Brand, Listing, ListingModelAssignment, ModelGroup
@@ -212,3 +213,15 @@ async def test_a_backtest_needs_at_least_one_day(tmp_path: Path) -> None:
     async with factory() as session:
         with pytest.raises(ValueError, match="as_of_days"):
             await run_backtest(session, as_of_days=0, now=NOW)
+
+
+def test_the_cli_rejects_a_backtest_without_days(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["app.cli", "metrics-backtest", "--as-of-days", "0"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 2
+    assert "--as-of-days must be positive" in capsys.readouterr().err

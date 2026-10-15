@@ -119,6 +119,34 @@ def test_a_small_section_is_scored_against_every_section() -> None:
     assert max(score for score in scores if score is not None) == Decimal("100.00")
 
 
+def _pass(count: int, previous: str | None) -> str | None:
+    rows = [_row(1, "brand", sold=100, cohort=400)]
+    rows += [
+        _row(
+            100 + index,
+            "model",
+            section="tops",
+            sold=index,
+            cohort=20,
+            sold_90d=10,
+            previous=previous,
+        )
+        for index in range(count)
+    ]
+    return rank(rows)[100].ls_ref_scope
+
+
+def test_the_reference_choice_carries_over_from_the_last_pass() -> None:
+    choice = _pass(25, None)
+    history = [choice]
+    # Each pass reads the choice the previous one stored, as ``ls_ref_scope`` does.
+    for count in (19, 18, 17, 21, 22):
+        choice = _pass(count, choice)
+        history.append(choice)
+
+    assert history == ["section", "section", "section", "all", "all", "section"]
+
+
 def test_without_a_reference_the_score_is_zero_and_marked() -> None:
     rows = [_row(1, "brand", sold=1, cohort=10), _row(2, "model", sold=1, cohort=2, sold_90d=1)]
 
