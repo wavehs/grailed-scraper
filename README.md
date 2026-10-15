@@ -12,7 +12,9 @@ Requirements: `brew install uv node@20 pnpm` (uv provides Python 3.11.9 from `.p
 2. Run `make start`. It rebuilds the UI when sources changed, applies migrations, and opens
    http://127.0.0.1:8000. For development use `make dev` (backend :8000 + Next.js :3000).
 3. Add brands on **Brands**, press **Update data** on **Collect data**, then open **Trends**:
-   models with growing sales, fast sales and small supply (see [docs/METRICS.md](docs/METRICS.md)).
+   models with growing sales, fast sales and small supply, plus liquidity (P30, Liquidity Score),
+   prices by condition, seasonality and a resale calculator; the metrics are checked by a
+   backtest (`python -m app.cli metrics-backtest`, see [docs/METRICS.md](docs/METRICS.md)).
    Groups are brand + product type + model ([docs/GROUPING.md](docs/GROUPING.md)) and can be
    renamed, merged or split on the group card.
 
