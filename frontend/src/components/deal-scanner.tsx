@@ -97,6 +97,7 @@ export function DealScannerCard({
       {truncated.length > 0 && (
         <p className="text-xs text-[var(--warning)]">{fill(t('dealsTruncated'), { brands: truncated.join(', ') })}</p>
       )}
+      {last?.aborted && <p className="text-xs text-[var(--warning)]">{t('dealsAborted')}</p>}
       {scanner.last_error && (
         <Notice error>
           {t('dealsScanError')}: {scanner.last_error}

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -130,6 +130,7 @@ async def update_settings(
     payload: SettingsPatch,
     session: Annotated[AsyncSession, Depends(get_db)],
     base: Annotated[Settings, Depends(get_settings)],
+    request: Request,
 ) -> SettingsResponse:
     updates = {
         key: value
@@ -163,4 +164,8 @@ async def update_settings(
             row.value = value
             row.updated_at = now
     await session.commit()
+    scanner = getattr(request.app.state, "deal_scanner", None)
+    if scanner is not None and any(key.startswith("deals_") for key in updates):
+        # Switching the scanner on takes effect now, not after its idle wait.
+        scanner.wake()
     return await _response(session, base)

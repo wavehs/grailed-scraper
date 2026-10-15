@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { DealScannerCard, fill } from '@/components/deal-scanner';
@@ -31,6 +31,12 @@ export default function DealsPage() {
   const deals = useDealsQuery(filters);
   const change = (next: Partial<DealFilters>) => setFilters((old) => ({ ...old, offset: 0, ...next }));
   const data = deals.data;
+  // A rating or a scan can empty the last page; step back to the page that still has rows.
+  const lastOffset = data ? Math.max(0, Math.ceil(data.total / DEALS_PAGE) - 1) * DEALS_PAGE : 0;
+  const overflow = !!data && !data.items.length && filters.offset > lastOffset;
+  useEffect(() => {
+    if (overflow) setFilters((old) => ({ ...old, offset: lastOffset }));
+  }, [overflow, lastOffset]);
   return (
     <div className="space-y-4">
       <PageHeader title={t('deals')} description={t('dealsIntro')} />

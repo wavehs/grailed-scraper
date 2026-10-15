@@ -259,3 +259,19 @@ async def test_the_deal_settings_are_editable(client: httpx.AsyncClient) -> None
     assert deals["deals_scope"]["origin"] == "database"
     scanner = (await client.get("/api/deals")).json()["scanner"]
     assert (scanner["enabled"], scanner["scope"]) == (True, "watchlist")
+
+
+async def test_saving_a_deals_setting_wakes_the_scanner(client: httpx.AsyncClient) -> None:
+    woken: list[bool] = []
+
+    class Waker:
+        def wake(self) -> None:
+            woken.append(True)
+
+    app.state.deal_scanner = Waker()
+
+    other = await client.patch("/api/settings", json={"schedule_enabled": False})
+    enabled = await client.patch("/api/settings", json={"deals_enabled": True})
+
+    assert (other.status_code, enabled.status_code) == (200, 200)
+    assert woken == [True]

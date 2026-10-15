@@ -3,7 +3,9 @@
 For every brand in scope the scanner asks the active index for listings created or repriced
 since it last looked (``deal_scans.scanned_to``, never more than a day back), upserts them
 without a parser run, regroups the touched brands incrementally and judges the listings it
-just saw. The network is behind ``Search`` so the pass is testable offline.
+just saw. A brand's cursor moves only after its hits are judged, so a failure re-reads the
+window next time. A window holding more than Algolia lets a query read is halved until each
+part fits. The network is behind ``Search`` so the pass is testable offline.
 """
 
 from __future__ import annotations
@@ -37,6 +39,11 @@ LOOKBACK = timedelta(hours=24)
 # Re-read a little before the last scan: Algolia indexes a listing a moment after it is made.
 OVERLAP = timedelta(minutes=5)
 MAX_PAGES = 5
+# Halving stops at this width or after this many requests for one brand; the rest is truncated.
+MIN_SLICE_S = 10 * 60
+MAX_REQUESTS = 30
+# This many brands failing in a row (a throttle, a challenge) ends the pass.
+FAILURE_STREAK = 3
 ERROR_LENGTH = 500
 
 Search = Callable[[str, AlgoliaQuery], Awaitable[AlgoliaPage]]
@@ -60,6 +67,7 @@ class ScanReport:
     failed: dict[str, str] = field(default_factory=dict)
     truncated: tuple[str, ...] = ()
     deals: DealReport | None = None
+    aborted: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -71,6 +79,7 @@ class ScanReport:
             "failed": dict(self.failed),
             "truncated": list(self.truncated),
             "deals": self.deals.as_dict() if self.deals else None,
+            "aborted": self.aborted,
         }
 
 
@@ -117,38 +126,74 @@ async def targets(
 
 
 async def fetch(
-    search: Search, settings: Settings, credential: SourceCredential, target: Target
+    search: Search,
+    settings: Settings,
+    credential: SourceCredential,
+    target: Target,
+    until: datetime,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """The target's changed active hits, and whether there were more than a scan reads."""
+    """The target's hits created or repriced in (since, until], and whether some were left."""
+
+    windows = [(int(target.since.timestamp()), int(until.timestamp()))]
+    found: dict[str, dict[str, Any]] = {}
+    truncated = False
+    requests = 0
+    while windows:
+        start, end = windows.pop()
+        hits, more, used = await _window(search, settings, credential, target.facets, start, end)
+        requests += used
+        if more and end - start > MIN_SLICE_S and requests < MAX_REQUESTS:
+            middle = (start + end) // 2
+            windows.extend(((middle, end), (start, middle)))
+            continue
+        truncated = truncated or more
+        # A listing made in one half and repriced in the other comes back twice.
+        for hit in hits:
+            found.setdefault(str(hit.get("objectID") or hit.get("id") or id(hit)), hit)
+    return list(found.values()), truncated
+
+
+async def _window(
+    search: Search,
+    settings: Settings,
+    credential: SourceCredential,
+    facets: tuple[str, ...],
+    start: int,
+    end: int,
+) -> tuple[list[dict[str, Any]], bool, int]:
+    """One window's hits, whether it holds more than a query reads, and the requests made."""
 
     assert credential.active_index is not None
-    stamp = int(target.since.timestamp())
     per_page = min(settings.algolia_hits_per_page, credential.max_hits_per_page or 1_000)
     readable = credential.pagination_limit or 1_000
+    span = f"{start + 1} TO {end}"
     hits: list[dict[str, Any]] = []
     for page in range(MAX_PAGES):
         if page * per_page >= readable:
-            break
+            return hits, True, page
         result = await search(
             credential.active_index,
             AlgoliaQuery(
                 hits_per_page=per_page,
                 page=page,
-                filters=f"created_at_i > {stamp} OR price_updated_at_i > {stamp}",
-                facet_filters=(target.facets,),
+                filters=f"created_at_i:{span} OR price_updated_at_i:{span}",
+                facet_filters=(facets,),
                 numeric_filters=collection_filters(settings, "active"),
             ),
         )
         hits.extend(result.hits)
+        if result.nb_hits > readable:
+            return hits, True, page + 1
         if not result.hits or page + 1 >= result.nb_pages:
-            return hits, False
-    return hits, True
+            return hits, False, page + 1
+    return hits, True, MAX_PAGES
 
 
 async def store(
     session: AsyncSession, settings: Settings, brand_id: int, hits: Sequence[dict[str, Any]]
-) -> int:
-    """Upsert the hits as active listings of no parser run; the caller commits."""
+) -> tuple[int, int]:
+    """Upsert the hits as active listings of no parser run: (inserted, updated); the caller
+    commits."""
 
     normalizer = ListingNormalizer(load_source_mapping(), settings=settings)
     context = NormalizationContext(
@@ -164,11 +209,24 @@ async def store(
         if result.listing is not None:
             listings.append(result.listing)
     if not listings:
-        return 0
+        return 0, 0
     upsert = await ListingRepository(session).upsert_batch(
         QualityProcessor(settings).apply(listings)
     )
-    return upsert.inserted + upsert.updated
+    return upsert.inserted, upsert.updated
+
+
+@dataclass(slots=True)
+class _Pass:
+    hits: int = 0
+    stored: int = 0
+    failed: dict[str, str] = field(default_factory=dict)
+    truncated: list[str] = field(default_factory=list)
+    # brand id -> hits, for the cursors moved once the hits are judged
+    done: dict[int, int] = field(default_factory=dict)
+    touched: list[int] = field(default_factory=list)
+    inserted: list[int] = field(default_factory=list)
+    aborted: bool = False
 
 
 async def run_scan(
@@ -184,61 +242,120 @@ async def run_scan(
     async with sessions() as session:
         brand_ids = await brands_in_scope(session, settings)
         scope = await targets(session, credential, brand_ids, started)
-    hits = stored = 0
-    failed: dict[str, str] = {}
-    truncated: list[str] = []
-    touched: list[int] = []
-    for target in scope:
+    state = await _collect(sessions, settings, search, credential, scope, started)
+    deals = None
+    names = {target.brand_id: target.name for target in scope}
+    if state.touched:
         try:
-            found, more = await fetch(search, settings, credential, target)
-            async with sessions() as session:
-                saved = await store(session, settings, target.brand_id, found)
-                await _mark(session, target.brand_id, started, len(found), None)
-                await session.commit()
+            deals = await _judge(sessions, settings, grouping_lock, state, started)
         except Exception as exc:
-            structlog.get_logger(__name__).warning(
-                "deal_scan_brand_failed", brand_id=target.brand_id, error_type=type(exc).__name__
-            )
-            failed[target.name] = f"{type(exc).__name__}: {exc}"[:ERROR_LENGTH]
-            async with sessions() as session:
-                await _mark(session, target.brand_id, None, 0, failed[target.name])
-                await session.commit()
-            continue
-        hits += len(found)
-        stored += saved
-        if more:
-            truncated.append(target.name)
-        if saved:
-            touched.append(target.brand_id)
-    deals = await _judge(sessions, settings, grouping_lock, touched, started) if touched else None
+            _log_failure("deal_scan_judge_failed", None, exc)
+            error = f"judge: {type(exc).__name__}: {exc}"[:ERROR_LENGTH]
+            for brand_id in state.touched:
+                state.failed[names[brand_id]] = error
+                await _record(sessions, brand_id, None, state.done.pop(brand_id), error)
+    for brand_id, hits in state.done.items():
+        await _record(sessions, brand_id, started, hits, None)
     return ScanReport(
         started_at=started,
         finished_at=datetime.now(UTC),
         brands=len(scope),
-        hits=hits,
-        stored=stored,
-        failed=failed,
-        truncated=tuple(truncated),
+        hits=state.hits,
+        stored=state.stored,
+        failed=state.failed,
+        truncated=tuple(state.truncated),
         deals=deals,
+        aborted=state.aborted,
     )
+
+
+async def _collect(
+    sessions: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    search: Search,
+    credential: SourceCredential,
+    scope: Sequence[Target],
+    started: datetime,
+) -> _Pass:
+    """Fetch and store every target's hits, one commit per brand."""
+
+    state = _Pass()
+    streak = 0
+    for target in scope:
+        try:
+            found, more = await fetch(search, settings, credential, target, started)
+            async with sessions() as session:
+                inserted, updated = await store(session, settings, target.brand_id, found)
+                await session.commit()
+        except Exception as exc:
+            _log_failure("deal_scan_brand_failed", target.brand_id, exc)
+            state.failed[target.name] = f"{type(exc).__name__}: {exc}"[:ERROR_LENGTH]
+            await _record(sessions, target.brand_id, None, 0, state.failed[target.name])
+            streak += 1
+            if streak >= FAILURE_STREAK:
+                state.aborted = True
+                break
+            continue
+        streak = 0
+        state.hits += len(found)
+        state.stored += inserted + updated
+        state.done[target.brand_id] = len(found)
+        if more:
+            state.truncated.append(target.name)
+        if inserted + updated:
+            state.touched.append(target.brand_id)
+        if inserted:
+            state.inserted.append(target.brand_id)
+    return state
 
 
 async def _judge(
     sessions: async_sessionmaker[AsyncSession],
     settings: Settings,
     grouping_lock: asyncio.Lock,
-    brand_ids: Sequence[int],
+    state: _Pass,
     since: datetime,
 ) -> DealReport:
     async with sessions() as session:
-        # A listing is judged by its model, so new listings need one first.
-        async with grouping_lock:
-            await regroup_brands(session, brand_ids)
+        # A new listing is judged by its model, so it needs one first. A reprice keeps the
+        # listing's grouping input, so brands with only updates are not regrouped; the lock is
+        # taken per brand so that an edit on the Groups page waits for one brand at most.
+        for brand_id in state.inserted:
+            async with grouping_lock:
+                await regroup_brands(session, [brand_id])
         report = await find_deals(
-            session, rules_from(settings), load_fees(), since=since, by="seen", brand_ids=brand_ids
+            session,
+            rules_from(settings),
+            load_fees(),
+            since=since,
+            by="seen",
+            brand_ids=state.touched,
         )
         await session.commit()
     return report
+
+
+async def _record(
+    sessions: async_sessionmaker[AsyncSession],
+    brand_id: int,
+    scanned_to: datetime | None,
+    hits: int,
+    error: str | None,
+) -> None:
+    """Write the brand's scan state; a failure here is logged, not raised, so the pass goes on."""
+
+    try:
+        async with sessions() as session:
+            await _mark(session, brand_id, scanned_to, hits, error)
+            await session.commit()
+    except Exception as exc:
+        _log_failure("deal_scan_mark_failed", brand_id, exc)
+
+
+def _log_failure(event: str, brand_id: int | None, exc: Exception) -> None:
+    structlog.get_logger(__name__).warning(
+        event, brand_id=brand_id, error_type=type(exc).__name__, error=str(exc)[:ERROR_LENGTH]
+    )
 
 
 async def _mark(

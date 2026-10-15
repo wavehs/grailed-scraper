@@ -108,6 +108,7 @@ async def find_deals(
     dropped = await _drop(
         session, [row.listing_id for row, judgement in judged if not judgement.is_deal]
     )
+    dropped += await _drop_gone(session)
     return DealReport(
         evaluated=len(judged),
         deals=len(deals),
@@ -276,6 +277,18 @@ async def _drop(session: AsyncSession, listing_ids: Sequence[int]) -> int:
         )
         dropped += int(getattr(result, "rowcount", 0) or 0)
     return dropped
+
+
+async def _drop_gone(session: AsyncSession) -> int:
+    """Unrated deals whose listing sold or was removed: nothing left to open."""
+
+    gone = select(Listing.id).where(Listing.status != "active")
+    result = await session.execute(
+        delete(DealCandidate).where(
+            DealCandidate.verdict.is_(None), DealCandidate.listing_id.in_(gone)
+        )
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def _aware(value: datetime) -> datetime:

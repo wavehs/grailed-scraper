@@ -25,6 +25,7 @@ from app.db.models import (
     SourceCredential,
     WatchlistItem,
 )
+from app.services.deals import scan as scan_module
 from app.services.deals.scan import (
     LOOKBACK,
     OVERLAP,
@@ -155,16 +156,59 @@ class FakeSearch:
         return AlgoliaPage(hits=tuple(hits), nb_hits=99, page=query.page, nb_pages=len(self.pages))
 
 
+class TimedSearch:
+    """Hits stamped with ``created_at_i``; answers the scanner's range filter like Algolia."""
+
+    def __init__(self, stamps: list[int]) -> None:
+        self.hits = [
+            {**HIT, "objectID": str(700 + index), "created_at_i": stamp}
+            for index, stamp in enumerate(stamps)
+        ]
+        self.calls: list[AlgoliaQuery] = []
+
+    async def __call__(self, _: str, query: AlgoliaQuery) -> AlgoliaPage:
+        self.calls.append(query)
+        assert query.filters is not None
+        low, high = (
+            int(part) for part in query.filters.split(" OR ")[0].split(":")[1].split(" TO ")
+        )
+        found = [hit for hit in self.hits if low <= hit["created_at_i"] <= high]
+        size = query.hits_per_page
+        page = found[query.page * size : (query.page + 1) * size]
+        pages = -(-len(found) // size)
+        return AlgoliaPage(hits=tuple(page), nb_hits=len(found), page=query.page, nb_pages=pages)
+
+
+def _span(since: datetime) -> str:
+    low, high = int(since.timestamp()) + 1, int(NOW.timestamp())
+    return f"created_at_i:{low} TO {high} OR price_updated_at_i:{low} TO {high}"
+
+
 async def _scan(
-    sessions: async_sessionmaker[AsyncSession], search: FakeSearch, **overrides: Any
+    sessions: async_sessionmaker[AsyncSession],
+    search: Any,
+    credential: SourceCredential = CREDENTIAL,
+    **overrides: Any,
 ) -> ScanReport:
     return await run_scan(
         sessions,
         Settings(**overrides),
         search,
-        CREDENTIAL,
+        credential,
         grouping_lock=asyncio.Lock(),
         now=NOW,
+    )
+
+
+def _small_pages() -> SourceCredential:
+    return SourceCredential(
+        source="grailed",
+        app_id="APP",
+        api_key="key",
+        active_index="Listing_production",
+        brand_facet="designers.name",
+        pagination_limit=2,
+        max_hits_per_page=2,
     )
 
 
@@ -186,11 +230,10 @@ async def test_a_scan_asks_for_what_changed_since_a_day_ago(
 
     report = await _scan(sessions, search)
 
-    stamp = int((NOW - LOOKBACK).timestamp())
     # Balenciaga has no verified designer mapping, so only Rick Owens is asked for.
     assert [(index, query.page) for index, query in search.calls] == [("Listing_production", 0)]
     query = search.calls[0][1]
-    assert query.filters == f"created_at_i > {stamp} OR price_updated_at_i > {stamp}"
+    assert query.filters == _span(NOW - LOOKBACK)
     assert query.facet_filters == (("designers.name:Rick Owens",),)
     assert (report.brands, report.hits, report.stored, report.failed) == (1, 1, 1, {})
     assert report.deals is not None
@@ -214,22 +257,36 @@ async def test_the_next_scan_starts_a_little_before_the_last_one(
 
     report = await _scan(sessions, search)
 
-    stamp = int((NOW - timedelta(minutes=20) - OVERLAP).timestamp())
-    assert search.calls[0][1].filters == f"created_at_i > {stamp} OR price_updated_at_i > {stamp}"
+    assert search.calls[0][1].filters == _span(NOW - timedelta(minutes=20) - OVERLAP)
     assert (report.hits, report.deals) == (0, None)
 
 
-async def test_more_pages_than_a_scan_reads_are_reported(
+async def test_a_window_over_the_readable_cap_is_halved_until_it_fits(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:
-    pages = [[{**HIT, "objectID": str(600 + page)}] for page in range(9)]
-    search = FakeSearch(pages)
+    start = int((NOW - LOOKBACK).timestamp())
+    search = TimedSearch([start + hours * 3600 for hours in (1, 2, 9, 13, 20)])
 
-    report = await _scan(sessions, search, algolia_hits_per_page=100)
+    report = await _scan(sessions, search, _small_pages())
 
-    assert len(search.calls) == 5
+    assert (report.hits, report.stored, report.truncated) == (5, 5, ())
+    assert len(search.calls) > 1
+    async with sessions() as session:
+        scan = await session.get(DealScan, 1)
+    assert scan is not None
+    assert scan.scanned_to.replace(tzinfo=UTC) == NOW
+
+
+async def test_hits_too_close_to_split_are_reported_as_truncated(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    moment = int((NOW - timedelta(hours=3)).timestamp())
+    search = TimedSearch([moment, moment, moment])
+
+    report = await _scan(sessions, search, _small_pages())
+
     assert report.truncated == ("Rick Owens",)
-    assert report.stored == 5
+    assert report.stored == 2
 
 
 async def test_a_failed_brand_keeps_where_the_last_scan_stopped(
@@ -346,6 +403,136 @@ async def test_an_enabled_scanner_scans_on_its_own(
     scanner = _scanner(sessions, scan, deals_enabled=True)
 
     scanner.start()
+    await asyncio.sleep(0.05)
+    await scanner.close()
+
+    assert scan.calls == 1
+
+
+async def test_a_failed_judgement_keeps_the_cursor_so_the_window_is_read_again(
+    sessions: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    before = NOW - timedelta(hours=2)
+    async with sessions() as session:
+        session.add(DealScan(brand_id=1, scanned_to=before, hits=3))
+        await session.commit()
+
+    async def locked(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(scan_module, "find_deals", locked)
+
+    report = await _scan(sessions, FakeSearch([[HIT]]))
+
+    assert report.failed == {"Rick Owens": "judge: RuntimeError: database is locked"}
+    assert (report.stored, report.deals) == (1, None)
+    async with sessions() as session:
+        scan = await session.get(DealScan, 1)
+    assert scan is not None
+    assert scan.scanned_to.replace(tzinfo=UTC) == before
+    assert scan.error == "judge: RuntimeError: database is locked"
+
+
+async def test_only_brands_with_new_listings_are_regrouped(
+    sessions: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    regrouped: list[list[int]] = []
+
+    async def regroup(_: AsyncSession, brand_ids: list[int]) -> None:
+        regrouped.append(list(brand_ids))
+
+    monkeypatch.setattr(scan_module, "regroup_brands", regroup)
+
+    await _scan(sessions, FakeSearch([[HIT]]))
+    report = await _scan(sessions, FakeSearch([[{**HIT, "price": 400}]]))
+
+    assert regrouped == [[1]]
+    assert report.deals is not None
+
+
+async def test_a_streak_of_failed_brands_ends_the_pass(
+    sessions: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with sessions() as session:
+        session.add(
+            BrandSourceMap(
+                brand_id=2,
+                source_designer_name="Balenciaga",
+                match_score=Decimal(1),
+                match_method="exact",
+                verified=True,
+                updated_at=NOW,
+            )
+        )
+        await session.commit()
+    monkeypatch.setattr(scan_module, "FAILURE_STREAK", 1)
+    search = FakeSearch([], fail=True)
+
+    report = await _scan(sessions, search)
+
+    assert len(search.calls) == 1
+    assert report.aborted is True
+    assert list(report.failed) == ["Rick Owens"]
+
+
+async def test_a_triggered_scan_shows_as_running_at_once(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    scanner = _scanner(sessions, FakeScan())
+
+    assert scanner.trigger() is True
+
+    assert scanner.status()["running"] is True
+    await asyncio.sleep(0.05)
+    assert scanner.status()["running"] is False
+    await scanner.close()
+
+
+async def test_a_manual_scan_that_cannot_read_settings_keeps_the_error(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async def broken(_: AsyncSession, __: Settings) -> Settings:
+        raise RuntimeError("settings unreadable")
+
+    scanner = DealScanner(
+        sessions,
+        Settings(),
+        load_settings=broken,
+        market_lock=asyncio.Lock(),
+        grouping_lock=asyncio.Lock(),
+        scan=FakeScan(),
+        startup_delay_s=0,
+    )
+
+    assert scanner.trigger() is True
+    await asyncio.sleep(0.05)
+
+    assert scanner.status()["last_error"] == "RuntimeError: settings unreadable"
+    assert scanner.running is False
+    await scanner.close()
+
+
+async def test_waking_the_scanner_skips_its_wait(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    scan = FakeScan()
+
+    async def load(_: AsyncSession, base: Settings) -> Settings:
+        return base
+
+    scanner = DealScanner(
+        sessions,
+        Settings(deals_enabled=True),
+        load_settings=load,
+        market_lock=asyncio.Lock(),
+        grouping_lock=asyncio.Lock(),
+        scan=scan,
+        startup_delay_s=3600,
+    )
+
+    scanner.start()
+    await asyncio.sleep(0.01)
+    scanner.wake()
     await asyncio.sleep(0.05)
     await scanner.close()
 

@@ -215,6 +215,21 @@ async def test_a_deal_that_stops_qualifying_is_dropped_unless_rated(
     assert list(await _stored(session)) == [2]
 
 
+async def test_an_unrated_deal_whose_listing_sold_is_dropped(session: AsyncSession) -> None:
+    await _seed(session, _listing(1, "300"), _listing(2, "290"))
+    await _run(session)
+    await session.execute(
+        update(DealCandidate).where(DealCandidate.listing_id == 2).values(verdict="good")
+    )
+    await session.execute(update(Listing).values(status="sold"))
+    await session.commit()
+
+    report = await _run(session)
+
+    assert (report.evaluated, report.dropped) == (0, 1)
+    assert list(await _stored(session)) == [2]
+
+
 async def test_a_dormant_wholesaler_is_not_a_deal(session: AsyncSession) -> None:
     stock = [
         _listing(

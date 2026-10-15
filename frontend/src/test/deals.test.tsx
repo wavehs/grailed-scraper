@@ -135,6 +135,27 @@ describe('deals', () => {
     expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/deals/scan'))).toBe(true);
   });
 
+  it('steps back a page when the one shown has emptied', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        calls.push(String(url));
+        if (String(url).endsWith('/health')) return json(health);
+        // The first page reports 101 deals; by the time page two loads, one was rated away.
+        if (String(url).includes('offset=100')) return json({ ...response([]), total: 100 });
+        return json({ ...response([deal(1, null)]), total: calls.some((item) => item.includes('offset=100')) ? 100 : 101 });
+      }),
+    );
+    renderApp(<DealsPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: dealsEn.dealsNext }));
+
+    await waitFor(() => expect(calls.filter((url) => url.includes('offset=0')).length).toBeGreaterThan(1));
+    expect(await screen.findByText('Geobasket 1')).toBeInTheDocument();
+    expect(screen.queryByText(dealsEn.dealsEmpty)).not.toBeInTheDocument();
+  });
+
   it('says how to get deals when there are none', async () => {
     stubFetch([]);
     renderApp(<DealsPage />);

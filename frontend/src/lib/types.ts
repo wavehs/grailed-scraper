@@ -567,6 +567,7 @@ export type DealScanReport = {
   stored: number;
   failed: Record<string, string>;
   truncated: string[];
+  aborted?: boolean;
   deals: { evaluated: number; deals: number; new: number; dropped: number; reasons: Record<string, number> } | null;
 };
 export type DealScanner = {

@@ -7,9 +7,11 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from logging.handlers import RotatingFileHandler
+from types import SimpleNamespace
 
 import pytest
 import structlog
+from fastapi import Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -137,11 +139,13 @@ async def test_plain_setting_requires_nonpersistent_confirmation(tmp_path) -> No
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    # A bare app: no deal scanner to wake.
+    request = Request({"type": "http", "app": SimpleNamespace(state=SimpleNamespace())})
     try:
         async with factory() as session:
             with pytest.raises(ApiError) as caught:
                 await update_settings(
-                    SettingsPatch(store_seller_identity="plain"), session, Settings()
+                    SettingsPatch(store_seller_identity="plain"), session, Settings(), request
                 )
             assert caught.value.code == "plain_seller_identity_confirmation_required"
         async with factory() as session:
@@ -152,6 +156,7 @@ async def test_plain_setting_requires_nonpersistent_confirmation(tmp_path) -> No
                 ),
                 session,
                 Settings(),
+                request,
             )
             assert response.groups["privacy"]["store_seller_identity"].value == "plain"
     finally:

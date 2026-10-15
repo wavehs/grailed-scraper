@@ -79,17 +79,19 @@ class DealScanner:
         self._task: asyncio.Task[None] | None = None
         self._manual: asyncio.Task[ScanReport | None] | None = None
         self._running = False
+        # Set from trigger() until the manual scan ends, so the page sees it at once.
+        self._pending = False
         self._last: ScanReport | None = None
         self._last_error: str | None = None
         self._skipped_at: datetime | None = None
 
     @property
     def running(self) -> bool:
-        return self._running
+        return self._running or self._pending
 
     def status(self) -> dict[str, Any]:
         return {
-            "running": self._running,
+            "running": self.running,
             "last": self._last.as_dict() if self._last else None,
             "last_error": self._last_error,
             "skipped_at": self._skipped_at.isoformat() if self._skipped_at else None,
@@ -109,12 +111,30 @@ class DealScanner:
     def trigger(self) -> bool:
         """Start a scan now in the background; False when one is running or would wait."""
 
-        if self._running or self._market_lock.locked():
+        if self.running or self._market_lock.locked():
             return False
         if self._manual is not None and not self._manual.done():
             return False
-        self._manual = asyncio.create_task(self.tick(force=True), name="deal-scan")
+        self._pending = True
+        self._manual = asyncio.create_task(self._manual_tick(), name="deal-scan")
         return True
+
+    def wake(self) -> None:
+        """Re-read the settings now instead of after the idle wait (they were just saved)."""
+
+        self._wake.set()
+
+    async def _manual_tick(self) -> ScanReport | None:
+        try:
+            return await self.tick(force=True)
+        except Exception as exc:
+            self._last_error = f"{type(exc).__name__}: {exc}"[:500]
+            structlog.get_logger(__name__).warning(
+                "deal_scan_failed", error_type=type(exc).__name__
+            )
+            return None
+        finally:
+            self._pending = False
 
     async def run_forever(self) -> None:
         await self._sleep(self._startup_delay_s)
