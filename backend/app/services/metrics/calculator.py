@@ -45,6 +45,8 @@ class MetricListing:
     is_relist: bool
     color: str | None
     size: str | None
+    # Condition ``is_new``; the rest (worn, used, unknown) is the used bucket.
+    new_condition: bool = False
 
     @property
     def sale_price(self) -> Decimal:

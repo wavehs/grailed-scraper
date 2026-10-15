@@ -16,11 +16,13 @@ from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, M
 from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.policy import REVIEW_TYPE, load_policy
 from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute_metrics
+from app.services.metrics.history import write_month_stats, write_snapshots
 
 METRICS_VERSION = "metrics-v1"
 _EXCLUDED = {"possible_replica"}
 _PRICE_EXCLUDED = {"price_outlier", "lot_or_bundle"}
 _INSERT_CHUNK = 500
+NEW_CONDITION = "is_new"
 
 
 @dataclass(slots=True)
@@ -87,6 +89,7 @@ class MetricsService:
                 Listing.relist_of_id,
                 Listing.product_type,
                 ListingModelAssignment.model_group_id,
+                Listing.condition,
             )
             .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
             .where(Listing.brand_id == brand_id)
@@ -113,6 +116,7 @@ class MetricsService:
                 is_relist=row[11] is not None,
                 color=row[9],
                 size=row[10],
+                new_condition=row[14] == NEW_CONDITION,
             )
             group = groups.get(row[13]) if row[13] is not None else None
             product_type = row[12] or (group.product_type if group else None)
@@ -147,6 +151,8 @@ class MetricsService:
         )
         for start in range(0, len(values), _INSERT_CHUNK):
             await self._session.execute(insert(GroupMetric), values[start : start + _INSERT_CHUNK])
+        await write_snapshots(self._session, brand_id, values, as_of.astimezone(UTC).date())
+        await write_month_stats(self._session, brand_id, by_scope, scope_meta, as_of, now)
         return len(values), len(raw)
 
     @staticmethod

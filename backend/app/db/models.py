@@ -373,6 +373,80 @@ class GroupMetric(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+
+class GroupMetricDaily(Base):
+    """One day's copy of a scope's ``group_metrics`` row, kept two years (v2 plan 1.3).
+
+    Models are kept with a sale in 90 days or at least 20 active listings; types and brands
+    always. ``active_effective``, ``active_fresh``, ``p30`` and ``liquidity_score`` are filled
+    once those metrics exist and stay empty on earlier days.
+    """
+
+    __tablename__ = "group_metrics_daily"
+    __table_args__ = (
+        UniqueConstraint("scope_key", "snapshot_date", name="uq_group_metrics_daily_scope_day"),
+        Index("ix_group_metrics_daily_brand_day", "brand_id", "snapshot_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope: Mapped[str] = mapped_column(String(8), nullable=False)
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
+    )
+    # History outlives a deleted group; ``scope_key`` still names it.
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="SET NULL")
+    )
+    sold_30d: Mapped[int] = mapped_column(Integer, nullable=False)
+    sold_90d: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_now: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_effective: Mapped[int | None] = mapped_column(Integer)
+    active_fresh: Mapped[int | None] = mapped_column(Integer)
+    median_price_30d: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    sell_through_30d: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
+    trend_score: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    p30: Mapped[Decimal | None] = mapped_column(Numeric(7, 6))
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+
+
+class GroupMonthStat(Base):
+    """Sales of one scope in one calendar month (UTC) by condition; rebuilt with the metrics."""
+
+    __tablename__ = "group_month_stats"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_key", "month", "cond_bucket", name="uq_group_month_stats_scope_month"
+        ),
+        CheckConstraint(
+            "cond_bucket IN ('all', 'new', 'used')", name="ck_group_month_stats_bucket"
+        ),
+        Index("ix_group_month_stats_brand", "brand_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope: Mapped[str] = mapped_column(String(8), nullable=False)
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_groups.id", ondelete="CASCADE")
+    )
+    product_type: Mapped[str | None] = mapped_column(String(32))
+    # First day of the month.
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    cond_bucket: Mapped[str] = mapped_column(String(4), nullable=False)
+    sold_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Prices leave out lots and outliers; the count keeps them.
+    gmv: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    p25: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    p50: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    p75: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class FxRate(Base):
     __tablename__ = "fx_rates"
     __table_args__ = (UniqueConstraint("rate_date", "currency", name="uq_fx_rates_date_currency"),)
