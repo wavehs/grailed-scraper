@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, Subquery, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -21,6 +21,14 @@ from app.api.trend_fields import (
     LiquidityFields,
     liquidity_fields,
     parent_key,
+)
+from app.api.trend_periods import (
+    MONTH_PATTERN,
+    PeriodCoverage,
+    parse_period,
+    period_coverage,
+    period_price,
+    period_totals,
 )
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
 from app.db.session import get_db
@@ -87,6 +95,8 @@ class TrendListResponse(BaseModel):
     total: int
     computed_at: datetime | None
     no_model: NoModelShare
+    # Set when the list counts calendar months instead of the day window.
+    period: PeriodCoverage | None = None
 
 
 class VariantRow(BaseModel):
@@ -135,6 +145,8 @@ async def list_trends(
     section: Annotated[str | None, Query(max_length=32)] = None,
     product_type: Annotated[str | None, Query(max_length=32)] = None,
     window: Annotated[int, Query()] = 30,
+    month_from: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
+    month_to: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
     price_min: Annotated[int | None, Query(ge=0)] = None,
     price_max: Annotated[int | None, Query(ge=0)] = None,
     new_only: bool = False,
@@ -151,8 +163,12 @@ async def list_trends(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TrendListResponse:
     _check_window(window)
-    sold_column = _sold_column(window)
-    price_column = _price_column(window)
+    period = parse_period(month_from, month_to)
+    totals = period_totals(period, condition) if period else None
+    sold_column: Any = _sold_column(window)
+    price_column: Any = _price_column(window)
+    if totals is not None:
+        sold_column, price_column = func.coalesce(totals.c.sold, 0), totals.c.price
     filters: list[ColumnElement[bool]] = [GroupMetric.scope == level]
     scope: list[ColumnElement[bool]] = []
     if level == "model":
@@ -186,15 +202,19 @@ async def list_trends(
         filters.append(GroupMetric.sold_90d >= LOW_DATA_SALES)
     if department:
         filters.append(GroupMetric.department == department)
-    if condition != "all":
+    if condition != "all" and totals is not None:
+        filters.append(sold_column > 0)
+    elif condition != "all":
         # Only scopes with sales of that condition in the last 90 days.
         filters.append(func.json_extract(GroupMetric.pricing, f"$.{condition}.n") > 0)
     statement = (
-        select(GroupMetric, Brand.name, ModelGroup)
+        select(GroupMetric, Brand.name, ModelGroup, sold_column, price_column)
         .join(Brand, Brand.id == GroupMetric.brand_id)
         .outerjoin(ModelGroup, ModelGroup.id == GroupMetric.group_id)
         .where(*filters)
     )
+    if totals is not None:
+        statement = statement.outerjoin(totals, totals.c.scope_key == GroupMetric.scope_key)
     term = search.strip().casefold()
     if term:
         statement = statement.where(
@@ -213,8 +233,8 @@ async def list_trends(
             )
         ).tuples()
     )
-    versions = await _version_counts(session, [group.id for _, _, group in rows if group])
-    parents = await _parent_pricing(session, [metric for metric, _, _ in rows])
+    versions = await _version_counts(session, [row[2].id for row in rows if row[2]])
+    parents = await _parent_pricing(session, [row[0] for row in rows])
     computed_at = await session.scalar(select(func.max(GroupMetric.computed_at)))
     return TrendListResponse(
         data=[
@@ -226,12 +246,14 @@ async def list_trends(
                 versions.get(group.id, 0) if group else 0,
                 condition=condition,
                 parent_pricing=parents.get(parent_key(metric) or ""),
+                period_sales=(int(sold), period_price(price)) if period else None,
             )
-            for metric, brand, group in rows
+            for metric, brand, group, sold, price in rows
         ],
         total=total,
         computed_at=computed_at,
-        no_model=await _no_model_share(session, scope, product_type, sold_column),
+        no_model=await _no_model_share(session, scope, product_type, sold_column, totals),
+        period=await period_coverage(session, period, ids, computed_at) if period else None,
     )
 
 
@@ -372,13 +394,18 @@ def _row(
     kind: GroupKind | None = None,
     condition: Condition = "all",
     parent_pricing: dict[str, Any] | None = None,
+    period_sales: tuple[int, Decimal | None] | None = None,
 ) -> TrendRow:
+    """``period_sales`` (sold, price) of a month period replaces the window's."""
+
     sold = {7: metric.sold_7d, 30: metric.sold_30d, 90: metric.sold_90d}[window]
     price = {
         7: metric.median_price_7d or metric.median_price_30d,
         30: metric.median_price_30d,
         90: metric.median_price_90d,
     }[window]
+    if period_sales is not None:
+        sold, price = period_sales
     if metric.scope == "brand":
         label: str | None = brand
     elif group is not None:
@@ -437,6 +464,7 @@ async def _no_model_share(
     scope: list[ColumnElement[bool]],
     product_type: str | None,
     sold_column: Any,
+    totals: Subquery | None = None,
 ) -> NoModelShare:
     """Listings and window sales in "No model" groups against all listings of the scope.
 
@@ -451,16 +479,17 @@ async def _no_model_share(
         func.coalesce(func.sum(GroupMetric.listings), 0),
         func.coalesce(func.sum(sold_column), 0),
     )
+    base = select(*sums).select_from(GroupMetric)
+    if totals is not None:
+        base = base.outerjoin(totals, totals.c.scope_key == GroupMetric.scope_key)
     fallback = (
         await session.execute(
-            select(*sums).where(
-                GroupMetric.scope == "model", GroupMetric.is_fallback.is_(True), *where
-            )
+            base.where(GroupMetric.scope == "model", GroupMetric.is_fallback.is_(True), *where)
         )
     ).one()
-    totals = (await session.execute(select(*sums).where(GroupMetric.scope == "type", *where))).one()
+    scoped = (await session.execute(base.where(GroupMetric.scope == "type", *where))).one()
     listings, sold = int(fallback[0]), int(fallback[1])
-    total_listings, total_sold = int(totals[0]), int(totals[1])
+    total_listings, total_sold = int(scoped[0]), int(scoped[1])
     return NoModelShare(
         listings=listings,
         total_listings=total_listings,

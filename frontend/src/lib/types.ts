@@ -1,3 +1,5 @@
+import type { TrendPeriod } from '@/lib/periods';
+
 export type SourceMode = 'live';
 export type RunStatus =
   'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'interrupted' | 'cancelled';
@@ -327,11 +329,24 @@ export type NoModelShare = {
   sold_share: string | null;
 };
 
+/** Which months of a requested period the collected sales cover; months are "YYYY-MM". */
+export type PeriodCoverage = {
+  month_from: string;
+  month_to: string;
+  data_from: string | null;
+  data_to: string | null;
+  missing: string[];
+  partial: Array<{ month: string; from_day: number; to_day: number }>;
+  late_brands: number;
+};
+
 export type TrendList = {
   data: TrendRow[];
   total: number;
   computed_at: string | null;
   no_model: NoModelShare;
+  /** Set when the list covers calendar months instead of the day window. */
+  period?: PeriodCoverage | null;
 };
 
 export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
@@ -373,6 +388,11 @@ export type TrendFilters = {
   section: string;
   productType: string;
   window: 7 | 30 | 90;
+  /** "window" keeps the 7/30/90-day window; the rest request calendar months. */
+  period: TrendPeriod;
+  /** "YYYY-MM" bounds of the custom range. */
+  monthFrom: string;
+  monthTo: string;
   priceMin: string;
   priceMax: string;
   newOnly: boolean;

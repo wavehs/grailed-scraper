@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getApi, getHealthApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { periodRange } from '@/lib/periods';
 import type {
   ApiHealth,
   BrandList,
@@ -147,6 +148,11 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (filters.condition !== 'all') params.set('condition', filters.condition);
   if (filters.department) params.set('department', filters.department);
   if (filters.hideLowData) params.set('hide_low_data', 'true');
+  const months = periodRange(filters.period, filters.monthFrom, filters.monthTo);
+  if (months) {
+    params.set('month_from', months.from);
+    params.set('month_to', months.to);
+  }
   return params;
 }
 

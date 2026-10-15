@@ -11,6 +11,7 @@ import {
   P30Cell,
   SupplyCell,
 } from '@/components/liquidity-cells';
+import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
 import { Sparkline } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,9 @@ const DEFAULT_FILTERS: TrendFilters = {
   section: '',
   productType: '',
   window: 30,
+  period: 'window',
+  monthFrom: '',
+  monthTo: '',
   priceMin: '',
   priceMax: '',
   newOnly: false,
@@ -117,6 +121,7 @@ export default function TrendsPage() {
       update({ level: 'model', brandIds: [row.brand_id], productType: row.product_type ?? '' });
   };
   const total = trends.data?.total ?? 0;
+  const periodMode = filters.period !== 'window' && Boolean(trends.data?.period);
 
   return (
     <section className="space-y-5" aria-labelledby="trends-heading">
@@ -125,7 +130,7 @@ export default function TrendsPage() {
         description={t('trendsIntro')}
         actions={
           <>
-            <NoModelLine share={trends.data?.no_model} window={filters.window} />
+            <NoModelLine share={trends.data?.no_model} window={filters.window} periodMode={periodMode} />
             {trends.data?.computed_at && (
               <span className="text-xs text-[var(--text-muted)]">
                 {t('updatedAt')}: {formatDate(trends.data.computed_at, locale)}
@@ -216,23 +221,7 @@ export default function TrendsPage() {
           </select>
         </div>
         <div className="flex flex-wrap items-end gap-3 text-sm">
-          <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5" role="group" aria-label={t('trendWindow')}>
-            {([7, 30, 90] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={filters.window === value}
-                onClick={() => update({ window: value })}
-                className={`rounded-md px-2.5 py-1 text-xs tabular-nums ${
-                  filters.window === value
-                    ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                {value} {t('daysShort')}
-              </button>
-            ))}
-          </div>
+          <PeriodPicker filters={filters} update={update} />
           <label className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
             {t('priceFrom')}
             <input
@@ -296,6 +285,8 @@ export default function TrendsPage() {
         </div>
       </Card>
 
+      <PeriodCoverageLine filters={filters} coverage={trends.data?.period} />
+
       <details className="text-xs text-[var(--text-muted)]">
         <summary className="cursor-pointer">{t('trendFormula')}</summary>
         <p className="mt-1 max-w-3xl">{t('trendFormulaText')}</p>
@@ -322,8 +313,10 @@ export default function TrendsPage() {
                 <TableHeaderCell>{t('salesGrowth')}</TableHeaderCell>
                 <TableHeaderCell>{t('timeToSell')}</TableHeaderCell>
                 <TableHeaderCell>{t('sellThrough')}</TableHeaderCell>
-                <TableHeaderCell>{`${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}</TableHeaderCell>
-                <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
+                <TableHeaderCell>
+                  {periodMode ? t('salesInPeriod') : `${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}
+                </TableHeaderCell>
+                <TableHeaderCell>{periodMode ? `${t('medianPrice')} ≈` : t('medianPrice')}</TableHeaderCell>
                 <TableHeaderCell>{t('askVsSold')}</TableHeaderCell>
                 <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
                 <TableHeaderCell>{t('gmv90d')}</TableHeaderCell>
@@ -331,7 +324,13 @@ export default function TrendsPage() {
             </TableHead>
             <tbody>
               {trends.data.data.map((row) => (
-                <TrendTableRow key={row.scope_key} row={row} onDrill={drill} typeName={typeName} />
+                <TrendTableRow
+                  key={row.scope_key}
+                  row={row}
+                  onDrill={drill}
+                  typeName={typeName}
+                  periodMode={periodMode}
+                />
               ))}
             </tbody>
           </DataTable>
@@ -363,10 +362,13 @@ function TrendTableRow({
   row,
   onDrill,
   typeName,
+  periodMode,
 }: {
   row: TrendRow;
   onDrill: (row: TrendRow) => void;
   typeName: (id?: string | null) => string;
+  /** Sales and price cover calendar months; the price is an approximate mean of medians. */
+  periodMode: boolean;
 }) {
   const { locale, t } = useI18n();
   const parts = t('trendParts')
@@ -379,7 +381,8 @@ function TrendTableRow({
       : row.scope === 'type'
         ? `${row.brand} · ${typeName(row.product_type)}`
         : row.brand;
-  const change = row.price_change === null ? null : Number(row.price_change);
+  // The window's price change says nothing about a calendar period.
+  const change = periodMode || row.price_change === null ? null : Number(row.price_change);
   return (
     <TableRow>
       <TableCell>
@@ -437,7 +440,10 @@ function TrendTableRow({
         <span className="tabular-nums">{row.sold}</span>
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{formatCurrency(row.median_price, locale)}</span>
+        <span className="tabular-nums" title={periodMode ? t('periodPriceNote') : undefined}>
+          {periodMode && row.median_price !== null ? '≈ ' : ''}
+          {formatCurrency(row.median_price, locale)}
+        </span>
         {change !== null && (
           <p className="text-xs tabular-nums text-[var(--text-muted)]" title={t('priceChange')}>
             {change > 0 ? '+' : ''}
@@ -459,13 +465,14 @@ function TrendTableRow({
 }
 
 /** The share of "No model" in the scope: of sales in the window, or of listings without sales. */
-function NoModelLine({ share, window }: { share?: NoModelShare; window: number }) {
+function NoModelLine({ share, window, periodMode }: { share?: NoModelShare; window: number; periodMode: boolean }) {
   const { t } = useI18n();
   if (!share) return null;
   const bySales = share.sold_share !== null;
   const value = bySales ? share.sold_share : share.listings_share;
   if (value === null) return null;
-  const help = (bySales ? t('noModelShareSales') : t('noModelShareListings'))
+  const salesHelp = periodMode ? t('noModelSharePeriod') : t('noModelShareSales');
+  const help = (bySales ? salesHelp : t('noModelShareListings'))
     .replace('{part}', String(bySales ? share.sold : share.listings))
     .replace('{total}', String(bySales ? share.total_sold : share.total_listings))
     .replace('{days}', String(window));
