@@ -218,7 +218,13 @@ def test_the_taxonomy_carries_the_presets(client: TestClient) -> None:
 
 def test_the_trends_list_takes_several_types(client: TestClient) -> None:
     response = client.get(
-        "/api/trends", params={"level": "type", "product_type": "parka,coat", "sort": "sales"}
+        "/api/trends",
+        params={
+            "level": "type",
+            "product_type": "parka,coat",
+            "sort": "sales",
+            "include_unranked": "true",
+        },
     )
 
     assert response.status_code == 200, response.text

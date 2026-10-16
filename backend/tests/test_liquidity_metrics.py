@@ -144,7 +144,7 @@ async def _database(path: Path) -> async_sessionmaker[AsyncSession]:
 
 async def _recompute(factory: async_sessionmaker[AsyncSession]) -> GroupMetric:
     async with factory() as session:
-        await MetricsService(session).recompute([1], as_of=AS_OF)
+        await MetricsService(session).recompute([1], as_of=AS_OF, rank=False)
         await session.commit()
         row = await session.scalar(select(GroupMetric).where(GroupMetric.scope_key == "model:10"))
     assert row is not None

@@ -387,7 +387,6 @@ def _row(
         sold_90d=metric.sold_90d,
         growth=metric.growth,
         speed=metric.speed,
-        liquidity_score=metric.liquidity_score,
         median_days_to_sell=metric.median_days_to_sell,
         sell_through_30d=metric.sell_through_30d,
         median_price=decimal_to_cents(price) if price is not None else None,

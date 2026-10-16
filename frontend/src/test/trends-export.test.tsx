@@ -18,6 +18,7 @@ const filters: TrendFilters = {
   priceMin: '',
   priceMax: '',
   newOnly: false,
+  includeUnranked: false,
   minSales: 0,
   search: ' Geo ',
   descriptors: false,

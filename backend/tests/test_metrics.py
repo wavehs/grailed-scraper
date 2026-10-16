@@ -331,7 +331,7 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
         brands = client.get(
             "/api/trends", params={"level": "brand", "sort": "likes", "include_unranked": "true"}
         ).json()
-        old_sort = client.get("/api/trends", params={"sort": "growth"})
+        old_sort = client.get("/api/trends", params={"sort": "trend"})
         card = client.get(f"/api/trends/groups/{line_id}").json()
         catalog = client.get("/api/listings", params={"product_type": "hoodie"}).json()
         first = client.get("/api/listings", params={"limit": 2}).json()
@@ -368,7 +368,7 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     assert track["period_median_price"] == track["median_price"]
     assert "median_likes" not in track
     assert len(track["weekly_sales"]) == 12 and isinstance(track["median_price"], int)
-    assert "trend_score" not in track and "growth" not in track
+    assert "trend_score" not in track
     assert old_sort.status_code == 422
     assert [row["section"] for row in footwear["data"]] == ["footwear"] * len(footwear["data"])
     assert footwear["data"][0]["name"] == "Track"

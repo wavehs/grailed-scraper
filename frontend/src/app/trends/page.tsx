@@ -44,6 +44,7 @@ const DEFAULT_FILTERS: TrendFilters = {
   monthTo: '',
   priceMin: '',
   priceMax: '',
+  newOnly: false,
   minSales: 0,
   includeUnranked: false,
   search: '',
@@ -276,6 +277,10 @@ export default function TrendsPage() {
             />
           </label>
           <LiquidityFilters filters={filters} update={update} />
+          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+            <input type="checkbox" checked={filters.newOnly} onChange={(event) => update({ newOnly: event.target.checked })} />
+            {t('newOnly')}
+          </label>
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
             <input
               type="checkbox"

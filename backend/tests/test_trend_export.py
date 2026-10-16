@@ -104,7 +104,12 @@ def _table(text: str) -> list[dict[str, str]]:
 
 
 def test_the_export_has_the_lists_rows_in_its_order(client: TestClient) -> None:
-    params = {"level": "type", "product_type": "parka,coat", "sort": "sales"}
+    params = {
+        "level": "type",
+        "product_type": "parka,coat",
+        "sort": "sales",
+        "include_unranked": "true",
+    }
 
     response = client.get("/api/trends/export.csv", params=params)
     listed = client.get("/api/trends", params=params).json()["data"]
@@ -119,7 +124,10 @@ def test_the_export_has_the_lists_rows_in_its_order(client: TestClient) -> None:
 
 
 def test_cells_are_dollars_flags_and_formula_safe_text(client: TestClient) -> None:
-    response = client.get("/api/trends/export.csv", params={"level": "type", "sort": "sales"})
+    response = client.get(
+        "/api/trends/export.csv",
+        params={"level": "type", "sort": "sales", "include_unranked": "true"},
+    )
 
     parka = next(row for row in _table(response.text) if row["product_type"] == "parka")
     assert parka["brand"] == "'=HYPERLINK(1)"
@@ -137,7 +145,9 @@ def test_rows_stream_in_chunks(client: TestClient, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(trend_export, "CHUNK_ROWS", 1)
     monkeypatch.setattr(trend_export, "LOOKUP_BATCH", 2)
 
-    with client.stream("GET", "/api/trends/export.csv", params={"level": "type"}) as response:
+    with client.stream(
+        "GET", "/api/trends/export.csv", params={"level": "type", "include_unranked": "true"}
+    ) as response:
         chunks = list(response.iter_text())
 
     assert len(_table("".join(chunks))) == 3

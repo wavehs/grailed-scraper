@@ -298,13 +298,18 @@ export type TrendRow = {
   sold: number;
   sold_7d: number;
   sold_30d: number;
+  sold_prev_30d: number;
   sold_90d: number;
+  growth: string;
+  speed: string | null;
   /** Decimal string "0.00".."100.00"; null when the row is below the liquidity threshold. */
   liquidity_score: string | null;
   /** Median days to sell over 30 days. */
   median_days_to_sell: string | null;
+  sell_through_30d: string;
   /** Cents; the card's window on the group card, 30 days in the list. */
   median_price: number | null;
+  price_change: string | null;
   /** Sales in the ranking period (`TrendRanking.period_days`). */
   period_sold: number;
   /** Decimal string: sales in the ranking period scaled to 30 days, e.g. "12.5". */
@@ -315,8 +320,10 @@ export type TrendRow = {
   /** Cents. */
   period_median_price: number | null;
   active_now: number;
+  new_listings_14d: number;
+  is_new: boolean;
+  first_seen_at: string | null;
   weekly_sales: number[];
-  liquidity_score: string | null;
   /** Smoothed P30 (β) and the raw rate of its cohort of p30_n listings. */
   p30: string | null;
   p30_raw: string | null;
@@ -498,6 +505,7 @@ export type TrendFilters = {
   monthTo: string;
   priceMin: string;
   priceMax: string;
+  newOnly: boolean;
   minSales: number;
   /** Also show rows below the liquidity threshold; the API returns only ranked rows by default. */
   includeUnranked: boolean;

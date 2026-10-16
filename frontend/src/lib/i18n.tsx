@@ -376,6 +376,7 @@ const en: Record<string, string> = {
   showDescriptorsHelp:
     'Include description groups such as “Baggy · jeans”. They are not models and are hidden by default.',
   minSales: 'Min. sales',
+  newOnly: 'New only',
   includeUnranked: 'Show items below the threshold',
   sortBy: 'Sort by',
   sortLiquidity: 'Liquidity',
@@ -861,6 +862,7 @@ const ru: Record<string, string> = {
   showDescriptorsHelp:
     'Включить группы по описанию, например «Baggy · джинсы». Это не модели, по умолчанию они скрыты.',
   minSales: 'Мин. продаж',
+  newOnly: 'Только новинки',
   includeUnranked: 'Показать вещи ниже порога',
   sortBy: 'Сортировка',
   sortLiquidity: 'Ликвидность',

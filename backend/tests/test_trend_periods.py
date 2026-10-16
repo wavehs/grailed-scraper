@@ -200,7 +200,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
 
 
 def _rows(client: TestClient, **params: str) -> dict[str, Any]:
-    response = client.get("/api/trends", params=params)
+    response = client.get("/api/trends", params={"include_unranked": "true", **params})
     assert response.status_code == 200, response.text
     body: dict[str, Any] = response.json()
     return body
@@ -242,7 +242,9 @@ def test_without_a_period_the_window_stays(client: TestClient) -> None:
 
 
 def test_half_a_period_is_rejected(client: TestClient) -> None:
-    response = client.get("/api/trends", params={"month_from": "2025-09"})
+    response = client.get(
+        "/api/trends", params={"month_from": "2025-09", "include_unranked": "true"}
+    )
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_period"

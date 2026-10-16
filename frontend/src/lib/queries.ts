@@ -137,6 +137,7 @@ export function useTypeNames() {
 export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams {
   const params = new URLSearchParams({
     level: filters.level,
+    window: String(filters.window),
     sort: filters.sort,
     desc: String(filters.desc),
     limit: '50',
@@ -148,6 +149,7 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (productType) params.set('product_type', productType);
   if (filters.priceMin) params.set('price_min', filters.priceMin);
   if (filters.priceMax) params.set('price_max', filters.priceMax);
+  if (filters.newOnly) params.set('new_only', 'true');
   if (filters.minSales) params.set('min_sales', String(filters.minSales));
   if (filters.includeUnranked) params.set('include_unranked', 'true');
   if (filters.search.trim()) params.set('search', filters.search.trim());
