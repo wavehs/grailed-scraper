@@ -220,7 +220,7 @@
 
 ## Жёсткие ограничения (CLAUDE.md, решения и прежняя память)
 
-- Python только `backend/.venv/bin/python` (на Windows был `backend/.venv/Scripts/python`). Не запускать `ruff format` или `prettier --write` на весь репозиторий.
+- Python только `backend/.venv/bin/python`. Не запускать `ruff format` или `prettier --write` на весь репозиторий.
 - Рабочую `data/grailed.db` открывать только с `mode=ro`, потому что приложение может быть запущено.
   Эксперименты — на копиях в `data/cache/eval/` (папка в .gitignore).
 - Holdout запускается **только** на контрольных точках (`--checkpoint`), и каждый запуск пишется в
