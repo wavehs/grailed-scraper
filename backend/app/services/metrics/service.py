@@ -58,8 +58,14 @@ class MetricsService:
         }
 
     async def recompute(
-        self, brand_ids: Iterable[int] | None = None, *, as_of: datetime | None = None
+        self,
+        brand_ids: Iterable[int] | None = None,
+        *,
+        as_of: datetime | None = None,
+        rank: bool = True,
     ) -> MetricsResult:
+        """Recompute the brands, then rank liquidity unless the caller ranks once later."""
+
         started = time.perf_counter()
         moment = as_of or datetime.now(UTC)
         if brand_ids is None:
@@ -72,11 +78,14 @@ class MetricsService:
             rows += brand_rows
             listings += brand_listings
         # Percentiles need every brand, so the whole table is ranked after any recompute.
-        ranked = await rank_liquidity(self._session, liquidity_policy())
+        ranked = await self.rank() if rank else 0
         await self._session.flush()
         return MetricsResult(
             len(selected), rows, listings, time.perf_counter() - started, ranked
         )
+
+    async def rank(self) -> int:
+        return await rank_liquidity(self._session, liquidity_policy())
 
     async def _brand(self, brand_id: int, as_of: datetime) -> tuple[int, int]:
         groups = {

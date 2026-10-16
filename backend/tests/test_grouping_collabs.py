@@ -507,6 +507,7 @@ def test_kind_is_in_group_trend_and_listing_responses(tmp_path: Path) -> None:
         trends = client.get(
             "/api/trends", params={"include_fallback": True, "include_unranked": True}
         ).json()
+        fallback_only = client.get("/api/trends", params={"include_fallback": True}).json()
         card = client.get(f"/api/trends/groups/{line.id}").json()
         catalog = client.get("/api/listings").json()["data"]
         typed = client.get(
@@ -523,6 +524,8 @@ def test_kind_is_in_group_trend_and_listing_responses(tmp_path: Path) -> None:
     assert detail["kind"] == "collab"
     trend_kinds = {row["name"]: row["kind"] for row in trends["data"]}
     assert trend_kinds == {"Yeezy Gap": "collab", "No model": "none"}  # descriptors stay hidden
+    # "No model" is never ranked, so asking for it shows it without the unranked lines.
+    assert [row["name"] for row in fallback_only["data"]] == ["No model"]
     assert card["group"]["kind"] == "collab" and card["metrics"]["kind"] == "collab"
     assert {row["kind"] for row in card["recent_sales"]} == {"collab"}
     assert {row["grailed_id"]: row["kind"] for row in catalog} == {

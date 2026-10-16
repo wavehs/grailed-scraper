@@ -180,7 +180,13 @@ async def list_trends(
     if price_max is not None:
         filters.append(price_column <= price_max)
     if not include_unranked:
-        filters.append(GroupMetric.liquidity_score.is_not(None))
+        # "No model" and descriptions are never ranked: asking for them still shows them.
+        shown: list[ColumnElement[bool]] = [GroupMetric.liquidity_score.is_not(None)]
+        if level == "model" and include_fallback:
+            shown.append(GroupMetric.is_fallback.is_(True))
+        if level == "model" and include_descriptors:
+            shown.append(ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
+        filters.append(or_(*shown))
     if min_sales:
         filters.append(sold_column >= min_sales)
     statement = (

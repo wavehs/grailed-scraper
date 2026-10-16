@@ -194,15 +194,21 @@ class ParserRuntime:
                     metric_rows = metric_listings = 0
                     metrics_started = time.perf_counter()
                     for brand_id in brand_ids:
-                        computed = await MetricsService(session).recompute([brand_id])
+                        computed = await MetricsService(session).recompute(
+                            [brand_id], rank=False
+                        )
                         metric_rows += computed.rows
                         metric_listings += computed.listings
                         await session.commit()
+                    # Liquidity percentiles span all brands: one ranking pass after the loop.
+                    ranked = await MetricsService(session).rank()
+                    await session.commit()
                     metrics_result = MetricsResult(
                         len(brand_ids),
                         metric_rows,
                         metric_listings,
                         time.perf_counter() - metrics_started,
+                        ranked,
                     )
                     run = await repository.get(run_id)
                     assert run is not None
