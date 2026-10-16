@@ -7,9 +7,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, insert, or_, select, update
+from sqlalchemy import Select, delete, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
@@ -20,9 +21,9 @@ from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute
 from app.services.metrics.liquidity import (
     LiquidityCandidate,
     LiquidityPolicy,
-    liquidity_policy,
     liquidity_scores,
 )
+from app.services.metrics.liquidity_store import effective_policy
 
 METRICS_VERSION = "metrics-v2"
 _SCOPES = ("model", "type", "brand")
@@ -85,7 +86,7 @@ class MetricsService:
         )
 
     async def rank(self) -> int:
-        return await rank_liquidity(self._session, liquidity_policy())
+        return await rank_liquidity(self._session, await effective_policy(self._session))
 
     async def _brand(self, brand_id: int, as_of: datetime) -> tuple[int, int]:
         groups = {
@@ -229,7 +230,7 @@ class MetricsService:
             "sell_through_30d": metrics.sell_through_30d,
             "growth": metrics.growth,
             "speed": metrics.speed,
-            "median_likes_90d": metrics.median_likes_90d,
+            "windows": metrics.windows,
             "first_seen_at": metrics.first_seen_at,
             "is_new": metrics.is_new,
             "colors": metrics.colors,
@@ -239,51 +240,69 @@ class MetricsService:
 
 
 async def rank_liquidity(session: AsyncSession, policy: LiquidityPolicy) -> int:
-    """Score every row that passes the threshold against its own scope; clear the rest.
+    """Copy the policy period into the ``period_*`` columns of every row, then score each
+    scope's rows that pass the threshold against each other.
 
     Model rows are lines only, without "No model", descriptions and retired groups, the
     same rows the trends list shows; the review type is never ranked.
     """
 
-    await session.execute(update(GroupMetric).values(liquidity_score=None))
-    ranked = 0
+    rows = {
+        row_id: _candidate(row_id, section, windows, policy.period_days)
+        for row_id, section, windows in await session.execute(
+            select(GroupMetric.id, GroupMetric.section, GroupMetric.windows)
+        )
+    }
+    scores: dict[int, Decimal] = {}
     for scope in _SCOPES:
-        statement = select(
-            GroupMetric.id,
-            GroupMetric.section,
-            GroupMetric.sold_30d,
-            GroupMetric.median_days_to_sell,
-            GroupMetric.median_likes_90d,
-            GroupMetric.median_price_30d,
-        ).where(GroupMetric.scope == scope)
-        if scope == "model":
-            statement = statement.join(ModelGroup, ModelGroup.id == GroupMetric.group_id).where(
-                GroupMetric.is_line.is_(True),
-                GroupMetric.is_fallback.is_(False),
-                ModelGroup.retired_at.is_(None),
-                ~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True),
-            )
-        if scope != "brand":
-            statement = statement.where(GroupMetric.product_type != REVIEW_TYPE)
-        candidates = [
-            LiquidityCandidate(
-                key=row[0],
-                section=row[1],
-                sold_30d=row[2],
-                median_days_to_sell=row[3],
-                median_likes=row[4],
-                median_price=row[5],
-            )
-            for row in await session.execute(statement)
-        ]
-        scores = liquidity_scores(candidates, policy)
-        if scores:
-            await session.execute(
-                update(GroupMetric),
-                [{"id": key, "liquidity_score": score} for key, score in scores.items()],
-            )
-        ranked += len(scores)
-    return ranked
+        pool = [rows[row_id] for row_id in await session.scalars(_ranked_rows(scope))]
+        scores.update(liquidity_scores(pool, policy))
+    values = [
+        {
+            "id": row_id,
+            "period_sold": item.sold,
+            "period_median_price": item.median_price,
+            "period_median_days": item.median_days_to_sell,
+            "period_median_likes": item.median_likes,
+            "liquidity_score": scores.get(row_id),
+        }
+        for row_id, item in rows.items()
+    ]
+    for start in range(0, len(values), _INSERT_CHUNK):
+        await session.execute(update(GroupMetric), values[start : start + _INSERT_CHUNK])
+    return len(scores)
+
+
+def _ranked_rows(scope: str) -> Select[tuple[int]]:
+    statement = select(GroupMetric.id).where(GroupMetric.scope == scope)
+    if scope == "model":
+        statement = statement.join(ModelGroup, ModelGroup.id == GroupMetric.group_id).where(
+            GroupMetric.is_line.is_(True),
+            GroupMetric.is_fallback.is_(False),
+            ModelGroup.retired_at.is_(None),
+            ~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True),
+        )
+    if scope != "brand":
+        statement = statement.where(GroupMetric.product_type != REVIEW_TYPE)
+    return statement
+
+
+def _candidate(
+    row_id: int, section: str | None, windows: dict[str, Any] | None, period_days: int
+) -> LiquidityCandidate:
+    window = (windows or {}).get(str(period_days)) or {}
+    return LiquidityCandidate(
+        key=row_id,
+        section=section,
+        sold=int(window.get("sold") or 0),
+        median_days_to_sell=_number(window.get("days")),
+        median_likes=_number(window.get("likes")),
+        median_price=_number(window.get("price")),
+    )
+
+
+def _number(value: object) -> Decimal | None:
+    return Decimal(str(value)) if value is not None else None
 
 
 def _aware(value: datetime) -> datetime:

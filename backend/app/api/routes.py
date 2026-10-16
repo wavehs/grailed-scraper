@@ -15,6 +15,7 @@ from app.api.brands import router as brands_router
 from app.api.discovery import router as discovery_router
 from app.api.errors import ApiError
 from app.api.groups import router as groups_router
+from app.api.liquidity import router as liquidity_router
 from app.api.listings import router as listings_router
 from app.api.parser import router as parser_router
 from app.api.settings import get_effective_settings
@@ -32,6 +33,7 @@ router.include_router(listings_router)
 router.include_router(trends_router)
 router.include_router(groups_router)
 router.include_router(settings_router)
+router.include_router(liquidity_router)
 
 
 class HealthResponse(BaseModel):

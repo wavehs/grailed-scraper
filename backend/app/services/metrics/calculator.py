@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -13,6 +14,8 @@ WEEKS = 12
 NEW_MODEL_DAYS = 60
 NEW_LISTING_DAYS = 14
 VARIANT_LIMIT = 12
+# The periods the liquidity ranking can use; picked on the trends screen (docs/METRICS.md).
+PERIODS = (7, 14, 30, 60, 90, 180, 365)
 _CENT = Decimal("0.01")
 _TENTH = Decimal("0.1")
 _RATIO = Decimal("0.0001")
@@ -64,7 +67,8 @@ class ScopeMetrics:
     is_new: bool = False
     growth: Decimal = Decimal(1)
     speed: Decimal | None = None
-    median_likes_90d: Decimal | None = None
+    # Per period in days ("30"): sold, median price, days to sell and likes of the sales.
+    windows: dict[str, dict[str, object]] = field(default_factory=dict)
     colors: list[dict[str, object]] = field(default_factory=list)
     sizes: list[dict[str, object]] = field(default_factory=list)
 
@@ -76,7 +80,6 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
     prices: dict[int, list[Decimal]] = {7: [], 30: [], 90: []}
     weekly_prices: list[list[Decimal]] = [[] for _ in range(WEEKS)]
     days_30: list[Decimal] = []
-    likes_90: list[Decimal] = []
     variants: list[MetricListing] = []
     for item in listings:
         if result.first_seen_at is None or item.listed_at < result.first_seen_at:
@@ -92,7 +95,6 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
         if age <= timedelta(days=90):
             result.sold_90d += 1
             variants.append(item)
-            likes_90.append(Decimal(item.likes))
             if item.price_usable:
                 prices[90].append(item.sale_price)
         if age <= timedelta(days=30):
@@ -100,8 +102,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
             if item.price_usable:
                 prices[30].append(item.sale_price)
             if item.exact_sale:
-                days = Decimal((item.sold_at - item.item_created_at).total_seconds()) / 86_400
-                days_30.append(max(days, Decimal(0)))
+                days_30.append(_days_to_sell(item))
         elif age <= timedelta(days=60):
             result.sold_prev_30d += 1
         if age <= timedelta(days=7):
@@ -122,7 +123,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
             (result.median_price_30d - result.median_price_90d) / result.median_price_90d
         ).quantize(_RATIO, ROUND_HALF_UP)
     result.median_days_to_sell = _median(days_30, _CENT)
-    result.median_likes_90d = _median(likes_90, _TENTH)
+    result.windows = period_windows(listings, as_of)
     supply = result.sold_30d + result.active_now
     if supply:
         result.sell_through_30d = (Decimal(result.sold_30d) / Decimal(supply)).quantize(_SHARE)
@@ -138,6 +139,42 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
     result.colors = variant_rows(variants, "color")
     result.sizes = variant_rows(variants, "size")
     return result
+
+
+def period_windows(
+    listings: Sequence[MetricListing], as_of: datetime
+) -> dict[str, dict[str, object]]:
+    """Sales of every period in ``PERIODS``; periods without a sale are left out.
+
+    Medians are decimal strings: price of usable prices, days to sell of exact sales and
+    likes of all the sales.
+    """
+
+    longest = timedelta(days=PERIODS[-1])
+    sold = sorted(
+        (
+            (as_of - item.sold_at, item)
+            for item in listings
+            if item.status == "sold"
+            and item.sold_at is not None
+            and item.sold_at <= as_of
+            and as_of - item.sold_at <= longest
+        ),
+        key=lambda pair: pair[0],
+    )
+    ages = [age for age, _ in sold]
+    windows: dict[str, dict[str, object]] = {}
+    for days in PERIODS:
+        items = [item for _, item in sold[: bisect_right(ages, timedelta(days=days))]]
+        if not items:
+            continue
+        windows[str(days)] = {
+            "sold": len(items),
+            "price": _text(_median([i.sale_price for i in items if i.price_usable], _CENT)),
+            "days": _text(_median([_days_to_sell(i) for i in items if i.exact_sale], _CENT)),
+            "likes": _text(_median([Decimal(i.likes) for i in items], _TENTH)),
+        }
+    return windows
 
 
 def variant_rows(listings: Sequence[MetricListing], attribute: str) -> list[dict[str, object]]:
@@ -173,6 +210,16 @@ def _variant_value(value: str | None) -> str | None:
     if not normalized or normalized in {"n/a", "na", "none", "unknown"}:
         return None
     return "gray" if normalized == "grey" else normalized
+
+
+def _days_to_sell(item: MetricListing) -> Decimal:
+    assert item.sold_at is not None
+    days = Decimal((item.sold_at - item.item_created_at).total_seconds()) / 86_400
+    return max(days, Decimal(0))
+
+
+def _text(value: Decimal | None) -> str | None:
+    return str(value) if value is not None else None
 
 
 def _median(values: list[Decimal], quantum: Decimal) -> Decimal | None:

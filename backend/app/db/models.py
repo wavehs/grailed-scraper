@@ -351,8 +351,14 @@ class GroupMetric(Base):
     sell_through_30d: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
     growth: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
-    median_likes_90d: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
-    # 0-100 among the rows of the same scope that pass the threshold (config/liquidity.yaml).
+    # Sales of every rankable period: {"30": {"sold", "price", "days", "likes"}}.
+    windows: Mapped[dict[str, dict[str, Any]] | None] = mapped_column(JSON)
+    # The ranking period (liquidity policy) copied out of ``windows`` for sorting.
+    period_sold: Mapped[int | None] = mapped_column(Integer)
+    period_median_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    period_median_days: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    period_median_likes: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    # 0-100 among the rows of the same scope that pass the threshold of the policy.
     liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_new: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

@@ -1,4 +1,4 @@
-"""Liquidity ranking: the threshold, weighted percentiles and the policy file."""
+"""Liquidity ranking: the threshold, weighted percentiles and the policy."""
 
 from __future__ import annotations
 
@@ -15,11 +15,14 @@ from app.services.metrics.liquidity import (
     liquidity_scores,
     load_liquidity_policy,
     parse_policy,
+    policy_data,
+    sales_per_month,
 )
 
 POLICY = LiquidityPolicy(
     version="test",
-    min_sales_30d=5,
+    period_days=30,
+    min_sales_per_month=Decimal(5),
     min_price=Decimal(150),
     excluded_sections=frozenset({"dresses", "other"}),
     weights=Weights(
@@ -40,7 +43,7 @@ def _candidate(
     return LiquidityCandidate(
         key=key,
         section=section,
-        sold_30d=sold,
+        sold=sold,
         median_days_to_sell=Decimal(days) if days is not None else None,
         median_likes=Decimal(likes) if likes is not None else None,
         median_price=Decimal(price) if price is not None else None,
@@ -64,6 +67,36 @@ def test_threshold_keeps_only_frequent_expensive_items_with_known_speed(
     candidate: LiquidityCandidate, eligible: bool
 ) -> None:
     assert is_eligible(candidate, POLICY) is eligible
+
+
+def test_threshold_scales_sales_of_the_period_to_a_month() -> None:
+    quarter = LiquidityPolicy(
+        version="test",
+        period_days=90,
+        min_sales_per_month=Decimal(5),
+        min_price=Decimal(150),
+        excluded_sections=frozenset(),
+        weights=POLICY.weights,
+    )
+
+    # 15 sales in 90 days are 5 a month; 14 are 4.7.
+    assert is_eligible(_candidate(1, sold=15), quarter)
+    assert not is_eligible(_candidate(2, sold=14), quarter)
+    assert sales_per_month(14, 90) == Decimal("4.7")
+    assert sales_per_month(3, 7) == Decimal("12.9")
+
+
+def test_no_sales_are_never_eligible_even_without_a_threshold() -> None:
+    open_policy = LiquidityPolicy(
+        version="test",
+        period_days=30,
+        min_sales_per_month=Decimal(0),
+        min_price=Decimal(0),
+        excluded_sections=frozenset(),
+        weights=POLICY.weights,
+    )
+
+    assert not is_eligible(_candidate(1, sold=0), open_policy)
 
 
 def test_score_is_weighted_percentile_of_sales_speed_likes_and_price() -> None:
@@ -103,7 +136,8 @@ def test_unknown_likes_count_as_zero() -> None:
 def test_the_shipped_policy_matches_the_agreed_defaults() -> None:
     policy = load_liquidity_policy()
 
-    assert policy.min_sales_30d == 5
+    assert policy.period_days == 30
+    assert policy.min_sales_per_month == Decimal(5)
     assert policy.min_price == Decimal(150)
     assert policy.excluded_sections == frozenset({"dresses", "other"})
     assert policy.weights == POLICY.weights
@@ -112,18 +146,22 @@ def test_the_shipped_policy_matches_the_agreed_defaults() -> None:
 @pytest.mark.parametrize(
     ("patch", "message"),
     [
-        ({"weights": {"sales": 0.5, "speed": 0.25, "likes": 0.2, "price": 0.15}}, "sum to 1"),
+        ({"weights": {"sales": 0, "speed": 0, "likes": 0, "price": 0}}, "above 0"),
         ({"weights": {"sales": 1.2, "speed": -0.2, "likes": 0, "price": 0}}, "negative"),
         ({"weights": {"sales": 1}}, "weights"),
-        ({"min_sales_30d": 0}, "min_sales_30d"),
+        ({"weights": {"sales": "NaN", "speed": 1, "likes": 0, "price": 0}}, "number"),
+        ({"period_days": 45}, "period_days"),
+        ({"period_days": True}, "period_days"),
+        ({"min_sales_per_month": -1}, "min_sales_per_month"),
         ({"min_price_usd": -1}, "min_price_usd"),
         ({"excluded_sections": ["dresses", "gowns"]}, "unknown section"),
     ],
 )
 def test_invalid_policy_fails_fast(patch: dict[str, object], message: str) -> None:
     data: dict[str, object] = {
-        "version": "liquidity-v1",
-        "min_sales_30d": 5,
+        "version": "liquidity-v2",
+        "period_days": 30,
+        "min_sales_per_month": 5,
         "min_price_usd": 150,
         "excluded_sections": ["dresses"],
         "weights": {"sales": 0.4, "speed": 0.25, "likes": 0.2, "price": 0.15},
@@ -137,3 +175,28 @@ def test_invalid_policy_fails_fast(patch: dict[str, object], message: str) -> No
 def test_missing_policy_file_fails_fast(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="liquidity policy"):
         load_liquidity_policy(tmp_path / "missing.yaml")
+
+
+def test_weights_are_scaled_to_sum_to_one() -> None:
+    policy = parse_policy(
+        {
+            "period_days": 90,
+            "min_sales_per_month": "2.5",
+            "min_price_usd": 300,
+            "excluded_sections": [],
+            "weights": {"sales": 50, "speed": 30, "likes": 20, "price": 0},
+        },
+        known_sections={"footwear"},
+    )
+
+    assert policy.weights == Weights(
+        sales=Decimal("0.5000"),
+        speed=Decimal("0.3000"),
+        likes=Decimal("0.2000"),
+        price=Decimal("0.0000"),
+    )
+    assert policy.min_sales_per_month == Decimal("2.5")
+
+
+def test_policy_data_round_trips() -> None:
+    assert parse_policy(policy_data(POLICY), known_sections={"dresses", "other"}) == POLICY

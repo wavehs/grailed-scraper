@@ -19,7 +19,8 @@ from app.domain.listings import decimal_to_cents
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
-from app.services.metrics.liquidity import LiquidityPolicy, liquidity_policy
+from app.services.metrics.liquidity import LiquidityPolicy, sales_per_month
+from app.services.metrics.liquidity_store import effective_policy
 
 router = APIRouter(prefix="/trends", tags=["trends"])
 WINDOWS = (7, 30, 90)
@@ -49,8 +50,13 @@ class TrendRow(BaseModel):
     # 0-100 against the rows of the same level; None below the threshold.
     liquidity_score: Decimal | None
     median_days_to_sell: Decimal | None
-    median_likes: Decimal | None
     median_price: int | None
+    # The ranking period of the liquidity policy (``RankingInfo.period_days``).
+    period_sold: int
+    sales_per_month: Decimal
+    period_median_days: Decimal | None
+    period_median_likes: Decimal | None
+    period_median_price: int | None
     active_now: int
     weekly_sales: list[int]
 
@@ -77,9 +83,10 @@ class RankingWeights(BaseModel):
 
 
 class RankingInfo(BaseModel):
-    """The threshold and weights behind ``liquidity_score`` (config/liquidity.yaml)."""
+    """The period, threshold and weights behind ``liquidity_score`` (/settings/liquidity)."""
 
-    min_sales_30d: int
+    period_days: int
+    min_sales_per_month: Decimal
     min_price: int
     excluded_sections: list[str]
     weights: RankingWeights
@@ -138,7 +145,6 @@ async def list_trends(
     brand_ids: Annotated[str, Query(max_length=500, pattern=r"^[0-9,]*$")] = "",
     section: Annotated[str | None, Query(max_length=32)] = None,
     product_type: Annotated[str | None, Query(max_length=32)] = None,
-    window: Annotated[int, Query()] = 30,
     price_min: Annotated[int | None, Query(ge=0)] = None,
     price_max: Annotated[int | None, Query(ge=0)] = None,
     min_sales: Annotated[int, Query(ge=0, le=10_000)] = 0,
@@ -151,9 +157,10 @@ async def list_trends(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TrendListResponse:
-    _check_window(window)
-    sold_column = _sold_column(window)
-    price_column = _price_column(window)
+    # Sales, prices and the sort all follow the period the ranking uses.
+    policy = await effective_policy(session)
+    sold_column = GroupMetric.period_sold
+    price_column = GroupMetric.period_median_price
     filters: list[ColumnElement[bool]] = [GroupMetric.scope == level]
     scope: list[ColumnElement[bool]] = []
     if level == "model":
@@ -209,7 +216,7 @@ async def list_trends(
     rows = list(
         (
             await session.execute(
-                statement.order_by(*_order(sort, desc, sold_column, price_column))
+                statement.order_by(*_order(sort, desc))
                 .limit(limit)
                 .offset(offset)
             )
@@ -219,13 +226,19 @@ async def list_trends(
     computed_at = await session.scalar(select(func.max(GroupMetric.computed_at)))
     return TrendListResponse(
         data=[
-            _row(metric, brand, group, window, versions.get(group.id, 0) if group else 0)
+            _row(
+                metric,
+                brand,
+                group,
+                policy.period_days,
+                versions.get(group.id, 0) if group else 0,
+            )
             for metric, brand, group in rows
         ],
         total=total,
         computed_at=computed_at,
         no_model=await _no_model_share(session, scope, product_type, sold_column),
-        ranking=_ranking(liquidity_policy()),
+        ranking=_ranking(policy),
     )
 
 
@@ -241,6 +254,7 @@ async def trend_card(
         raise ApiError(404, "group_not_found", "Model group does not exist")
     detail = await group_detail_data(session, group)
     brand = detail.brand
+    period = (await effective_policy(session)).period_days
     metric = await session.scalar(
         select(GroupMetric).where(GroupMetric.scope_key == f"model:{group_id}")
     )
@@ -270,7 +284,9 @@ async def trend_card(
     active = await _listings(session, scope_ids, groups_by_id, sold=False, limit=12)
     return TrendCard(
         group=detail,
-        metrics=_row(metric, brand, group, window, len(version_ids)) if metric else None,
+        metrics=_row(metric, brand, group, period, len(version_ids), window=window)
+        if metric
+        else None,
         computed_at=metric.computed_at if metric else None,
         weekly_median_price=[
             decimal_to_cents(Decimal(value)) if value is not None else None
@@ -284,8 +300,9 @@ async def trend_card(
                     item,
                     brand,
                     None,
-                    window,
+                    period,
                     0,
+                    window=window,
                     name=version_groups[item.group_id].name,
                     kind=version_groups[item.group_id].kind,
                 )
@@ -294,7 +311,9 @@ async def trend_card(
             ),
             key=lambda row: (-row.sold_90d, row.name or ""),
         ),
-        type_metrics=_row(type_metric, brand, None, window, 0) if type_metric else None,
+        type_metrics=_row(type_metric, brand, None, period, 0, window=window)
+        if type_metric
+        else None,
         recent_sales=recent,
         active_listings=active,
     )
@@ -305,22 +324,11 @@ def _check_window(window: int) -> None:
         raise ApiError(422, "invalid_window", "window must be 7, 30 or 90 days")
 
 
-def _sold_column(window: int) -> Any:
-    return {7: GroupMetric.sold_7d, 30: GroupMetric.sold_30d, 90: GroupMetric.sold_90d}[window]
-
-
-def _price_column(window: int) -> Any:
-    return {
-        7: GroupMetric.median_price_7d,
-        30: GroupMetric.median_price_30d,
-        90: GroupMetric.median_price_90d,
-    }[window]
-
-
 def _ranking(policy: LiquidityPolicy) -> RankingInfo:
     weights = policy.weights
     return RankingInfo(
-        min_sales_30d=policy.min_sales_30d,
+        period_days=policy.period_days,
+        min_sales_per_month=policy.min_sales_per_month,
         min_price=decimal_to_cents(policy.min_price),
         excluded_sections=sorted(policy.excluded_sections),
         weights=RankingWeights(
@@ -332,30 +340,31 @@ def _ranking(policy: LiquidityPolicy) -> RankingInfo:
     )
 
 
-def _order(sort: str, desc: bool, sold: Any, price: Any) -> list[Any]:
+def _order(sort: str, desc: bool) -> list[Any]:
     columns: dict[str, Any] = {
         "liquidity": GroupMetric.liquidity_score,
-        "sales": sold,
-        "likes": GroupMetric.median_likes_90d,
-        "price": price,
+        "sales": GroupMetric.period_sold,
+        "likes": GroupMetric.period_median_likes,
+        "price": GroupMetric.period_median_price,
     }
     if sort == "speed":
         # "Fastest first" means the shortest median time to sell.
-        primary = GroupMetric.median_days_to_sell
+        primary = GroupMetric.period_median_days
         ordered = primary.asc() if desc else primary.desc()
     else:
         primary = columns[sort]
         ordered = primary.desc() if desc else primary.asc()
-    return [ordered.nulls_last(), GroupMetric.sold_30d.desc(), GroupMetric.id]
+    return [ordered.nulls_last(), GroupMetric.period_sold.desc().nulls_last(), GroupMetric.id]
 
 
 def _row(
     metric: GroupMetric,
     brand: str,
     group: ModelGroup | None,
-    window: int,
+    period_days: int,
     versions: int,
     *,
+    window: int = 30,
     name: str | None = None,
     kind: GroupKind | None = None,
 ) -> TrendRow:
@@ -391,8 +400,14 @@ def _row(
         sold_90d=metric.sold_90d,
         liquidity_score=metric.liquidity_score,
         median_days_to_sell=metric.median_days_to_sell,
-        median_likes=metric.median_likes_90d,
         median_price=decimal_to_cents(price) if price is not None else None,
+        period_sold=metric.period_sold or 0,
+        sales_per_month=sales_per_month(metric.period_sold or 0, period_days),
+        period_median_days=metric.period_median_days,
+        period_median_likes=metric.period_median_likes,
+        period_median_price=decimal_to_cents(metric.period_median_price)
+        if metric.period_median_price is not None
+        else None,
         active_now=metric.active_now,
         weekly_sales=list(metric.weekly_sales),
     )

@@ -57,7 +57,7 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert not {"identity_matches", "physical_items"} & set(inspector.get_table_names())
     assert "scoring_snapshots" not in inspector.get_table_names()
     metric_columns = {column["name"] for column in inspector.get_columns("group_metrics")}
-    assert {"liquidity_score", "median_likes_90d", "weekly_sales", "colors"} <= metric_columns
+    assert {"liquidity_score", "windows", "period_sold", "weekly_sales"} <= metric_columns
     assert "trend_score" not in metric_columns
     assert "ix_group_metrics_scope_liquidity" in {
         index["name"] for index in inspector.get_indexes("group_metrics")

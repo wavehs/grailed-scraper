@@ -73,7 +73,7 @@ def test_windows_series_and_medians() -> None:
         _item(8, status="active", price="260", listed_days=20, color=None),
         # A relist: time to sell starts at the first listing of the item.
         _item(9, price="210", sold_days=2, listed_days=4, created_days=62, relist=True, likes=19),
-        # Older than 90 days: out of the likes window.
+        # Older than 90 days: only in the 180 and 365 day periods.
         _item(10, price="210", sold_days=120, listed_days=130, likes=900),
     ]
     metrics = compute_metrics(listings, AS_OF)
@@ -92,8 +92,14 @@ def test_windows_series_and_medians() -> None:
     assert metrics.sell_through_30d == Decimal("0.714286")
     assert metrics.growth == Decimal("3.0000")  # (5 + 1) / (1 + 1)
     assert metrics.speed == Decimal("0.7500")  # 30 / (30 + 10)
-    # Sold within 90 days: 7, 10, 12, 19, 25, 30, 40.
-    assert metrics.median_likes_90d == Decimal("19.0")
+    # Every rankable period: sales, median price (usable), days to sell (exact), likes.
+    assert metrics.windows["7"] == {"sold": 3, "price": "200.00", "days": "20.00", "likes": "19.0"}
+    assert metrics.windows["14"] == metrics.windows["7"]
+    assert metrics.windows["30"] == {"sold": 5, "price": "205.00", "days": "10.00", "likes": "19.0"}
+    assert metrics.windows["60"] == {"sold": 6, "price": "200.00", "days": "15.00", "likes": "22.0"}
+    assert metrics.windows["90"] == {"sold": 7, "price": "175.00", "days": "15.00", "likes": "19.0"}
+    year = {"sold": 8, "price": "200.00", "days": "10.00", "likes": "22.0"}
+    assert metrics.windows["180"] == year and metrics.windows["365"] == year
     assert metrics.colors[0] == {
         "value": "black",
         "sold": 7,
@@ -104,12 +110,13 @@ def test_windows_series_and_medians() -> None:
     assert not metrics.is_new  # the oldest listing is 100 days old
 
 
-def test_likes_median_is_unknown_without_recent_sales() -> None:
-    single = compute_metrics([_item(1, sold_days=3, listed_days=10, likes=3)], AS_OF)
+def test_periods_without_sales_are_left_out() -> None:
+    single = compute_metrics([_item(1, sold_days=10, listed_days=12, likes=3)], AS_OF)
     unsold = compute_metrics([_item(1, status="active", likes=50)], AS_OF)
 
-    assert single.median_likes_90d == Decimal("3.0") and single.is_new
-    assert unsold.median_likes_90d is None
+    assert set(single.windows) == {"14", "30", "60", "90", "180", "365"} and single.is_new
+    assert single.windows["14"]["likes"] == "3.0"
+    assert unsold.windows == {}
 
 
 def _listing(
@@ -253,7 +260,7 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
         models = client.get("/api/trends").json()
         everything = client.get("/api/trends", params={"include_unranked": "true"}).json()
         footwear = client.get(
-            "/api/trends", params={"section": "footwear", "sort": "sales", "window": 90}
+            "/api/trends", params={"section": "footwear", "sort": "sales"}
         ).json()
         filtered = client.get(
             "/api/trends",
@@ -286,7 +293,8 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     # Geobasket sold 3 times in 30 days: below the threshold, so only Track is ranked.
     assert [(row["brand"], row["name"]) for row in models["data"]] == [("Balenciaga", "Track")]
     assert models["ranking"] == {
-        "min_sales_30d": 5,
+        "period_days": 30,
+        "min_sales_per_month": "5",
         "min_price": 15000,
         "excluded_sections": ["dresses", "other"],
         "weights": {"sales": "0.40", "speed": "0.25", "likes": "0.20", "price": "0.15"},
@@ -299,7 +307,10 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     track = models["data"][0]
     assert track["versions"] == 1 and track["sold_30d"] == 6 and track["active_now"] == 1
     assert track["liquidity_score"] == "50.00"  # alone in the pool
-    assert track["median_likes"] == "12.5" and track["median_days_to_sell"] == "19.00"
+    assert track["period_median_likes"] == "12.5" and track["period_median_days"] == "19.00"
+    assert track["period_sold"] == 6 and track["sales_per_month"] == "6.0"
+    assert track["period_median_price"] == track["median_price"]
+    assert "median_likes" not in track
     assert len(track["weekly_sales"]) == 12 and isinstance(track["median_price"], int)
     assert "trend_score" not in track and "growth" not in track
     assert old_sort.status_code == 422
@@ -324,4 +335,59 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     assert history["data"][0]["price"] == 9999
     assert missing.status_code == 404
     assert removed == [404, 404, 404]
+    asyncio.run(engine.dispose())
+
+
+def test_ranking_settings_are_saved_and_re_rank_at_once(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def override_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    quarter = {
+        "period_days": 90,
+        "min_sales_per_month": 1,
+        "min_price_usd": 150,
+        "excluded_sections": ["dresses"],
+        "weights": {"sales": 60, "speed": 20, "likes": 20, "price": 0},
+    }
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        defaults = client.get("/api/settings/liquidity").json()
+        saved = client.put("/api/settings/liquidity", json=quarter).json()
+        ranked = client.get("/api/trends").json()
+        reread = client.get("/api/settings/liquidity").json()
+        bad_period = client.put("/api/settings/liquidity", json={**quarter, "period_days": 45})
+        bad_section = client.put(
+            "/api/settings/liquidity", json={**quarter, "excluded_sections": ["gowns"]}
+        )
+        no_weight = client.put(
+            "/api/settings/liquidity",
+            json={**quarter, "weights": {"sales": 0, "speed": 0, "likes": 0, "price": 0}},
+        )
+        reset = client.delete("/api/settings/liquidity").json()
+        after_reset = client.get("/api/trends").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert defaults["saved"] is False and defaults["period_days"] == 30
+    assert defaults["periods"] == [7, 14, 30, 60, 90, 180, 365]
+    assert defaults["defaults"]["min_price_usd"] == 150
+    assert saved["saved"] is True and saved["period_days"] == 90 and saved["ranked"] >= 2
+    assert saved["weights"] == {
+        "sales": "0.6000", "speed": "0.2000", "likes": "0.2000", "price": "0.0000"
+    }
+    assert reread["min_sales_per_month"] == "1" and reread["excluded_sections"] == ["dresses"]
+    # Over 90 days with one sale a month Geobasket passes too.
+    assert {row["name"] for row in ranked["data"]} >= {"Track", "Geobasket"}
+    assert ranked["ranking"]["period_days"] == 90
+    assert ranked["ranking"]["weights"]["sales"] == "0.60"
+    geobasket = next(row for row in ranked["data"] if row["name"] == "Geobasket")
+    assert geobasket["period_sold"] >= 3 and geobasket["liquidity_score"] is not None
+    assert [bad_period.status_code, bad_section.status_code, no_weight.status_code] == [422] * 3
+    assert bad_section.json()["error"]["code"] == "invalid_liquidity_policy"
+    assert reset["saved"] is False and reset["period_days"] == 30
+    assert [row["name"] for row in after_reset["data"]] == ["Track"]
     asyncio.run(engine.dispose())

@@ -50,4 +50,4 @@
 
 Соль никогда не отдаётся наружу. Источник данных, словари типов и моделей описаны в
 `config/sources/grailed.yaml`, `config/taxonomy.yaml`, `config/grouping.yaml`,
-`config/liquidity.yaml` (порог и веса рейтинга, `docs/METRICS.md`) и `config/models/*.yaml`.
+`config/liquidity.yaml` (значения по умолчанию для рейтинга ликвидности; сами настройки меняются на экране трендов, `docs/METRICS.md`) и `config/models/*.yaml`.

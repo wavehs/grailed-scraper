@@ -1,7 +1,8 @@
 """Liquidity score: how often, how fast, how liked and how expensive an item sells.
 
-Pure functions; ``MetricsService`` feeds them all rows of one scope after a recompute.
-See docs/METRICS.md, section 3.
+Pure functions; ``MetricsService`` feeds them all rows of one scope. The policy (period,
+threshold, weights) is edited on the trends screen; config/liquidity.yaml holds the
+defaults. See docs/METRICS.md, section 3.
 """
 
 from __future__ import annotations
@@ -17,10 +18,14 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from app.core.config import PROJECT_ROOT
+from app.services.metrics.calculator import PERIODS
 
 POLICY_PATH = PROJECT_ROOT / "config" / "liquidity.yaml"
 WEIGHT_NAMES = ("sales", "speed", "likes", "price")
+DAYS_PER_MONTH = Decimal(30)
 _SCORE = Decimal("0.01")
+_WEIGHT = Decimal("0.0001")
+_MONTHLY = Decimal("0.1")
 _HUNDRED = Decimal(100)
 _HALF = Decimal("0.5")
 
@@ -36,7 +41,8 @@ class Weights:
 @dataclass(frozen=True, slots=True)
 class LiquidityPolicy:
     version: str
-    min_sales_30d: int
+    period_days: int
+    min_sales_per_month: Decimal
     min_price: Decimal
     excluded_sections: frozenset[str]
     weights: Weights
@@ -44,21 +50,29 @@ class LiquidityPolicy:
 
 @dataclass(frozen=True, slots=True)
 class LiquidityCandidate:
-    """One metrics row; ``key`` is the row id."""
+    """One metrics row over the policy period; ``key`` is the row id."""
 
     key: int
     section: str | None
-    sold_30d: int
+    sold: int
     median_days_to_sell: Decimal | None
     median_likes: Decimal | None
     median_price: Decimal | None
 
 
+def sales_per_month(sold: int, period_days: int) -> Decimal:
+    return (Decimal(sold) * DAYS_PER_MONTH / Decimal(period_days)).quantize(
+        _MONTHLY, ROUND_HALF_UP
+    )
+
+
 def is_eligible(candidate: LiquidityCandidate, policy: LiquidityPolicy) -> bool:
     """Frequent, expensive enough, with a known speed and not in an excluded section."""
 
+    monthly = Decimal(candidate.sold) * DAYS_PER_MONTH / Decimal(policy.period_days)
     return (
-        candidate.sold_30d >= policy.min_sales_30d
+        candidate.sold > 0
+        and monthly >= policy.min_sales_per_month
         and candidate.median_price is not None
         and candidate.median_price >= policy.min_price
         and candidate.median_days_to_sell is not None
@@ -74,7 +88,7 @@ def liquidity_scores(
     pool = [item for item in candidates if is_eligible(item, policy)]
     if not pool:
         return {}
-    sales = _Ranks([Decimal(item.sold_30d) for item in pool])
+    sales = _Ranks([Decimal(item.sold) for item in pool])
     days = _Ranks([_known(item.median_days_to_sell) for item in pool])
     likes = _Ranks([_known(item.median_likes) for item in pool])
     prices = _Ranks([_known(item.median_price) for item in pool])
@@ -83,7 +97,7 @@ def liquidity_scores(
         item.key: (
             _HUNDRED
             * (
-                weights.sales * sales.share(Decimal(item.sold_30d))
+                weights.sales * sales.share(Decimal(item.sold))
                 + weights.speed * days.share(_known(item.median_days_to_sell), lower_is_better=True)
                 + weights.likes * likes.share(_known(item.median_likes))
                 + weights.price * prices.share(_known(item.median_price))
@@ -113,28 +127,35 @@ def _known(value: Decimal | None) -> Decimal:
 
 
 @lru_cache(maxsize=1)
-def liquidity_policy() -> LiquidityPolicy:
-    """The shipped policy, read once per process."""
+def default_policy() -> LiquidityPolicy:
+    """The shipped defaults, read once per process."""
 
     return load_liquidity_policy()
 
 
 def load_liquidity_policy(path: Path = POLICY_PATH) -> LiquidityPolicy:
-    from app.services.grouping.policy import load_policy
-
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as error:
         raise ValueError(f"Cannot read the liquidity policy {path}: {error}") from error
     if not isinstance(data, Mapping):
         raise ValueError(f"The liquidity policy {path} must be a mapping")
-    return parse_policy(data, known_sections=load_policy().taxonomy.sections.keys())
+    return parse_policy(data, known_sections=known_sections())
+
+
+def known_sections() -> Collection[str]:
+    from app.services.grouping.policy import load_policy
+
+    return load_policy().taxonomy.sections.keys()
 
 
 def parse_policy(data: Mapping[str, Any], *, known_sections: Collection[str]) -> LiquidityPolicy:
-    min_sales = data.get("min_sales_30d")
-    if not isinstance(min_sales, int) or isinstance(min_sales, bool) or min_sales < 1:
-        raise ValueError("min_sales_30d must be a whole number of at least 1")
+    period = data.get("period_days")
+    if period not in PERIODS or isinstance(period, bool):
+        raise ValueError(f"period_days must be one of: {', '.join(map(str, PERIODS))}")
+    min_sales = _decimal(data.get("min_sales_per_month"), "min_sales_per_month")
+    if min_sales < 0:
+        raise ValueError("min_sales_per_month must not be negative")
     min_price = _decimal(data.get("min_price_usd"), "min_price_usd")
     if min_price < 0:
         raise ValueError("min_price_usd must not be negative")
@@ -146,28 +167,51 @@ def parse_policy(data: Mapping[str, Any], *, known_sections: Collection[str]) ->
         raise ValueError(f"excluded_sections has an unknown section: {', '.join(unknown)}")
     return LiquidityPolicy(
         version=str(data.get("version") or "liquidity"),
-        min_sales_30d=min_sales,
+        period_days=period,
+        min_sales_per_month=min_sales,
         min_price=min_price,
         excluded_sections=frozenset(sections),
         weights=_weights(data.get("weights")),
     )
 
 
+def policy_data(policy: LiquidityPolicy) -> dict[str, Any]:
+    """The JSON form ``parse_policy`` reads back; stored in app_settings."""
+
+    weights = policy.weights
+    return {
+        "version": policy.version,
+        "period_days": policy.period_days,
+        "min_sales_per_month": str(policy.min_sales_per_month),
+        "min_price_usd": str(policy.min_price),
+        "excluded_sections": sorted(policy.excluded_sections),
+        "weights": {name: str(getattr(weights, name)) for name in WEIGHT_NAMES},
+    }
+
+
 def _weights(raw: object) -> Weights:
+    """Any non-negative shares; they are scaled to sum to 1."""
+
     if not isinstance(raw, Mapping) or set(raw) != set(WEIGHT_NAMES):
         raise ValueError(f"weights must name exactly: {', '.join(WEIGHT_NAMES)}")
     values = {name: _decimal(raw[name], f"weights.{name}") for name in WEIGHT_NAMES}
     if any(value < 0 for value in values.values()):
         raise ValueError("weights must not be negative")
-    if sum(values.values()) != 1:
-        raise ValueError("weights must sum to 1")
-    return Weights(**values)
+    total = sum(values.values(), Decimal(0))
+    if total <= 0:
+        raise ValueError("at least one weight must be above 0")
+    return Weights(
+        **{name: (value / total).quantize(_WEIGHT, ROUND_HALF_UP) for name, value in values.items()}
+    )
 
 
 def _decimal(value: object, name: str) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise ValueError(f"{name} must be a number")
     try:
-        return Decimal(str(value))
+        number = Decimal(str(value))
     except InvalidOperation as error:
         raise ValueError(f"{name} must be a number") from error
+    if not number.is_finite():
+        raise ValueError(f"{name} must be a number")
+    return number
