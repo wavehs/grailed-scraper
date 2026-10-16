@@ -258,10 +258,19 @@ export type TrendRow = {
   sold_90d: number;
   /** Decimal string "0.00".."100.00"; null when the row is below the liquidity threshold. */
   liquidity_score: string | null;
+  /** Median days to sell over 30 days. */
   median_days_to_sell: string | null;
-  /** Median likes of listings sold in 90 days, a decimal string such as "38.0". */
-  median_likes: string | null;
+  /** Cents; the card's window on the group card, 30 days in the list. */
   median_price: number | null;
+  /** Sales in the ranking period (`TrendRanking.period_days`). */
+  period_sold: number;
+  /** Decimal string: sales in the ranking period scaled to 30 days, e.g. "12.5". */
+  sales_per_month: string;
+  period_median_days: string | null;
+  /** Median likes of listings sold in the ranking period, a decimal string such as "38.0". */
+  period_median_likes: string | null;
+  /** Cents. */
+  period_median_price: number | null;
   active_now: number;
   weekly_sales: number[];
 };
@@ -276,13 +285,48 @@ export type NoModelShare = {
   sold_share: string | null;
 };
 
-/** The liquidity threshold and weights; weights are decimal strings that sum to 1. */
+export type LiquidityWeightKey = 'sales' | 'speed' | 'likes' | 'price';
+/** Decimal-string shares that sum to 1. */
+export type LiquidityWeights = Record<LiquidityWeightKey, string>;
+
+/** The ranking period, threshold and weights behind `liquidity_score`. */
 export type TrendRanking = {
-  min_sales_30d: number;
+  period_days: number;
+  /** Decimal string. */
+  min_sales_per_month: string;
   /** Cents. */
   min_price: number;
   excluded_sections: string[];
-  weights: { sales: string; speed: string; likes: string; price: string };
+  weights: LiquidityWeights;
+};
+
+/** The editable liquidity policy as /settings/liquidity returns it. */
+export type LiquidityPolicy = {
+  period_days: number;
+  /** Decimal string. */
+  min_sales_per_month: string;
+  /** Whole dollars. */
+  min_price_usd: number;
+  excluded_sections: string[];
+  weights: LiquidityWeights;
+};
+
+export type LiquiditySettings = LiquidityPolicy & {
+  /** False while the defaults are in use. */
+  saved: boolean;
+  periods: number[];
+  defaults: LiquidityPolicy;
+  /** Rows that got a score; set only in PUT and DELETE responses. */
+  ranked: number | null;
+};
+
+/** The PUT body; weights are any non-negative numbers, the API scales them to sum to 1. */
+export type LiquidityPolicyUpdate = {
+  period_days: number;
+  min_sales_per_month: number | string;
+  min_price_usd: number;
+  excluded_sections: string[];
+  weights: Record<LiquidityWeightKey, number | string>;
 };
 
 export type TrendList = {
@@ -331,7 +375,6 @@ export type TrendFilters = {
   brandIds: number[];
   section: string;
   productType: string;
-  window: 7 | 30 | 90;
   priceMin: string;
   priceMax: string;
   minSales: number;

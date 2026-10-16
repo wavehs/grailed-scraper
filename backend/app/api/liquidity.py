@@ -20,22 +20,23 @@ from app.services.metrics.liquidity import (
 )
 from app.services.metrics.liquidity_store import (
     effective_policy,
-    is_saved,
     reset_policy,
     save_policy,
+    saved_policy,
 )
 from app.services.metrics.service import MetricsService
 
 router = APIRouter(prefix="/settings/liquidity", tags=["settings"])
+_MAX_WEIGHT = 1_000_000
 
 
 class LiquidityWeights(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    sales: Decimal = Field(ge=0)
-    speed: Decimal = Field(ge=0)
-    likes: Decimal = Field(ge=0)
-    price: Decimal = Field(ge=0)
+    sales: Decimal = Field(ge=0, le=_MAX_WEIGHT)
+    speed: Decimal = Field(ge=0, le=_MAX_WEIGHT)
+    likes: Decimal = Field(ge=0, le=_MAX_WEIGHT)
+    price: Decimal = Field(ge=0, le=_MAX_WEIGHT)
 
 
 class LiquidityPolicyBody(BaseModel):
@@ -96,7 +97,7 @@ async def _response(session: AsyncSession, ranked: int | None = None) -> Liquidi
     current = _body(await effective_policy(session))
     return LiquiditySettings(
         **current.model_dump(),
-        saved=await is_saved(session),
+        saved=await saved_policy(session) is not None,
         periods=list(PERIODS),
         defaults=_body(default_policy()),
         ranked=ranked,

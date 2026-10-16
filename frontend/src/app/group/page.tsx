@@ -13,7 +13,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
-import { useTrendCardQuery, useTypeNames } from '@/lib/queries';
+import { isLiquiditySettings, periodLabel } from '@/lib/liquidity';
+import { useLiquiditySettingsQuery, useTrendCardQuery, useTypeNames } from '@/lib/queries';
 import type { TrendListing, TrendRow, TrendVariant } from '@/lib/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
@@ -26,6 +27,7 @@ function GroupCard() {
   const groupId = Number.isInteger(id) && id > 0 ? id : null;
   const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
   const card = useTrendCardQuery(groupId, windowDays);
+  const forPeriod = useRankingPeriodLabel();
   if (groupId === null) return <EmptyState />;
   if (card.isLoading) return <LoadingState />;
   if (!card.data) return <ErrorState error={card.error} retry={() => card.refetch()} />;
@@ -69,7 +71,7 @@ function GroupCard() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
-              label={t('liquidityScore')}
+              label={forPeriod(t('liquidityScore'))}
               value={
                 <span title={metrics.liquidity_score === null ? t('belowThreshold') : undefined}>
                   {formatNumber(metrics.liquidity_score, 0, locale)}
@@ -88,8 +90,8 @@ function GroupCard() {
               icon={<Clock3 size={18} />}
             />
             <StatCard
-              label={t('likesColumn')}
-              value={formatNumber(metrics.median_likes, 0, locale)}
+              label={forPeriod(t('likesColumn'))}
+              value={formatNumber(metrics.period_median_likes, 0, locale)}
               icon={<Heart size={18} />}
             />
             <StatCard
@@ -149,17 +151,26 @@ function GroupCard() {
   );
 }
 
+/** Appends the ranking period to a label ("Likes, 30 d"); the label alone until it is known. */
+function useRankingPeriodLabel() {
+  const { t } = useI18n();
+  const settings = useLiquiditySettingsQuery();
+  const periodDays = isLiquiditySettings(settings.data) ? settings.data.period_days : null;
+  return (label: string) => (periodDays === null ? label : `${label}, ${periodLabel(periodDays, t)}`);
+}
+
 function MetricTable({ rows }: { rows: TrendRow[] }) {
   const { locale, t } = useI18n();
+  const forPeriod = useRankingPeriodLabel();
   return (
     <DataTable>
       <TableHead>
         <tr>
           <TableHeaderCell>{t('name')}</TableHeaderCell>
-          <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
+          <TableHeaderCell>{forPeriod(t('liquidityScore'))}</TableHeaderCell>
           <TableHeaderCell>{t('salesInWindow')}</TableHeaderCell>
           <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
-          <TableHeaderCell>{t('likesColumn')}</TableHeaderCell>
+          <TableHeaderCell>{forPeriod(t('likesColumn'))}</TableHeaderCell>
           <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
           <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
         </tr>
@@ -183,7 +194,7 @@ function MetricTable({ rows }: { rows: TrendRow[] }) {
             </TableCell>
             <TableCell className="tabular-nums">{row.sold}</TableCell>
             <TableCell className="tabular-nums">{formatNumber(row.median_days_to_sell, 1, locale)}</TableCell>
-            <TableCell className="tabular-nums">{formatNumber(row.median_likes, 0, locale)}</TableCell>
+            <TableCell className="tabular-nums">{formatNumber(row.period_median_likes, 0, locale)}</TableCell>
             <TableCell className="tabular-nums">{formatCurrency(row.median_price, locale)}</TableCell>
             <TableCell className="tabular-nums">{row.active_now}</TableCell>
           </TableRow>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Search } from 'lucide-react';
 import { GroupKindBadge, RegroupButton, groupLabel, isServiceGroup } from '@/components/group-editor';
+import { PeriodControl, RankingSettings, RankingStatus, useRankingControls } from '@/components/ranking-settings';
 import { Sparkline } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/co
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
+import { periodLabel } from '@/lib/liquidity';
 import { useBrandsQuery, useTrendsQuery, useTypeNames } from '@/lib/queries';
 import type { NoModelShare, TrendFilters, TrendLevel, TrendRanking, TrendRow, TrendSort } from '@/lib/types';
 import { formatCurrency, formatDate, formatNumber, formatPercent } from '@/lib/utils';
@@ -22,7 +24,6 @@ const DEFAULT_FILTERS: TrendFilters = {
   brandIds: [],
   section: '',
   productType: '',
-  window: 30,
   priceMin: '',
   priceMax: '',
   minSales: 0,
@@ -49,7 +50,12 @@ function loadFilters(): TrendFilters {
   try {
     const saved = window.sessionStorage.getItem(STORAGE_KEY);
     if (!saved) return DEFAULT_FILTERS;
-    const merged = { ...DEFAULT_FILTERS, ...(JSON.parse(saved) as Partial<TrendFilters>) };
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    // Keep only known filters: an older session may hold keys such as the removed `window`.
+    const known = Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => key in DEFAULT_FILTERS),
+    ) as Partial<TrendFilters>;
+    const merged = { ...DEFAULT_FILTERS, ...known };
     // A session saved before the liquidity ranking may hold a sort the API no longer accepts.
     return SORTS.some(([value]) => value === merged.sort) ? merged : { ...merged, sort: DEFAULT_FILTERS.sort };
   } catch {
@@ -85,6 +91,8 @@ export default function TrendsPage() {
   }, [search]);
   useEffect(() => setPage(0), [filters]);
   const trends = useTrendsQuery(filters, page * 50);
+  const ranking = useRankingControls();
+  const periodDays = trends.data?.ranking?.period_days ?? ranking.settings?.period_days;
   const update = (patch: Partial<TrendFilters>) => setFilters((current) => ({ ...current, ...patch }));
   const types = useMemo(
     () =>
@@ -114,7 +122,7 @@ export default function TrendsPage() {
         description={t('trendsIntro')}
         actions={
           <>
-            <NoModelLine share={trends.data?.no_model} window={filters.window} />
+            <NoModelLine share={trends.data?.no_model} periodDays={periodDays} />
             {trends.data?.computed_at && (
               <span className="text-xs text-[var(--text-muted)]">
                 {t('updatedAt')}: {formatDate(trends.data.computed_at, locale)}
@@ -205,23 +213,7 @@ export default function TrendsPage() {
           </select>
         </div>
         <div className="flex flex-wrap items-end gap-3 text-sm">
-          <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5" role="group" aria-label={t('trendWindow')}>
-            {([7, 30, 90] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={filters.window === value}
-                onClick={() => update({ window: value })}
-                className={`rounded-md px-2.5 py-1 text-xs tabular-nums ${
-                  filters.window === value
-                    ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                {value} {t('daysShort')}
-              </button>
-            ))}
-          </div>
+          <PeriodControl controls={ranking} />
           <label className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
             {t('priceFrom')}
             <input
@@ -288,6 +280,8 @@ export default function TrendsPage() {
         </div>
       </Card>
 
+      <RankingSettings controls={ranking} />
+      <RankingStatus controls={ranking} />
       <RankingHint ranking={trends.data?.ranking} />
 
       {trends.isLoading ? (
@@ -305,9 +299,7 @@ export default function TrendsPage() {
               <tr>
                 <TableHeaderCell>{t(filters.level === 'model' ? 'model' : filters.level === 'type' ? 'productType' : 'brand')}</TableHeaderCell>
                 <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
-                <TableHeaderCell>
-                  {filters.window === 30 ? t('salesPerMonth') : `${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}
-                </TableHeaderCell>
+                <TableHeaderCell>{t('salesPerMonth')}</TableHeaderCell>
                 <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
                 <TableHeaderCell>{t('likesColumn')}</TableHeaderCell>
                 <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
@@ -316,7 +308,13 @@ export default function TrendsPage() {
             </TableHead>
             <tbody>
               {trends.data.data.map((row) => (
-                <TrendTableRow key={row.scope_key} row={row} onDrill={drill} typeName={typeName} />
+                <TrendTableRow
+                  key={row.scope_key}
+                  row={row}
+                  periodDays={periodDays}
+                  onDrill={drill}
+                  typeName={typeName}
+                />
               ))}
             </tbody>
           </DataTable>
@@ -346,10 +344,12 @@ export default function TrendsPage() {
 
 function TrendTableRow({
   row,
+  periodDays,
   onDrill,
   typeName,
 }: {
   row: TrendRow;
+  periodDays?: number;
   onDrill: (row: TrendRow) => void;
   typeName: (id?: string | null) => string;
 }) {
@@ -391,18 +391,25 @@ function TrendTableRow({
         </span>
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{row.sold}</span>
+        <span className="tabular-nums">{formatNumber(row.sales_per_month, 1, locale)}</span>
+        {periodDays !== undefined && (
+          <span className="block text-xs tabular-nums text-[var(--text-muted)]">
+            {t('soldInPeriod')
+              .replace('{count}', String(row.period_sold))
+              .replace('{period}', periodLabel(periodDays, t))}
+          </span>
+        )}
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{formatNumber(row.median_days_to_sell, 1, locale)}</span>
+        <span className="tabular-nums">{formatNumber(row.period_median_days, 1, locale)}</span>
       </TableCell>
       <TableCell>
         <span className="tabular-nums" title={t('medianLikes')}>
-          {formatNumber(row.median_likes, 0, locale)}
+          {formatNumber(row.period_median_likes, 0, locale)}
         </span>
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{formatCurrency(row.median_price, locale)}</span>
+        <span className="tabular-nums">{formatCurrency(row.period_median_price, locale)}</span>
       </TableCell>
       <TableCell>
         <Sparkline values={row.weekly_sales} label={t('weeklyTrend')} />
@@ -421,7 +428,8 @@ function RankingHint({ ranking }: { ranking?: TrendRanking }) {
     ? t('rankingExcluded').replace('{sections}', ranking.excluded_sections.map(sectionName).join(', '))
     : '';
   const text = t('rankingHint')
-    .replace('{minSales}', String(ranking.min_sales_30d))
+    .replace('{period}', periodLabel(ranking.period_days, t))
+    .replace('{minSales}', formatNumber(ranking.min_sales_per_month, 1, locale))
     .replace('{minPrice}', formatCurrency(ranking.min_price, locale))
     .replace('{excluded}', excluded)
     .replace('{sales}', weight(ranking.weights.sales))
@@ -431,8 +439,8 @@ function RankingHint({ ranking }: { ranking?: TrendRanking }) {
   return <p className="max-w-3xl text-xs text-[var(--text-muted)]">{text}</p>;
 }
 
-/** The share of "No model" in the scope: of sales in the window, or of listings without sales. */
-function NoModelLine({ share, window }: { share?: NoModelShare; window: number }) {
+/** The share of "No model" in the scope: of sales in the ranking period, or of listings without sales. */
+function NoModelLine({ share, periodDays }: { share?: NoModelShare; periodDays?: number }) {
   const { t } = useI18n();
   if (!share) return null;
   const bySales = share.sold_share !== null;
@@ -441,7 +449,7 @@ function NoModelLine({ share, window }: { share?: NoModelShare; window: number }
   const help = (bySales ? t('noModelShareSales') : t('noModelShareListings'))
     .replace('{part}', String(bySales ? share.sold : share.listings))
     .replace('{total}', String(bySales ? share.total_sold : share.total_listings))
-    .replace('{days}', String(window));
+    .replace('{period}', periodDays === undefined ? '—' : periodLabel(periodDays, t));
   return (
     <span className="text-xs tabular-nums text-[var(--text-secondary)]" title={help}>
       {t('noModel')}: {formatPercent(value)}

@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,12 +17,20 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.db.models import Base, Brand, GroupMetric, Listing, ListingPriceHistory
+from app.db.models import (
+    AppSetting,
+    Base,
+    Brand,
+    GroupMetric,
+    Listing,
+    ListingPriceHistory,
+)
 from app.db.session import get_db
 from app.main import app
 from app.services.grouping import GroupingService
 from app.services.metrics import MetricsService
 from app.services.metrics.calculator import MetricListing, compute_metrics
+from app.services.metrics.liquidity_store import POLICY_KEY
 
 AS_OF = datetime(2026, 10, 1, 12, tzinfo=UTC)
 
@@ -390,4 +398,71 @@ def test_ranking_settings_are_saved_and_re_rank_at_once(tmp_path: Path) -> None:
     assert bad_section.json()["error"]["code"] == "invalid_liquidity_policy"
     assert reset["saved"] is False and reset["period_days"] == 30
     assert [row["name"] for row in after_reset["data"]] == ["Track"]
+    asyncio.run(engine.dispose())
+
+
+def test_a_broken_saved_policy_falls_back_to_the_defaults(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def break_policy() -> None:
+        async with factory() as session:
+            session.add(
+                AppSetting(
+                    key=POLICY_KEY,
+                    value={"period_days": 30, "excluded_sections": ["gowns"]},
+                    updated_at=AS_OF,
+                )
+            )
+            await session.commit()
+
+    async def override_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    asyncio.run(break_policy())
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        settings = client.get("/api/settings/liquidity").json()
+        trends = client.get("/api/trends").json()
+        huge = client.put(
+            "/api/settings/liquidity",
+            json={
+                "period_days": 30,
+                "min_sales_per_month": 5,
+                "min_price_usd": 150,
+                "excluded_sections": [],
+                "weights": {name: "9E+999999" for name in ("sales", "speed", "likes", "price")},
+            },
+        )
+        reset = client.delete("/api/settings/liquidity")
+        reset_again = client.delete("/api/settings/liquidity")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert settings["saved"] is False and settings["period_days"] == 30
+    assert [row["name"] for row in trends["data"]] == ["Track"]
+    assert huge.status_code == 422
+    assert reset.status_code == 200 and reset_again.status_code == 200
+    assert reset_again.json()["saved"] is False and reset_again.json()["ranked"] >= 1
+    asyncio.run(engine.dispose())
+
+
+def test_rows_without_windows_stay_unranked(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def rank_after_migration() -> tuple[int, int]:
+        async with factory() as session:
+            # Right after migration 0021 no row has windows yet.
+            await session.execute(update(GroupMetric).values(windows=None))
+            ranked = await MetricsService(session).rank()
+            await session.commit()
+            empty = await session.scalar(
+                select(func.count()).where(GroupMetric.period_sold == 0)
+            )
+            return ranked, int(empty or 0)
+
+    ranked, empty = asyncio.run(rank_after_migration())
+
+    assert ranked == 0 and empty > 0
     asyncio.run(engine.dispose())

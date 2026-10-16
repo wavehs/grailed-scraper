@@ -36,6 +36,65 @@ const brand = {
   ],
 };
 
+const ranking = {
+  period_days: 30,
+  min_sales_per_month: '5',
+  min_price: 15000,
+  excluded_sections: ['dresses', 'other'],
+  weights: { sales: '0.40', speed: '0.25', likes: '0.20', price: '0.15' },
+};
+const liquidityPolicy = {
+  period_days: 30,
+  min_sales_per_month: '5',
+  min_price_usd: 150,
+  excluded_sections: ['dresses', 'other'],
+  weights: { sales: '0.4000', speed: '0.2500', likes: '0.2000', price: '0.1500' },
+};
+const liquiditySettings = {
+  ...liquidityPolicy,
+  saved: false,
+  periods: [7, 14, 30, 60, 90, 180, 365],
+  defaults: liquidityPolicy,
+  ranked: null,
+};
+
+/** Trends with the liquidity settings API; PUT and DELETE answer `failure` or the saved policy. */
+function rankingFetch(settings: typeof liquiditySettings, failure?: unknown) {
+  let current = settings;
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url.endsWith('/settings/liquidity')) {
+      if (method === 'GET') return json(current);
+      if (failure) return json(failure, 422);
+      const body = method === 'PUT' ? JSON.parse(String(init?.body)) : liquidityPolicy;
+      current = { ...current, ...body, saved: method === 'PUT', ranked: null };
+      return json({ ...current, ranked: 42 });
+    }
+    if (url.endsWith('/brands')) return json({ data: [] });
+    if (url.endsWith('/grouping/taxonomy'))
+      return json({
+        version: 'taxonomy-v1',
+        sections: [
+          { id: 'footwear', ru: 'Обувь', en: 'Footwear' },
+          { id: 'dresses', ru: 'Платья', en: 'Dresses' },
+          { id: 'other', ru: 'Прочее', en: 'Other' },
+        ],
+        types: [],
+      });
+    if (url.includes('/trends?'))
+      return json({ data: [], total: 0, computed_at: '2026-10-01T12:00:00Z', ranking });
+    return json({});
+  });
+}
+
+/** Bodies of the liquidity settings writes with this method. */
+function writes(fetchMock: ReturnType<typeof rankingFetch>, method: 'PUT' | 'DELETE') {
+  return fetchMock.mock.calls
+    .filter(([input, init]) => String(input).endsWith('/settings/liquidity') && init?.method === method)
+    .map(([, init]) => (init?.body === undefined ? null : JSON.parse(String(init.body))));
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   // Trends keep their filters for the session; each test starts from the defaults.
@@ -43,7 +102,7 @@ beforeEach(() => {
 });
 
 describe('stage 10 screens', () => {
-  it('shows trends of every brand and filters by type, window and price', async () => {
+  it('shows trends of every brand and filters by type and price', async () => {
     const row = {
       scope: 'model',
       scope_key: 'model:5',
@@ -62,9 +121,13 @@ describe('stage 10 screens', () => {
       sold_30d: 12,
       sold_90d: 20,
       liquidity_score: '82.40',
-      median_days_to_sell: '10.50',
-      median_likes: '38.0',
-      median_price: 52000,
+      median_days_to_sell: '9.00',
+      median_price: 51000,
+      period_sold: 12,
+      sales_per_month: '12.0',
+      period_median_days: '10.50',
+      period_median_likes: '38.0',
+      period_median_price: 52000,
       active_now: 8,
       weekly_sales: [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
     };
@@ -92,9 +155,9 @@ describe('stage 10 screens', () => {
     expect(screen.getByText('82')).toBeInTheDocument();
     expect(screen.getByText('10.5')).toBeInTheDocument();
     expect(screen.getByText('38')).toBeInTheDocument();
+    expect(screen.getByText('$520')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /Sales by week/ })).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Product type'), 'lowtop_sneakers');
-    await userEvent.click(screen.getByRole('button', { name: '90 d' }));
     await userEvent.type(screen.getByLabelText('Price to, $'), '600');
     await waitFor(() =>
       expect(
@@ -102,7 +165,7 @@ describe('stage 10 screens', () => {
           const url = String(input);
           return (
             url.includes('product_type=lowtop_sneakers') &&
-            url.includes('window=90') &&
+            !url.includes('window=') &&
             url.includes('price_max=600')
           );
         }),
@@ -133,8 +196,12 @@ describe('stage 10 screens', () => {
       sold_90d: 5,
       liquidity_score: '10.00',
       median_days_to_sell: null,
-      median_likes: null,
       median_price: 40000,
+      period_sold: 3,
+      sales_per_month: '3.0',
+      period_median_days: null,
+      period_median_likes: null,
+      period_median_price: 40000,
       active_now: 7,
       weekly_sales: Array(12).fill(0),
     };
@@ -173,6 +240,7 @@ describe('stage 10 screens', () => {
           total: data.length,
           computed_at: '2026-10-01T12:00:00Z',
           no_model: noModel,
+          ranking,
         });
       }
       return json({});
@@ -229,7 +297,7 @@ describe('stage 10 screens', () => {
     renderApp(<TrendsPage />);
     expect(await screen.findByText('No model: 25.0%')).toHaveAttribute(
       'title',
-      'No sales in the window: 1 of 4 listings have no model.',
+      'No sales in the period: 1 of 4 listings have no model.',
     );
   });
 
@@ -254,8 +322,12 @@ describe('stage 10 screens', () => {
       sold_90d: 20,
       liquidity_score: '71.30',
       median_days_to_sell: '6.00',
-      median_likes: '57.0',
       median_price: 52000,
+      period_sold: 12,
+      sales_per_month: '12.0',
+      period_median_days: '6.00',
+      period_median_likes: '57.0',
+      period_median_price: 52000,
       active_now: 8,
       weekly_sales: Array(12).fill(1),
     };
@@ -265,14 +337,10 @@ describe('stage 10 screens', () => {
       group_id: 6,
       name: 'Runner',
       sold: 2,
+      period_sold: 2,
+      sales_per_month: '2.0',
       liquidity_score: null,
-      median_likes: '4.0',
-    };
-    const ranking = {
-      min_sales_30d: 5,
-      min_price: 15000,
-      excluded_sections: ['dresses', 'other'],
-      weights: { sales: '0.40', speed: '0.25', likes: '0.20', price: '0.15' },
+      period_median_likes: '4.0',
     };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -309,9 +377,10 @@ describe('stage 10 screens', () => {
     );
     expect(screen.getByText('71')).toBeInTheDocument();
     expect(screen.getByText('57')).toBeInTheDocument();
+    expect(screen.getByText('12 in 30 d')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Ranking: ≥ 5 sales in 30 days, median ≥ $150, excluding sections: Dresses, Other. ' +
+        'Ranking over 30 d: ≥ 5 sales/mo, median ≥ $150, excluding sections: Dresses, Other. ' +
           'Weights: sales 40%, speed 25%, likes 20%, price 15%.',
       ),
     ).toBeInTheDocument();
@@ -324,6 +393,103 @@ describe('stage 10 screens', () => {
     const runnerRow = runner.closest('tr') as HTMLElement;
     expect(within(runnerRow).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
     expect(within(runnerRow).getByText('4')).toBeInTheDocument();
+  });
+
+  it('saves the ranking settings with every field and the weights as entered', async () => {
+    const fetchMock = rankingFetch({ ...liquiditySettings, saved: false });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    await userEvent.click(await screen.findByText('Ranking settings'));
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled();
+    expect(screen.getByLabelText('Sales per month')).toHaveValue(40);
+
+    await userEvent.clear(screen.getByLabelText('Min. sales per month'));
+    await userEvent.type(screen.getByLabelText('Min. sales per month'), '2.5');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Footwear' }));
+    for (const [label, value] of [
+      ['Sales per month', '50'],
+      ['Speed of sale', '30'],
+      ['Likes', '20'],
+      ['Price', '0'],
+    ]) {
+      await userEvent.clear(screen.getByLabelText(label));
+      await userEvent.type(screen.getByLabelText(label), value);
+    }
+    expect(screen.getByText('share 50.0%')).toBeInTheDocument();
+    expect(screen.getByText('Total entered: 100')).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+
+    await waitFor(() => expect(writes(fetchMock, 'PUT')).toHaveLength(1));
+    expect(writes(fetchMock, 'PUT')[0]).toEqual({
+      period_days: 30,
+      min_sales_per_month: 2.5,
+      min_price_usd: 150,
+      excluded_sections: ['dresses', 'other', 'footwear'],
+      weights: { sales: 50, speed: 30, likes: 20, price: 0 },
+    });
+    expect(await screen.findByText('Ranking recalculated: 42')).toBeInTheDocument();
+  });
+
+  it('blocks saving invalid weights and resets a saved policy', async () => {
+    const fetchMock = rankingFetch({ ...liquiditySettings, saved: true });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    await userEvent.click(await screen.findByText('Ranking settings'));
+    for (const label of ['Sales per month', 'Speed of sale', 'Likes', 'Price']) {
+      await userEvent.clear(screen.getByLabelText(label));
+      await userEvent.type(screen.getByLabelText(label), '0');
+    }
+    expect(screen.getByRole('alert')).toHaveTextContent('At least one weight must be above 0.');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    const reset = screen.getByRole('button', { name: 'Reset to defaults' });
+    expect(reset).toBeEnabled();
+    await userEvent.click(reset);
+    await waitFor(() => expect(writes(fetchMock, 'DELETE')).toHaveLength(1));
+    expect(await screen.findByText('Ranking recalculated: 42')).toBeInTheDocument();
+  });
+
+  it('shows the API error when saving the ranking fails', async () => {
+    const fetchMock = rankingFetch(liquiditySettings, {
+      error: { code: 'invalid_liquidity_policy', message: 'unknown section: hats' },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    await userEvent.click(await screen.findByText('Ranking settings'));
+    await userEvent.clear(screen.getByLabelText('Min. median price, $'));
+    await userEvent.type(screen.getByLabelText('Min. median price, $'), '200');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('unknown section: hats')).toBeInTheDocument();
+  });
+
+  it('saves a new ranking period at once and ignores an old saved window', async () => {
+    window.sessionStorage.setItem(
+      'gla-trend-filters',
+      JSON.stringify({ window: 90, level: 'brand', sort: 'liquidity' }),
+    );
+    const fetchMock = rankingFetch(liquiditySettings);
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    const period = await screen.findByRole('group', { name: 'Ranking period' });
+    expect(within(period).getByRole('button', { name: '30 d' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(period).getByRole('button', { name: '6 mo' })).toBeInTheDocument();
+    expect(within(period).getByRole('button', { name: '1 yr' })).toBeInTheDocument();
+    await userEvent.click(within(period).getByRole('button', { name: '90 d' }));
+    await waitFor(() => expect(writes(fetchMock, 'PUT')).toHaveLength(1));
+    expect(writes(fetchMock, 'PUT')[0]).toEqual({ ...liquidityPolicy, period_days: 90 });
+    const trendUrls = () =>
+      fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.includes('/trends?'));
+    // The first request may go out before the saved session loads; none sends a window.
+    await waitFor(() => expect(trendUrls().some((url) => url.includes('level=brand'))).toBe(true));
+    expect(trendUrls().some((url) => url.includes('window'))).toBe(false);
   });
 
   it('shows the group card with versions, variants, sales links and edits', async () => {
@@ -364,8 +530,12 @@ describe('stage 10 screens', () => {
       sold_90d: 30,
       liquidity_score: '66.86',
       median_days_to_sell: '20.00',
-      median_likes: '41.5',
       median_price: 90000,
+      period_sold: 12,
+      sales_per_month: '12.0',
+      period_median_days: '20.00',
+      period_median_likes: '41.5',
+      period_median_price: 90000,
       active_now: 8,
       weekly_sales: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3],
     };
@@ -388,8 +558,10 @@ describe('stage 10 screens', () => {
                 group_id: 2,
                 name: 'Mega Geobasket',
                 sold: 3,
+                period_sold: 3,
+                sales_per_month: '3.0',
                 liquidity_score: null,
-                median_likes: '12.0',
+                period_median_likes: '12.0',
               },
             ],
             type_metrics: null,
@@ -413,6 +585,7 @@ describe('stage 10 screens', () => {
             ],
             active_listings: [],
           });
+        if (url.endsWith('/settings/liquidity')) return json(liquiditySettings);
         if (url.endsWith('/groups/1')) return json(group);
         if (url.includes('/groups?')) return json({ data: [group], total: 1 });
         if (url.endsWith('/grouping/taxonomy'))
@@ -435,10 +608,12 @@ describe('stage 10 screens', () => {
       'href',
       '/group?id=2',
     );
+    // Score and likes are labelled with the ranking period once the settings load.
+    await screen.findByText('Likes, 30 d', { selector: 'p' });
     const stat = (label: string) =>
       screen.getByText(label, { selector: 'p' }).parentElement?.parentElement as HTMLElement;
-    expect(within(stat('Score')).getByText('67')).toBeInTheDocument();
-    expect(within(stat('Likes')).getByText('42')).toBeInTheDocument();
+    expect(within(stat('Score, 30 d')).getByText('67')).toBeInTheDocument();
+    expect(within(stat('Likes, 30 d')).getByText('42')).toBeInTheDocument();
     expect(screen.queryByText(/Sell-through/)).not.toBeInTheDocument();
     const version = screen.getByRole('link', { name: 'Mega Geobasket' }).closest('tr') as HTMLElement;
     expect(within(version).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');

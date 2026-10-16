@@ -150,6 +150,8 @@ def test_the_shipped_policy_matches_the_agreed_defaults() -> None:
         ({"weights": {"sales": 1.2, "speed": -0.2, "likes": 0, "price": 0}}, "negative"),
         ({"weights": {"sales": 1}}, "weights"),
         ({"weights": {"sales": "NaN", "speed": 1, "likes": 0, "price": 0}}, "number"),
+        ({"weights": dict.fromkeys(("sales", "speed", "likes", "price"), "9E+999999")}, "large"),
+        ({"period_days": 30.0}, "period_days"),
         ({"period_days": 45}, "period_days"),
         ({"period_days": True}, "period_days"),
         ({"min_sales_per_month": -1}, "min_sales_per_month"),
@@ -200,3 +202,23 @@ def test_weights_are_scaled_to_sum_to_one() -> None:
 
 def test_policy_data_round_trips() -> None:
     assert parse_policy(policy_data(POLICY), known_sections={"dresses", "other"}) == POLICY
+
+
+def test_rounded_weights_still_sum_to_exactly_one() -> None:
+    def weights(raw: dict[str, int]) -> Weights:
+        data = {
+            "period_days": 30,
+            "min_sales_per_month": 5,
+            "min_price_usd": 150,
+            "excluded_sections": [],
+            "weights": raw,
+        }
+        return parse_policy(data, known_sections=set()).weights
+
+    thirds = weights({"sales": 0, "speed": 1, "likes": 1, "price": 1})
+    sevenths = weights({"sales": 1, "speed": 2, "likes": 2, "price": 2})
+
+    for item in (thirds, sevenths):
+        assert item.sales + item.speed + item.likes + item.price == 1
+        assert min(item.sales, item.speed, item.likes, item.price) >= 0
+    assert thirds.sales == 0

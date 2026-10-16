@@ -86,6 +86,13 @@ class MetricsService:
         )
 
     async def rank(self) -> int:
+        """Rank with the saved policy inside SQLite's write lock.
+
+        Clearing the scores first takes the lock, so the policy and the rows read below
+        cannot change (a settings save, a regroup) before the scores are written.
+        """
+
+        await self._session.execute(update(GroupMetric).values(liquidity_score=None))
         return await rank_liquidity(self._session, await effective_policy(self._session))
 
     async def _brand(self, brand_id: int, as_of: datetime) -> tuple[int, int]:
@@ -241,7 +248,8 @@ class MetricsService:
 
 async def rank_liquidity(session: AsyncSession, policy: LiquidityPolicy) -> int:
     """Copy the policy period into the ``period_*`` columns of every row, then score each
-    scope's rows that pass the threshold against each other.
+    scope's rows that pass the threshold against each other. Call it holding the write
+    lock (``MetricsService.rank``).
 
     Model rows are lines only, without "No model", descriptions and retired groups, the
     same rows the trends list shows; the review type is never ranked.

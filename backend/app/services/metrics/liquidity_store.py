@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,26 +18,38 @@ from app.services.metrics.liquidity import (
 )
 
 POLICY_KEY = "liquidity_policy"
+# Invalid saved values already logged; every trends request reads the policy.
+_warned: set[str] = set()
 
 
 async def effective_policy(session: AsyncSession) -> LiquidityPolicy:
     """The saved policy, or the defaults when none is saved or it no longer validates."""
 
+    return await saved_policy(session) or default_policy()
+
+
+async def saved_policy(session: AsyncSession) -> LiquidityPolicy | None:
+    """None when nothing is saved or the saved value no longer validates."""
+
     row = await session.get(AppSetting, POLICY_KEY)
     if row is None:
-        return default_policy()
+        return None
     try:
         return parse_policy(row.value, known_sections=known_sections())
-    except (ValueError, AttributeError) as error:
+    except (ValueError, AttributeError, TypeError, ArithmeticError) as error:
         # A taxonomy change can retire a saved section; ranking must still work.
-        structlog.get_logger(__name__).warning(
-            "liquidity_policy_invalid", error=str(error), value=row.value
-        )
-        return default_policy()
+        _warn_invalid(row.value, error)
+        return None
 
 
-async def is_saved(session: AsyncSession) -> bool:
-    return await session.get(AppSetting, POLICY_KEY) is not None
+def _warn_invalid(value: Any, error: Exception) -> None:
+    key = repr(value)
+    if key in _warned:
+        return
+    _warned.add(key)
+    structlog.get_logger(__name__).warning(
+        "liquidity_policy_invalid", error=str(error), value=value
+    )
 
 
 async def save_policy(session: AsyncSession, policy: LiquidityPolicy) -> None:

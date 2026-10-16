@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { getApi, getHealthApi } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { api, getApi, getHealthApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type {
   ApiHealth,
@@ -9,6 +9,8 @@ import type {
   SettingsResponse,
   GroupDetail,
   GroupList,
+  LiquidityPolicyUpdate,
+  LiquiditySettings,
   Taxonomy,
   TrendCard,
   TrendFilters,
@@ -120,7 +122,6 @@ export function useTypeNames() {
 export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams {
   const params = new URLSearchParams({
     level: filters.level,
-    window: String(filters.window),
     sort: filters.sort,
     desc: String(filters.desc),
     limit: '50',
@@ -153,5 +154,41 @@ export function useTrendCardQuery(groupId: number | null, window: number) {
     queryFn: ({ signal }) =>
       getApi<TrendCard>(`/trends/groups/${groupId}?window=${window}`, signal),
     enabled: groupId !== null,
+  });
+}
+
+const LIQUIDITY_SETTINGS_KEY = ['liquidity-settings'];
+const LIQUIDITY_PATH = '/settings/liquidity';
+
+export function useLiquiditySettingsQuery() {
+  return useQuery({
+    queryKey: LIQUIDITY_SETTINGS_KEY,
+    queryFn: ({ signal }) => getApi<LiquiditySettings>(LIQUIDITY_PATH, signal),
+  });
+}
+
+/** A saved or reset policy re-ranks every row, so the lists and cards are stale. */
+function invalidateRanking(client: QueryClient) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: LIQUIDITY_SETTINGS_KEY }),
+    client.invalidateQueries({ queryKey: ['trends'] }),
+    client.invalidateQueries({ queryKey: ['trend-card'] }),
+  ]);
+}
+
+export function useSaveLiquiditySettings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (policy: LiquidityPolicyUpdate) =>
+      api<LiquiditySettings>(LIQUIDITY_PATH, 'PUT', policy),
+    onSuccess: () => invalidateRanking(client),
+  });
+}
+
+export function useResetLiquiditySettings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<LiquiditySettings>(LIQUIDITY_PATH, 'DELETE'),
+    onSuccess: () => invalidateRanking(client),
   });
 }

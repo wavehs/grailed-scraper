@@ -151,7 +151,8 @@ def known_sections() -> Collection[str]:
 
 def parse_policy(data: Mapping[str, Any], *, known_sections: Collection[str]) -> LiquidityPolicy:
     period = data.get("period_days")
-    if period not in PERIODS or isinstance(period, bool):
+    # Strictly int: a stored 30.0 would miss the "30" window and empty the ranking.
+    if type(period) is not int or period not in PERIODS:
         raise ValueError(f"period_days must be one of: {', '.join(map(str, PERIODS))}")
     min_sales = _decimal(data.get("min_sales_per_month"), "min_sales_per_month")
     if min_sales < 0:
@@ -197,12 +198,20 @@ def _weights(raw: object) -> Weights:
     values = {name: _decimal(raw[name], f"weights.{name}") for name in WEIGHT_NAMES}
     if any(value < 0 for value in values.values()):
         raise ValueError("weights must not be negative")
-    total = sum(values.values(), Decimal(0))
-    if total <= 0:
-        raise ValueError("at least one weight must be above 0")
-    return Weights(
-        **{name: (value / total).quantize(_WEIGHT, ROUND_HALF_UP) for name, value in values.items()}
-    )
+    try:
+        total = sum(values.values(), Decimal(0))
+        if total <= 0:
+            raise ValueError("at least one weight must be above 0")
+        shares = {
+            name: (value / total).quantize(_WEIGHT, ROUND_HALF_UP)
+            for name, value in values.items()
+        }
+    except ArithmeticError as error:
+        raise ValueError("weights are too large") from error
+    # The largest share takes the rounding remainder so the weights sum to exactly 1.
+    largest = max(WEIGHT_NAMES, key=lambda name: shares[name])
+    remainder = Decimal(1) - sum(shares.values(), Decimal(0))
+    return Weights(**{**shares, largest: shares[largest] + remainder})
 
 
 def _decimal(value: object, name: str) -> Decimal:
@@ -210,7 +219,7 @@ def _decimal(value: object, name: str) -> Decimal:
         raise ValueError(f"{name} must be a number")
     try:
         number = Decimal(str(value))
-    except InvalidOperation as error:
+    except (InvalidOperation, ArithmeticError) as error:
         raise ValueError(f"{name} must be a number") from error
     if not number.is_finite():
         raise ValueError(f"{name} must be a number")
