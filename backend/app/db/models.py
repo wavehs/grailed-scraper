@@ -316,7 +316,7 @@ class GroupMetric(Base):
     __tablename__ = "group_metrics"
     __table_args__ = (
         CheckConstraint("scope IN ('model', 'type', 'brand')", name="ck_group_metrics_scope"),
-        Index("ix_group_metrics_scope_trend", "scope", "trend_score"),
+        Index("ix_group_metrics_scope_liquidity", "scope", "liquidity_score"),
         Index("ix_group_metrics_brand_scope", "brand_id", "scope"),
     )
 
@@ -351,7 +351,9 @@ class GroupMetric(Base):
     sell_through_30d: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
     growth: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
-    trend_score: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    median_likes_90d: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    # 0-100 among the rows of the same scope that pass the threshold (config/liquidity.yaml).
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_new: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     colors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)

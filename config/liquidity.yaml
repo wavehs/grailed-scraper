@@ -1,0 +1,20 @@
+# Liquidity ranking of the trends screen (docs/METRICS.md, section 3).
+#
+# Only items that sell often, fast and at a good price get a score; everything else stays
+# visible with "below the threshold" but is not ranked.
+# - min_sales_30d: sales in the last 30 days; fewer is noise (5 vs 0 is not a trend).
+# - min_price_usd: median sale price in the last 30 days.
+# - excluded_sections: taxonomy sections that are never ranked (config/taxonomy.yaml).
+# - weights: shares of the four percentiles in the score; they must sum to 1.
+#   On the 2026-10-15 data 5 sales and $150 leave about 100 of 15 000 model lines.
+version: liquidity-v1
+
+min_sales_30d: 5
+min_price_usd: 150
+excluded_sections: [dresses, other]
+
+weights:
+  sales: 0.40   # sales in 30 days
+  speed: 0.25   # median days to sell, fewer is better
+  likes: 0.20   # median likes of listings sold in 90 days
+  price: 0.15   # median sale price in 30 days

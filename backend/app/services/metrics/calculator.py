@@ -12,9 +12,9 @@ from statistics import median
 WEEKS = 12
 NEW_MODEL_DAYS = 60
 NEW_LISTING_DAYS = 14
-MIN_TREND_SALES = 3
 VARIANT_LIMIT = 12
 _CENT = Decimal("0.01")
+_TENTH = Decimal("0.1")
 _RATIO = Decimal("0.0001")
 _SHARE = Decimal("0.000001")
 THIRTY = Decimal(30)
@@ -36,6 +36,7 @@ class MetricListing:
     is_relist: bool
     color: str | None
     size: str | None
+    likes: int = 0
 
     @property
     def sale_price(self) -> Decimal:
@@ -63,7 +64,7 @@ class ScopeMetrics:
     is_new: bool = False
     growth: Decimal = Decimal(1)
     speed: Decimal | None = None
-    trend_score: Decimal | None = None
+    median_likes_90d: Decimal | None = None
     colors: list[dict[str, object]] = field(default_factory=list)
     sizes: list[dict[str, object]] = field(default_factory=list)
 
@@ -75,6 +76,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
     prices: dict[int, list[Decimal]] = {7: [], 30: [], 90: []}
     weekly_prices: list[list[Decimal]] = [[] for _ in range(WEEKS)]
     days_30: list[Decimal] = []
+    likes_90: list[Decimal] = []
     variants: list[MetricListing] = []
     for item in listings:
         if result.first_seen_at is None or item.listed_at < result.first_seen_at:
@@ -90,6 +92,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
         if age <= timedelta(days=90):
             result.sold_90d += 1
             variants.append(item)
+            likes_90.append(Decimal(item.likes))
             if item.price_usable:
                 prices[90].append(item.sale_price)
         if age <= timedelta(days=30):
@@ -119,6 +122,7 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
             (result.median_price_30d - result.median_price_90d) / result.median_price_90d
         ).quantize(_RATIO, ROUND_HALF_UP)
     result.median_days_to_sell = _median(days_30, _CENT)
+    result.median_likes_90d = _median(likes_90, _TENTH)
     supply = result.sold_30d + result.active_now
     if supply:
         result.sell_through_30d = (Decimal(result.sold_30d) / Decimal(supply)).quantize(_SHARE)
@@ -131,23 +135,9 @@ def compute_metrics(listings: Sequence[MetricListing], as_of: datetime) -> Scope
         result.speed = (THIRTY / (THIRTY + result.median_days_to_sell)).quantize(
             _RATIO, ROUND_HALF_UP
         )
-    result.trend_score = trend_score(
-        result.sold_30d, result.growth, result.speed, result.sell_through_30d
-    )
     result.colors = variant_rows(variants, "color")
     result.sizes = variant_rows(variants, "size")
     return result
-
-
-def trend_score(
-    sold_30d: int, growth: Decimal, speed: Decimal | None, sell_through: Decimal
-) -> Decimal | None:
-    """growth × speed × sell-through × 100; unknown speed counts as 0.5 (a 30-day sale)."""
-
-    if sold_30d < MIN_TREND_SALES:
-        return None
-    factor = speed if speed is not None else Decimal("0.5")
-    return (growth * factor * sell_through * 100).quantize(_CENT, ROUND_HALF_UP)
 
 
 def variant_rows(listings: Sequence[MetricListing], attribute: str) -> list[dict[str, object]]:

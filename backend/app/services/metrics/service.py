@@ -1,4 +1,4 @@
-"""Recompute group metrics for brands in one pass over their listings."""
+"""Recompute group metrics for brands in one pass over their listings, then rank liquidity."""
 
 from __future__ import annotations
 
@@ -9,15 +9,23 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, insert, or_, select
+from sqlalchemy import delete, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand, GroupMetric, Listing, ListingModelAssignment, ModelGroup
+from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.kinds import NONE_SLUG
 from app.services.grouping.policy import REVIEW_TYPE, load_policy
 from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute_metrics
+from app.services.metrics.liquidity import (
+    LiquidityCandidate,
+    LiquidityPolicy,
+    liquidity_policy,
+    liquidity_scores,
+)
 
-METRICS_VERSION = "metrics-v1"
+METRICS_VERSION = "metrics-v2"
+_SCOPES = ("model", "type", "brand")
 _EXCLUDED = {"possible_replica"}
 _PRICE_EXCLUDED = {"price_outlier", "lot_or_bundle"}
 _INSERT_CHUNK = 500
@@ -29,6 +37,7 @@ class MetricsResult:
     rows: int
     listings: int
     duration_s: float
+    ranked: int = 0
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -36,6 +45,7 @@ class MetricsResult:
             "brands": self.brands,
             "rows": self.rows,
             "listings": self.listings,
+            "ranked": self.ranked,
             "duration_s": round(self.duration_s, 2),
         }
 
@@ -61,8 +71,12 @@ class MetricsService:
             brand_rows, brand_listings = await self._brand(brand_id, moment)
             rows += brand_rows
             listings += brand_listings
+        # Percentiles need every brand, so the whole table is ranked after any recompute.
+        ranked = await rank_liquidity(self._session, liquidity_policy())
         await self._session.flush()
-        return MetricsResult(len(selected), rows, listings, time.perf_counter() - started)
+        return MetricsResult(
+            len(selected), rows, listings, time.perf_counter() - started, ranked
+        )
 
     async def _brand(self, brand_id: int, as_of: datetime) -> tuple[int, int]:
         groups = {
@@ -87,6 +101,7 @@ class MetricsService:
                 Listing.relist_of_id,
                 Listing.product_type,
                 ListingModelAssignment.model_group_id,
+                Listing.likes_count,
             )
             .outerjoin(ListingModelAssignment, ListingModelAssignment.listing_id == Listing.id)
             .where(Listing.brand_id == brand_id)
@@ -113,6 +128,7 @@ class MetricsService:
                 is_relist=row[11] is not None,
                 color=row[9],
                 size=row[10],
+                likes=row[14] or 0,
             )
             group = groups.get(row[13]) if row[13] is not None else None
             product_type = row[12] or (group.product_type if group else None)
@@ -204,13 +220,61 @@ class MetricsService:
             "sell_through_30d": metrics.sell_through_30d,
             "growth": metrics.growth,
             "speed": metrics.speed,
-            "trend_score": metrics.trend_score,
+            "median_likes_90d": metrics.median_likes_90d,
             "first_seen_at": metrics.first_seen_at,
             "is_new": metrics.is_new,
             "colors": metrics.colors,
             "sizes": metrics.sizes,
             "computed_at": now,
         }
+
+
+async def rank_liquidity(session: AsyncSession, policy: LiquidityPolicy) -> int:
+    """Score every row that passes the threshold against its own scope; clear the rest.
+
+    Model rows are lines only, without "No model", descriptions and retired groups, the
+    same rows the trends list shows; the review type is never ranked.
+    """
+
+    await session.execute(update(GroupMetric).values(liquidity_score=None))
+    ranked = 0
+    for scope in _SCOPES:
+        statement = select(
+            GroupMetric.id,
+            GroupMetric.section,
+            GroupMetric.sold_30d,
+            GroupMetric.median_days_to_sell,
+            GroupMetric.median_likes_90d,
+            GroupMetric.median_price_30d,
+        ).where(GroupMetric.scope == scope)
+        if scope == "model":
+            statement = statement.join(ModelGroup, ModelGroup.id == GroupMetric.group_id).where(
+                GroupMetric.is_line.is_(True),
+                GroupMetric.is_fallback.is_(False),
+                ModelGroup.retired_at.is_(None),
+                ~ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True),
+            )
+        if scope != "brand":
+            statement = statement.where(GroupMetric.product_type != REVIEW_TYPE)
+        candidates = [
+            LiquidityCandidate(
+                key=row[0],
+                section=row[1],
+                sold_30d=row[2],
+                median_days_to_sell=row[3],
+                median_likes=row[4],
+                median_price=row[5],
+            )
+            for row in await session.execute(statement)
+        ]
+        scores = liquidity_scores(candidates, policy)
+        if scores:
+            await session.execute(
+                update(GroupMetric),
+                [{"id": key, "liquidity_score": score} for key, score in scores.items()],
+            )
+        ranked += len(scores)
+    return ranked
 
 
 def _aware(value: datetime) -> datetime:

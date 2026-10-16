@@ -503,10 +503,15 @@ def test_kind_is_in_group_trend_and_listing_responses(tmp_path: Path) -> None:
     with _api(factory) as client:
         groups = client.get("/api/groups", params={"brand_id": 1}).json()["data"]
         detail = client.get(f"/api/groups/{line.id}").json()
-        trends = client.get("/api/trends", params={"include_fallback": True}).json()
+        # Four listings never pass the liquidity threshold; the kinds are checked on all rows.
+        trends = client.get(
+            "/api/trends", params={"include_fallback": True, "include_unranked": True}
+        ).json()
         card = client.get(f"/api/trends/groups/{line.id}").json()
         catalog = client.get("/api/listings").json()["data"]
-        typed = client.get("/api/trends", params={"level": "type"}).json()
+        typed = client.get(
+            "/api/trends", params={"level": "type", "include_unranked": True}
+        ).json()
 
     kinds = {row["slug"]: row["kind"] for row in groups}
     assert {slug: kinds[slug] for slug in (YEEZY, "_none", "_desc-baggy", "city")} == {

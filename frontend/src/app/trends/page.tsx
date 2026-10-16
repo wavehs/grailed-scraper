@@ -13,8 +13,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useBrandsQuery, useTrendsQuery, useTypeNames } from '@/lib/queries';
-import type { NoModelShare, TrendFilters, TrendLevel, TrendRow, TrendSort } from '@/lib/types';
-import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
+import type { NoModelShare, TrendFilters, TrendLevel, TrendRanking, TrendRow, TrendSort } from '@/lib/types';
+import { formatCurrency, formatDate, formatNumber, formatPercent } from '@/lib/utils';
 
 const STORAGE_KEY = 'gla-trend-filters';
 const DEFAULT_FILTERS: TrendFilters = {
@@ -25,21 +25,19 @@ const DEFAULT_FILTERS: TrendFilters = {
   window: 30,
   priceMin: '',
   priceMax: '',
-  newOnly: false,
   minSales: 0,
+  includeUnranked: false,
   search: '',
   descriptors: false,
-  sort: 'trend',
+  sort: 'liquidity',
   desc: true,
 };
 const SORTS: Array<[TrendSort, string]> = [
-  ['trend', 'sortTrend'],
-  ['growth', 'sortGrowth'],
-  ['speed', 'sortSpeed'],
+  ['liquidity', 'sortLiquidity'],
   ['sales', 'sortSales'],
+  ['speed', 'sortSpeed'],
+  ['likes', 'sortLikes'],
   ['price', 'sortPrice'],
-  ['supply', 'sortSupply'],
-  ['new', 'sortNew'],
 ];
 const LEVELS: Array<[TrendLevel, string]> = [
   ['model', 'levelModels'],
@@ -50,7 +48,10 @@ const LEVELS: Array<[TrendLevel, string]> = [
 function loadFilters(): TrendFilters {
   try {
     const saved = window.sessionStorage.getItem(STORAGE_KEY);
-    return saved ? { ...DEFAULT_FILTERS, ...(JSON.parse(saved) as Partial<TrendFilters>) } : DEFAULT_FILTERS;
+    if (!saved) return DEFAULT_FILTERS;
+    const merged = { ...DEFAULT_FILTERS, ...(JSON.parse(saved) as Partial<TrendFilters>) };
+    // A session saved before the liquidity ranking may hold a sort the API no longer accepts.
+    return SORTS.some(([value]) => value === merged.sort) ? merged : { ...merged, sort: DEFAULT_FILTERS.sort };
   } catch {
     return DEFAULT_FILTERS;
   }
@@ -250,8 +251,12 @@ export default function TrendsPage() {
             />
           </label>
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <input type="checkbox" checked={filters.newOnly} onChange={(event) => update({ newOnly: event.target.checked })} />
-            {t('newOnly')}
+            <input
+              type="checkbox"
+              checked={filters.includeUnranked}
+              onChange={(event) => update({ includeUnranked: event.target.checked })}
+            />
+            {t('includeUnranked')}
           </label>
           {filters.level === 'model' && (
             <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]" title={t('showDescriptorsHelp')}>
@@ -283,10 +288,7 @@ export default function TrendsPage() {
         </div>
       </Card>
 
-      <details className="text-xs text-[var(--text-muted)]">
-        <summary className="cursor-pointer">{t('trendFormula')}</summary>
-        <p className="mt-1 max-w-3xl">{t('trendFormulaText')}</p>
-      </details>
+      <RankingHint ranking={trends.data?.ranking} />
 
       {trends.isLoading ? (
         <LoadingState />
@@ -302,14 +304,14 @@ export default function TrendsPage() {
             <TableHead>
               <tr>
                 <TableHeaderCell>{t(filters.level === 'model' ? 'model' : filters.level === 'type' ? 'productType' : 'brand')}</TableHeaderCell>
-                <TableHeaderCell>{t('weeklyTrend')}</TableHeaderCell>
-                <TableHeaderCell>{t('trendScore')}</TableHeaderCell>
-                <TableHeaderCell>{t('salesGrowth')}</TableHeaderCell>
-                <TableHeaderCell>{t('timeToSell')}</TableHeaderCell>
-                <TableHeaderCell>{t('sellThrough')}</TableHeaderCell>
-                <TableHeaderCell>{`${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}</TableHeaderCell>
+                <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
+                <TableHeaderCell>
+                  {filters.window === 30 ? t('salesPerMonth') : `${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}
+                </TableHeaderCell>
+                <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
+                <TableHeaderCell>{t('likesColumn')}</TableHeaderCell>
                 <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
-                <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
+                <TableHeaderCell>{t('weeklyTrend')}</TableHeaderCell>
               </tr>
             </TableHead>
             <tbody>
@@ -352,17 +354,12 @@ function TrendTableRow({
   typeName: (id?: string | null) => string;
 }) {
   const { locale, t } = useI18n();
-  const parts = t('trendParts')
-    .replace('{growth}', Number(row.growth).toFixed(2))
-    .replace('{speed}', row.speed === null ? '—' : Number(row.speed).toFixed(2))
-    .replace('{share}', formatPercent(row.sell_through_30d));
   const title =
     row.scope === 'model'
       ? `${row.brand} · ${groupLabel({ name: row.name ?? '', is_fallback: row.is_fallback, kind: row.kind }, t)} · ${typeName(row.product_type)}`
       : row.scope === 'type'
         ? `${row.brand} · ${typeName(row.product_type)}`
         : row.brand;
-  const change = row.price_change === null ? null : Number(row.price_change);
   return (
     <TableRow>
       <TableCell>
@@ -378,7 +375,6 @@ function TrendTableRow({
         <span className="mt-0.5 flex flex-wrap gap-1">
           {row.status === 'auto' && !isServiceGroup(row) && <Badge variant="warning">{t('autoGroup')}</Badge>}
           <GroupKindBadge kind={row.kind} />
-          {row.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
           {row.versions > 0 && (
             <Badge variant="muted">
               {t('versionsCount')}: {row.versions}
@@ -387,49 +383,52 @@ function TrendTableRow({
         </span>
       </TableCell>
       <TableCell>
-        <Sparkline values={row.weekly_sales} label={t('weeklyTrend')} />
-      </TableCell>
-      <TableCell>
-        <span className="font-semibold tabular-nums text-[var(--text-primary)]" title={parts}>
-          {row.trend_score === null ? '—' : Number(row.trend_score).toFixed(0)}
+        <span
+          className="font-semibold tabular-nums text-[var(--text-primary)]"
+          title={row.liquidity_score === null ? t('belowThreshold') : undefined}
+        >
+          {formatNumber(row.liquidity_score, 0, locale)}
         </span>
-      </TableCell>
-      <TableCell>
-        <span className="tabular-nums" title={t('vsPrevious')}>
-          ×{Number(row.growth).toFixed(2)}
-        </span>
-        <p className="text-xs tabular-nums text-[var(--text-muted)]">
-          {row.sold_30d} / {row.sold_prev_30d}
-        </p>
-      </TableCell>
-      <TableCell>
-        <span className="tabular-nums">
-          {row.median_days_to_sell === null ? '—' : `${Number(row.median_days_to_sell).toFixed(0)} ${t('daysShort')}`}
-        </span>
-      </TableCell>
-      <TableCell>
-        <span className="tabular-nums">{formatPercent(row.sell_through_30d)}</span>
       </TableCell>
       <TableCell>
         <span className="tabular-nums">{row.sold}</span>
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{formatCurrency(row.median_price, locale)}</span>
-        {change !== null && (
-          <p className="text-xs tabular-nums text-[var(--text-muted)]" title={t('priceChange')}>
-            {change > 0 ? '+' : ''}
-            {(change * 100).toFixed(0)}%
-          </p>
-        )}
+        <span className="tabular-nums">{formatNumber(row.median_days_to_sell, 1, locale)}</span>
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{row.active_now}</span>
-        <p className="text-xs tabular-nums text-[var(--text-muted)]">
-          +{row.new_listings_14d} {t('newListings14d')}
-        </p>
+        <span className="tabular-nums" title={t('medianLikes')}>
+          {formatNumber(row.median_likes, 0, locale)}
+        </span>
+      </TableCell>
+      <TableCell>
+        <span className="tabular-nums">{formatCurrency(row.median_price, locale)}</span>
+      </TableCell>
+      <TableCell>
+        <Sparkline values={row.weekly_sales} label={t('weeklyTrend')} />
       </TableCell>
     </TableRow>
   );
+}
+
+/** What a row needs to be ranked and how the four metrics are weighted. */
+function RankingHint({ ranking }: { ranking?: TrendRanking }) {
+  const { locale, t } = useI18n();
+  const { sectionName } = useTypeNames();
+  if (!ranking) return null;
+  const weight = (value: string) => `${Math.round(Number(value) * 100)}%`;
+  const excluded = ranking.excluded_sections.length
+    ? t('rankingExcluded').replace('{sections}', ranking.excluded_sections.map(sectionName).join(', '))
+    : '';
+  const text = t('rankingHint')
+    .replace('{minSales}', String(ranking.min_sales_30d))
+    .replace('{minPrice}', formatCurrency(ranking.min_price, locale))
+    .replace('{excluded}', excluded)
+    .replace('{sales}', weight(ranking.weights.sales))
+    .replace('{speed}', weight(ranking.weights.speed))
+    .replace('{likes}', weight(ranking.weights.likes))
+    .replace('{price}', weight(ranking.weights.price));
+  return <p className="max-w-3xl text-xs text-[var(--text-muted)]">{text}</p>;
 }
 
 /** The share of "No model" in the scope: of sales in the window, or of listings without sales. */

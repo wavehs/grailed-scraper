@@ -307,6 +307,20 @@ async def regroup(settings: Settings, *, full: bool = True) -> dict[str, object]
         await engine.dispose()
 
 
+async def recompute_metrics(settings: Settings) -> dict[str, object]:
+    """Recompute all group metrics and liquidity scores; grouping stays as it is."""
+
+    engine = create_async_engine(get_database_url(settings))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            metrics = await MetricsService(session).recompute()
+            await session.commit()
+        return {"status": "ok", "metrics": metrics.summary()}
+    finally:
+        await engine.dispose()
+
+
 async def grouping_report(
     settings: Settings,
     brand: str | None,
@@ -588,6 +602,9 @@ def main() -> int:
     regroup_parser.add_argument(
         "--delta", action="store_true", help="only new or changed listings when rules are unchanged"
     )
+    subparsers.add_parser(
+        "metrics", help="recompute group metrics and liquidity scores (no regroup)"
+    )
     report_parser = subparsers.add_parser(
         "grouping-report", help="grouping quality per brand (offline)"
     )
@@ -696,6 +713,8 @@ def main() -> int:
         return _print(run_taxonomy_check(Settings()))
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
+    if args.command == "metrics":
+        return _print(recompute_metrics(Settings()))
     if args.command == "grouping-report":
         return _print(
             grouping_report(

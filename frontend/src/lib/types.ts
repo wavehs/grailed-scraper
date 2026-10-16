@@ -235,7 +235,7 @@ export type GroupDetail = GroupSummary & {
 export type GroupList = { data: GroupSummary[]; total: number };
 
 export type TrendLevel = 'model' | 'type' | 'brand';
-export type TrendSort = 'trend' | 'growth' | 'speed' | 'sales' | 'price' | 'supply' | 'new';
+export type TrendSort = 'liquidity' | 'sales' | 'speed' | 'likes' | 'price';
 
 export type TrendRow = {
   scope: TrendLevel;
@@ -255,19 +255,14 @@ export type TrendRow = {
   sold: number;
   sold_7d: number;
   sold_30d: number;
-  sold_prev_30d: number;
   sold_90d: number;
-  growth: string;
-  speed: string | null;
-  trend_score: string | null;
+  /** Decimal string "0.00".."100.00"; null when the row is below the liquidity threshold. */
+  liquidity_score: string | null;
   median_days_to_sell: string | null;
-  sell_through_30d: string;
+  /** Median likes of listings sold in 90 days, a decimal string such as "38.0". */
+  median_likes: string | null;
   median_price: number | null;
-  price_change: string | null;
   active_now: number;
-  new_listings_14d: number;
-  is_new: boolean;
-  first_seen_at: string | null;
   weekly_sales: number[];
 };
 
@@ -281,11 +276,21 @@ export type NoModelShare = {
   sold_share: string | null;
 };
 
+/** The liquidity threshold and weights; weights are decimal strings that sum to 1. */
+export type TrendRanking = {
+  min_sales_30d: number;
+  /** Cents. */
+  min_price: number;
+  excluded_sections: string[];
+  weights: { sales: string; speed: string; likes: string; price: string };
+};
+
 export type TrendList = {
   data: TrendRow[];
   total: number;
   computed_at: string | null;
   no_model: NoModelShare;
+  ranking: TrendRanking;
 };
 
 export type TrendVariant = { value: string; sold: number; active: number; sell_through: string };
@@ -329,8 +334,9 @@ export type TrendFilters = {
   window: 7 | 30 | 90;
   priceMin: string;
   priceMax: string;
-  newOnly: boolean;
   minSales: number;
+  /** Also show rows below the liquidity threshold; the API returns only ranked rows by default. */
+  includeUnranked: boolean;
   search: string;
   /** Show description groups ("Baggy · jeans"); the API hides them by default. */
   descriptors: boolean;

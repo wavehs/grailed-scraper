@@ -1,4 +1,4 @@
-"""Trends: which models sell faster, more often and at better prices right now."""
+"""Trends: which models sell most often, fastest, most liked and at the best prices."""
 
 from __future__ import annotations
 
@@ -19,10 +19,12 @@ from app.domain.listings import decimal_to_cents
 from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
 from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
+from app.services.metrics.liquidity import LiquidityPolicy, liquidity_policy
 
 router = APIRouter(prefix="/trends", tags=["trends"])
 WINDOWS = (7, 30, 90)
-SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new"]
+SortKey = Literal["liquidity", "sales", "speed", "likes", "price"]
+_WEIGHT = Decimal("0.01")
 
 
 class TrendRow(BaseModel):
@@ -43,19 +45,13 @@ class TrendRow(BaseModel):
     sold: int
     sold_7d: int
     sold_30d: int
-    sold_prev_30d: int
     sold_90d: int
-    growth: Decimal
-    speed: Decimal | None
-    trend_score: Decimal | None
+    # 0-100 against the rows of the same level; None below the threshold.
+    liquidity_score: Decimal | None
     median_days_to_sell: Decimal | None
-    sell_through_30d: Decimal
+    median_likes: Decimal | None
     median_price: int | None
-    price_change: Decimal | None
     active_now: int
-    new_listings_14d: int
-    is_new: bool
-    first_seen_at: datetime | None
     weekly_sales: list[int]
 
 
@@ -73,11 +69,28 @@ class NoModelShare(BaseModel):
     sold_share: Decimal | None
 
 
+class RankingWeights(BaseModel):
+    sales: Decimal
+    speed: Decimal
+    likes: Decimal
+    price: Decimal
+
+
+class RankingInfo(BaseModel):
+    """The threshold and weights behind ``liquidity_score`` (config/liquidity.yaml)."""
+
+    min_sales_30d: int
+    min_price: int
+    excluded_sections: list[str]
+    weights: RankingWeights
+
+
 class TrendListResponse(BaseModel):
     data: list[TrendRow]
     total: int
     computed_at: datetime | None
     no_model: NoModelShare
+    ranking: RankingInfo
 
 
 class VariantRow(BaseModel):
@@ -128,12 +141,12 @@ async def list_trends(
     window: Annotated[int, Query()] = 30,
     price_min: Annotated[int | None, Query(ge=0)] = None,
     price_max: Annotated[int | None, Query(ge=0)] = None,
-    new_only: bool = False,
     min_sales: Annotated[int, Query(ge=0, le=10_000)] = 0,
     include_fallback: bool = False,
     include_descriptors: bool = False,
+    include_unranked: bool = False,
     search: Annotated[str, Query(max_length=200)] = "",
-    sort: SortKey = "trend",
+    sort: SortKey = "liquidity",
     desc: bool = True,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -166,8 +179,8 @@ async def list_trends(
         filters.append(price_column >= price_min)
     if price_max is not None:
         filters.append(price_column <= price_max)
-    if new_only:
-        filters.append(GroupMetric.is_new.is_(True))
+    if not include_unranked:
+        filters.append(GroupMetric.liquidity_score.is_not(None))
     if min_sales:
         filters.append(sold_column >= min_sales)
     statement = (
@@ -206,6 +219,7 @@ async def list_trends(
         total=total,
         computed_at=computed_at,
         no_model=await _no_model_share(session, scope, product_type, sold_column),
+        ranking=_ranking(liquidity_policy()),
     )
 
 
@@ -297,14 +311,27 @@ def _price_column(window: int) -> Any:
     }[window]
 
 
+def _ranking(policy: LiquidityPolicy) -> RankingInfo:
+    weights = policy.weights
+    return RankingInfo(
+        min_sales_30d=policy.min_sales_30d,
+        min_price=decimal_to_cents(policy.min_price),
+        excluded_sections=sorted(policy.excluded_sections),
+        weights=RankingWeights(
+            sales=weights.sales.quantize(_WEIGHT),
+            speed=weights.speed.quantize(_WEIGHT),
+            likes=weights.likes.quantize(_WEIGHT),
+            price=weights.price.quantize(_WEIGHT),
+        ),
+    )
+
+
 def _order(sort: str, desc: bool, sold: Any, price: Any) -> list[Any]:
     columns: dict[str, Any] = {
-        "trend": GroupMetric.trend_score,
-        "growth": GroupMetric.growth,
+        "liquidity": GroupMetric.liquidity_score,
         "sales": sold,
+        "likes": GroupMetric.median_likes_90d,
         "price": price,
-        "supply": GroupMetric.active_now,
-        "new": GroupMetric.first_seen_at,
     }
     if sort == "speed":
         # "Fastest first" means the shortest median time to sell.
@@ -355,19 +382,12 @@ def _row(
         sold=sold,
         sold_7d=metric.sold_7d,
         sold_30d=metric.sold_30d,
-        sold_prev_30d=metric.sold_prev_30d,
         sold_90d=metric.sold_90d,
-        growth=metric.growth,
-        speed=metric.speed,
-        trend_score=metric.trend_score,
+        liquidity_score=metric.liquidity_score,
         median_days_to_sell=metric.median_days_to_sell,
-        sell_through_30d=metric.sell_through_30d,
+        median_likes=metric.median_likes_90d,
         median_price=decimal_to_cents(price) if price is not None else None,
-        price_change=metric.price_change,
         active_now=metric.active_now,
-        new_listings_14d=metric.new_listings_14d,
-        is_new=metric.is_new,
-        first_seen_at=metric.first_seen_at,
         weekly_sales=list(metric.weekly_sales),
     )
 

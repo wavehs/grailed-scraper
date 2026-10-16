@@ -60,19 +60,12 @@ describe('stage 10 screens', () => {
       sold: 12,
       sold_7d: 4,
       sold_30d: 12,
-      sold_prev_30d: 3,
       sold_90d: 20,
-      growth: '3.2500',
-      speed: '0.7500',
-      trend_score: '146.25',
-      median_days_to_sell: '10.00',
-      sell_through_30d: '0.600000',
+      liquidity_score: '82.40',
+      median_days_to_sell: '10.50',
+      median_likes: '38.0',
       median_price: 52000,
-      price_change: '0.1000',
       active_now: 8,
-      new_listings_14d: 3,
-      is_new: true,
-      first_seen_at: '2026-09-01T00:00:00Z',
       weekly_sales: [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
     };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -96,9 +89,9 @@ describe('stage 10 screens', () => {
       name: 'Balenciaga · Track · Low-top sneakers',
     });
     expect(link).toHaveAttribute('href', '/group?id=5');
-    expect(screen.getByText('146')).toBeInTheDocument();
-    expect(screen.getByText('×3.25')).toBeInTheDocument();
-    expect(screen.getByText('new')).toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    expect(screen.getByText('10.5')).toBeInTheDocument();
+    expect(screen.getByText('38')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /Sales by week/ })).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Product type'), 'lowtop_sneakers');
     await userEvent.click(screen.getByRole('button', { name: '90 d' }));
@@ -137,19 +130,12 @@ describe('stage 10 screens', () => {
       sold: 3,
       sold_7d: 1,
       sold_30d: 3,
-      sold_prev_30d: 1,
       sold_90d: 5,
-      growth: '3.0000',
-      speed: null,
-      trend_score: '10.00',
+      liquidity_score: '10.00',
       median_days_to_sell: null,
-      sell_through_30d: '0.300000',
+      median_likes: null,
       median_price: 40000,
-      price_change: null,
       active_now: 7,
-      new_listings_14d: 0,
-      is_new: false,
-      first_seen_at: null,
       weekly_sales: Array(12).fill(0),
     };
     const rows = [
@@ -247,6 +233,99 @@ describe('stage 10 screens', () => {
     );
   });
 
+  it('ranks by liquidity by default, explains the threshold and can show unranked rows', async () => {
+    const row = {
+      scope: 'model',
+      scope_key: 'model:5',
+      group_id: 5,
+      brand_id: 1,
+      brand: 'Balenciaga',
+      product_type: 'lowtop_sneakers',
+      section: 'footwear',
+      name: 'Track',
+      status: 'confirmed',
+      is_fallback: false,
+      kind: 'model',
+      versions: 0,
+      listings: 40,
+      sold: 12,
+      sold_7d: 4,
+      sold_30d: 12,
+      sold_90d: 20,
+      liquidity_score: '71.30',
+      median_days_to_sell: '6.00',
+      median_likes: '57.0',
+      median_price: 52000,
+      active_now: 8,
+      weekly_sales: Array(12).fill(1),
+    };
+    const unranked = {
+      ...row,
+      scope_key: 'model:6',
+      group_id: 6,
+      name: 'Runner',
+      sold: 2,
+      liquidity_score: null,
+      median_likes: '4.0',
+    };
+    const ranking = {
+      min_sales_30d: 5,
+      min_price: 15000,
+      excluded_sections: ['dresses', 'other'],
+      weights: { sales: '0.40', speed: '0.25', likes: '0.20', price: '0.15' },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/brands')) return json({ data: [{ ...brand, id: 1, name: 'Balenciaga' }] });
+      if (url.endsWith('/grouping/taxonomy'))
+        return json({
+          version: 'taxonomy-v1',
+          sections: [
+            { id: 'footwear', ru: 'Обувь', en: 'Footwear' },
+            { id: 'dresses', ru: 'Платья', en: 'Dresses' },
+            { id: 'other', ru: 'Прочее', en: 'Other' },
+          ],
+          types: [
+            { id: 'lowtop_sneakers', section: 'footwear', ru: 'Кроссовки', en: 'Low-top sneakers' },
+          ],
+        });
+      if (url.includes('/trends?')) {
+        const data = url.includes('include_unranked=true') ? [row, unranked] : [row];
+        return json({ data, total: data.length, computed_at: '2026-10-01T12:00:00Z', ranking });
+      }
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp(<TrendsPage />);
+    await screen.findByRole('link', { name: 'Balenciaga · Track · Low-top sneakers' });
+    const trendCalls = () =>
+      fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes('/trends?'));
+    expect(trendCalls().every((url) => url.includes('sort=liquidity'))).toBe(true);
+    expect(trendCalls().some((url) => url.includes('include_unranked'))).toBe(false);
+    expect(screen.getByLabelText('Sort by')).toHaveValue('liquidity');
+    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent);
+    expect(headers).toEqual(
+      expect.arrayContaining(['Score', 'Sales/mo', 'Days to sell', 'Likes', 'Median price']),
+    );
+    expect(screen.getByText('71')).toBeInTheDocument();
+    expect(screen.getByText('57')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Ranking: ≥ 5 sales in 30 days, median ≥ $150, excluding sections: Dresses, Other. ' +
+          'Weights: sales 40%, speed 25%, likes 20%, price 15%.',
+      ),
+    ).toBeInTheDocument();
+
+    const toggle = screen.getByRole('checkbox', { name: 'Show items below the threshold' });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    const runner = await screen.findByRole('link', { name: 'Balenciaga · Runner · Low-top sneakers' });
+    expect(trendCalls().some((url) => url.includes('include_unranked=true'))).toBe(true);
+    const runnerRow = runner.closest('tr') as HTMLElement;
+    expect(within(runnerRow).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
+    expect(within(runnerRow).getByText('4')).toBeInTheDocument();
+  });
+
   it('shows the group card with versions, variants, sales links and edits', async () => {
     const group = {
       id: 1,
@@ -282,19 +361,12 @@ describe('stage 10 screens', () => {
       sold: 12,
       sold_7d: 2,
       sold_30d: 12,
-      sold_prev_30d: 6,
       sold_90d: 30,
-      growth: '1.8571',
-      speed: '0.6000',
-      trend_score: '66.86',
+      liquidity_score: '66.86',
       median_days_to_sell: '20.00',
-      sell_through_30d: '0.600000',
+      median_likes: '41.5',
       median_price: 90000,
-      price_change: null,
       active_now: 8,
-      new_listings_14d: 1,
-      is_new: false,
-      first_seen_at: null,
       weekly_sales: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3],
     };
     vi.stubGlobal(
@@ -310,7 +382,15 @@ describe('stage 10 screens', () => {
             colors: [{ value: 'milk', sold: 9, active: 2, sell_through: '0.818182' }],
             sizes: [{ value: 'us 10', sold: 5, active: 1, sell_through: '0.833333' }],
             versions: [
-              { ...metric, scope_key: 'model:2', group_id: 2, name: 'Mega Geobasket', sold: 3 },
+              {
+                ...metric,
+                scope_key: 'model:2',
+                group_id: 2,
+                name: 'Mega Geobasket',
+                sold: 3,
+                liquidity_score: null,
+                median_likes: '12.0',
+              },
             ],
             type_metrics: null,
             recent_sales: [
@@ -355,6 +435,14 @@ describe('stage 10 screens', () => {
       'href',
       '/group?id=2',
     );
+    const stat = (label: string) =>
+      screen.getByText(label, { selector: 'p' }).parentElement?.parentElement as HTMLElement;
+    expect(within(stat('Score')).getByText('67')).toBeInTheDocument();
+    expect(within(stat('Likes')).getByText('42')).toBeInTheDocument();
+    expect(screen.queryByText(/Sell-through/)).not.toBeInTheDocument();
+    const version = screen.getByRole('link', { name: 'Mega Geobasket' }).closest('tr') as HTMLElement;
+    expect(within(version).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
+    expect(within(version).getByText('12')).toBeInTheDocument();
     expect(screen.getByText('milk')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Rick Owens Geobasket Milk/ })).toHaveAttribute(
       'href',

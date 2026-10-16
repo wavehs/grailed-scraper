@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Clock3, ExternalLink, PackageCheck, Percent, ShoppingBag, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Clock3, DollarSign, ExternalLink, Gauge, Heart, ShoppingBag } from 'lucide-react';
 import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } from '@/components/group-editor';
 import { WeeklyCharts } from '@/components/trend-charts';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
 import { useTrendCardQuery, useTypeNames } from '@/lib/queries';
 import type { TrendListing, TrendRow, TrendVariant } from '@/lib/types';
-import { formatCurrency, formatPercent } from '@/lib/utils';
+import { formatCurrency, formatNumber } from '@/lib/utils';
 
 function GroupCard() {
   const searchParams = useSearchParams();
@@ -63,44 +63,43 @@ function GroupCard() {
       <div className="flex flex-wrap gap-1">
         {group.status === 'auto' && !isServiceGroup(group) && <Badge variant="warning">{t('autoGroup')}</Badge>}
         <GroupKindBadge kind={group.kind} />
-        {metrics?.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
       </div>
 
       {metrics ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
-              label={t('trendScore')}
-              value={metrics.trend_score === null ? '—' : Number(metrics.trend_score).toFixed(0)}
-              icon={<TrendingUp size={18} />}
+              label={t('liquidityScore')}
+              value={
+                <span title={metrics.liquidity_score === null ? t('belowThreshold') : undefined}>
+                  {formatNumber(metrics.liquidity_score, 0, locale)}
+                </span>
+              }
+              icon={<Gauge size={18} />}
             />
             <StatCard
               label={`${t('salesInWindow')}, ${windowDays} ${t('daysShort')}`}
-              value={`${metrics.sold} · ×${Number(metrics.growth).toFixed(2)}`}
+              value={metrics.sold}
               icon={<ShoppingBag size={18} />}
             />
             <StatCard
-              label={t('timeToSell')}
-              value={
-                metrics.median_days_to_sell === null
-                  ? '—'
-                  : `${Number(metrics.median_days_to_sell).toFixed(0)} ${t('daysShort')}`
-              }
+              label={t('daysToSell')}
+              value={formatNumber(metrics.median_days_to_sell, 1, locale)}
               icon={<Clock3 size={18} />}
             />
-            <StatCard label={t('sellThrough')} value={formatPercent(metrics.sell_through_30d)} icon={<Percent size={18} />} />
             <StatCard
-              label={t('supplyNow')}
-              value={`${metrics.active_now} · +${metrics.new_listings_14d}`}
-              icon={<PackageCheck size={18} />}
+              label={t('likesColumn')}
+              value={formatNumber(metrics.median_likes, 0, locale)}
+              icon={<Heart size={18} />}
+            />
+            <StatCard
+              label={t('medianPrice')}
+              value={formatCurrency(metrics.median_price, locale)}
+              icon={<DollarSign size={18} />}
             />
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            {t('medianPrice')}: {formatCurrency(metrics.median_price, locale)}
-            {metrics.price_change !== null &&
-              ` (${Number(metrics.price_change) > 0 ? '+' : ''}${(Number(metrics.price_change) * 100).toFixed(0)}% ${t('priceChange')})`}
-            {' · '}
-            {t('salesGrowth')}: {metrics.sold_30d} / {metrics.sold_prev_30d} {t('vsPrevious')}
+            {t('supplyNow')}: {metrics.active_now}
           </p>
           <Card className="p-5">
             <WeeklyCharts
@@ -157,11 +156,10 @@ function MetricTable({ rows }: { rows: TrendRow[] }) {
       <TableHead>
         <tr>
           <TableHeaderCell>{t('name')}</TableHeaderCell>
-          <TableHeaderCell>{t('trendScore')}</TableHeaderCell>
+          <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
           <TableHeaderCell>{t('salesInWindow')}</TableHeaderCell>
-          <TableHeaderCell>{t('salesGrowth')}</TableHeaderCell>
-          <TableHeaderCell>{t('timeToSell')}</TableHeaderCell>
-          <TableHeaderCell>{t('sellThrough')}</TableHeaderCell>
+          <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
+          <TableHeaderCell>{t('likesColumn')}</TableHeaderCell>
           <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
           <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
         </tr>
@@ -179,14 +177,13 @@ function MetricTable({ rows }: { rows: TrendRow[] }) {
               )}
             </TableCell>
             <TableCell className="tabular-nums">
-              {row.trend_score === null ? '—' : Number(row.trend_score).toFixed(0)}
+              <span title={row.liquidity_score === null ? t('belowThreshold') : undefined}>
+                {formatNumber(row.liquidity_score, 0, locale)}
+              </span>
             </TableCell>
             <TableCell className="tabular-nums">{row.sold}</TableCell>
-            <TableCell className="tabular-nums">×{Number(row.growth).toFixed(2)}</TableCell>
-            <TableCell className="tabular-nums">
-              {row.median_days_to_sell === null ? '—' : `${Number(row.median_days_to_sell).toFixed(0)} ${t('daysShort')}`}
-            </TableCell>
-            <TableCell className="tabular-nums">{formatPercent(row.sell_through_30d)}</TableCell>
+            <TableCell className="tabular-nums">{formatNumber(row.median_days_to_sell, 1, locale)}</TableCell>
+            <TableCell className="tabular-nums">{formatNumber(row.median_likes, 0, locale)}</TableCell>
             <TableCell className="tabular-nums">{formatCurrency(row.median_price, locale)}</TableCell>
             <TableCell className="tabular-nums">{row.active_now}</TableCell>
           </TableRow>
@@ -211,7 +208,6 @@ function VariantTable({ title, rows }: { title: string; rows: TrendVariant[] }) 
               <th className="py-1 font-medium">{title}</th>
               <th className="py-1 font-medium">{t('sold')}</th>
               <th className="py-1 font-medium">{t('active')}</th>
-              <th className="py-1 font-medium">{t('sellThrough')}</th>
             </tr>
           </thead>
           <tbody className="tabular-nums text-[var(--text-secondary)]">
@@ -220,7 +216,6 @@ function VariantTable({ title, rows }: { title: string; rows: TrendVariant[] }) 
                 <td className="py-1 text-[var(--text-primary)]">{row.value}</td>
                 <td className="py-1">{row.sold}</td>
                 <td className="py-1">{row.active}</td>
-                <td className="py-1">{formatPercent(row.sell_through)}</td>
               </tr>
             ))}
           </tbody>

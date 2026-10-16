@@ -22,7 +22,7 @@ from app.db.session import get_db
 from app.main import app
 from app.services.grouping import GroupingService
 from app.services.metrics import MetricsService
-from app.services.metrics.calculator import MetricListing, compute_metrics, trend_score
+from app.services.metrics.calculator import MetricListing, compute_metrics
 
 AS_OF = datetime(2026, 10, 1, 12, tzinfo=UTC)
 
@@ -40,6 +40,7 @@ def _item(
     relist: bool = False,
     color: str | None = "Black",
     size: str | None = "M",
+    likes: int = 0,
 ) -> MetricListing:
     listed = AS_OF - timedelta(days=listed_days)
     return MetricListing(
@@ -55,21 +56,25 @@ def _item(
         is_relist=relist,
         color=color,
         size=size,
+        likes=likes,
     )
 
 
-def test_windows_series_medians_and_trend_formula() -> None:
+def test_windows_series_and_medians() -> None:
     listings = [
-        _item(1, price="100", sold_days=1, listed_days=11),
-        _item(2, price="200", sold_days=5, listed_days=25),
-        _item(3, price="300", sold_days=20, listed_days=30),
-        _item(4, price="900", sold_days=25, listed_days=30, usable=False),
-        _item(5, price="150", sold_days=40, listed_days=60),
-        _item(6, price="120", sold_days=80, listed_days=100, exact=False),
-        _item(7, status="active", price="250", listed_days=3, color="Grey", size="L"),
+        _item(1, price="100", sold_days=1, listed_days=11, likes=10),
+        _item(2, price="200", sold_days=5, listed_days=25, likes=40),
+        _item(3, price="300", sold_days=20, listed_days=30, likes=25),
+        _item(4, price="900", sold_days=25, listed_days=30, usable=False, likes=7),
+        _item(5, price="150", sold_days=40, listed_days=60, likes=30),
+        _item(6, price="120", sold_days=80, listed_days=100, exact=False, likes=12),
+        # Active likes are not demand that turned into a sale.
+        _item(7, status="active", price="250", listed_days=3, color="Grey", size="L", likes=500),
         _item(8, status="active", price="260", listed_days=20, color=None),
         # A relist: time to sell starts at the first listing of the item.
-        _item(9, price="210", sold_days=2, listed_days=4, created_days=62, relist=True),
+        _item(9, price="210", sold_days=2, listed_days=4, created_days=62, relist=True, likes=19),
+        # Older than 90 days: out of the likes window.
+        _item(10, price="210", sold_days=120, listed_days=130, likes=900),
     ]
     metrics = compute_metrics(listings, AS_OF)
     assert (metrics.sold_7d, metrics.sold_30d, metrics.sold_prev_30d, metrics.sold_90d) == (
@@ -87,7 +92,8 @@ def test_windows_series_medians_and_trend_formula() -> None:
     assert metrics.sell_through_30d == Decimal("0.714286")
     assert metrics.growth == Decimal("3.0000")  # (5 + 1) / (1 + 1)
     assert metrics.speed == Decimal("0.7500")  # 30 / (30 + 10)
-    assert metrics.trend_score == Decimal("160.71")
+    # Sold within 90 days: 7, 10, 12, 19, 25, 30, 40.
+    assert metrics.median_likes_90d == Decimal("19.0")
     assert metrics.colors[0] == {
         "value": "black",
         "sold": 7,
@@ -98,12 +104,12 @@ def test_windows_series_medians_and_trend_formula() -> None:
     assert not metrics.is_new  # the oldest listing is 100 days old
 
 
-def test_trend_needs_three_sales_and_smooths_growth() -> None:
-    assert trend_score(2, Decimal(3), Decimal(1), Decimal(1)) is None
-    assert trend_score(3, Decimal(4), None, Decimal("0.5")) == Decimal("100.00")
-    single = compute_metrics([_item(1, sold_days=3, listed_days=10)], AS_OF)
-    assert single.growth == Decimal("2.0000") and single.trend_score is None
-    assert single.is_new
+def test_likes_median_is_unknown_without_recent_sales() -> None:
+    single = compute_metrics([_item(1, sold_days=3, listed_days=10, likes=3)], AS_OF)
+    unsold = compute_metrics([_item(1, status="active", likes=50)], AS_OF)
+
+    assert single.median_likes_90d == Decimal("3.0") and single.is_new
+    assert unsold.median_likes_90d is None
 
 
 def _listing(
@@ -117,6 +123,7 @@ def _listing(
     days_ago: int,
     seller: str,
     sold_days: int | None = None,
+    likes: int = 0,
 ) -> Listing:
     created = AS_OF - timedelta(days=days_ago)
     return Listing(
@@ -142,6 +149,7 @@ def _listing(
         designer_names=[],
         seller_identity=seller,
         seller_identity_mode="hashed",
+        likes_count=likes,
         quality_flags=[],
         fetch_tier="T1",
         raw_json={},
@@ -181,6 +189,7 @@ async def _seed(tmp_path: Path) -> tuple[AsyncEngine, async_sessionmaker[AsyncSe
                     days_ago=20 + index,
                     sold_days=index + 1,
                     seller=f"s{index}",
+                    likes=10 + index,
                 )
             )
         rows.append(
@@ -242,15 +251,24 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     try:
         client = TestClient(app)
         models = client.get("/api/trends").json()
+        everything = client.get("/api/trends", params={"include_unranked": "true"}).json()
         footwear = client.get(
             "/api/trends", params={"section": "footwear", "sort": "sales", "window": 90}
         ).json()
         filtered = client.get(
-            "/api/trends", params={"brand_ids": "2", "min_sales": 3, "price_min": 700}
+            "/api/trends",
+            params={
+                "brand_ids": "2", "min_sales": 3, "price_min": 700, "include_unranked": "true"
+            },
         ).json()
         cheap = client.get("/api/trends", params={"price_max": 100}).json()
-        types = client.get("/api/trends", params={"level": "type"}).json()
-        brands = client.get("/api/trends", params={"level": "brand", "sort": "growth"}).json()
+        types = client.get(
+            "/api/trends", params={"level": "type", "include_unranked": "true"}
+        ).json()
+        brands = client.get(
+            "/api/trends", params={"level": "brand", "sort": "likes", "include_unranked": "true"}
+        ).json()
+        old_sort = client.get("/api/trends", params={"sort": "growth"})
         card = client.get(f"/api/trends/groups/{line_id}").json()
         catalog = client.get("/api/listings", params={"product_type": "hoodie"}).json()
         first = client.get("/api/listings", params={"limit": 2}).json()
@@ -265,13 +283,26 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     finally:
         app.dependency_overrides.clear()
 
-    names = {(row["brand"], row["name"]) for row in models["data"]}
-    assert {("Balenciaga", "Track"), ("Rick Owens", "Geobasket")} <= names
+    # Geobasket sold 3 times in 30 days: below the threshold, so only Track is ranked.
+    assert [(row["brand"], row["name"]) for row in models["data"]] == [("Balenciaga", "Track")]
+    assert models["ranking"] == {
+        "min_sales_30d": 5,
+        "min_price": 15000,
+        "excluded_sections": ["dresses", "other"],
+        "weights": {"sales": "0.40", "speed": "0.25", "likes": "0.20", "price": "0.15"},
+    }
+    names = [row["name"] for row in everything["data"]]
+    assert names[0] == "Track" and "Geobasket" in names
+    geobasket = next(row for row in everything["data"] if row["name"] == "Geobasket")
+    assert geobasket["liquidity_score"] is None
     assert all(row["scope"] == "model" and not row["is_fallback"] for row in models["data"])
-    track = next(row for row in models["data"] if row["name"] == "Track")
+    track = models["data"][0]
     assert track["versions"] == 1 and track["sold_30d"] == 6 and track["active_now"] == 1
-    assert track["trend_score"] is not None and len(track["weekly_sales"]) == 12
-    assert isinstance(track["median_price"], int)
+    assert track["liquidity_score"] == "50.00"  # alone in the pool
+    assert track["median_likes"] == "12.5" and track["median_days_to_sell"] == "19.00"
+    assert len(track["weekly_sales"]) == 12 and isinstance(track["median_price"], int)
+    assert "trend_score" not in track and "growth" not in track
+    assert old_sort.status_code == 422
     assert [row["section"] for row in footwear["data"]] == ["footwear"] * len(footwear["data"])
     assert footwear["data"][0]["name"] == "Track"
     assert [row["name"] for row in filtered["data"]] == ["Geobasket"]

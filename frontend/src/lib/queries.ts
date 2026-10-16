@@ -131,8 +131,8 @@ export function trendParams(filters: TrendFilters, offset = 0): URLSearchParams 
   if (filters.productType) params.set('product_type', filters.productType);
   if (filters.priceMin) params.set('price_min', filters.priceMin);
   if (filters.priceMax) params.set('price_max', filters.priceMax);
-  if (filters.newOnly) params.set('new_only', 'true');
   if (filters.minSales) params.set('min_sales', String(filters.minSales));
+  if (filters.includeUnranked) params.set('include_unranked', 'true');
   if (filters.search.trim()) params.set('search', filters.search.trim());
   if (filters.descriptors) params.set('include_descriptors', 'true');
   return params;
