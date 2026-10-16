@@ -13,10 +13,10 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import GroupMetricDaily, GroupMonthStat
+from app.db.models import GroupMetric, GroupMetricDaily, GroupMonthStat
 from app.services.metrics.calculator import MetricListing, price_outliers
 from app.services.metrics.pricing import BUCKETS, QUARTILES, in_bucket, percentile
 
@@ -33,7 +33,6 @@ SNAPSHOT_COLUMNS = (
     "active_now",
     "median_price_30d",
     "sell_through_30d",
-    "trend_score",
     "active_effective",
     "active_fresh",
 )
@@ -109,6 +108,22 @@ async def write_snapshots(
     rows = snapshot_rows(values, day)
     await _insert(session, GroupMetricDaily, rows)
     return len(rows)
+
+
+async def copy_scores_to_snapshots(session: AsyncSession, day: date) -> None:
+    """Copy the fresh Liquidity Scores onto the snapshots of ``day``."""
+
+    score = (
+        select(GroupMetric.liquidity_score)
+        .where(GroupMetric.scope_key == GroupMetricDaily.scope_key)
+        .scalar_subquery()
+    )
+    await session.execute(
+        update(GroupMetricDaily)
+        .where(GroupMetricDaily.snapshot_date == day)
+        .values(liquidity_score=score)
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def write_month_stats(

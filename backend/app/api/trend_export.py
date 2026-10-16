@@ -22,6 +22,7 @@ from app.api.mutation import MutationRoute
 from app.api.trend_query import TrendQuery, trend_query, trend_select
 from app.api.trends import TrendRow, trend_rows
 from app.db.session import get_db
+from app.services.metrics.liquidity_store import effective_policy
 
 router = APIRouter(prefix="/trends", tags=["trends"], route_class=MutationRoute)
 EXPORT_MAX_ROWS = 50_000
@@ -63,7 +64,8 @@ COLUMNS: tuple[Column, ...] = (
     ("sold_90d", lambda row: row.sold_90d),
     ("median_price_usd", lambda row: _dollars(row.median_price)),
     ("price_change", lambda row: row.price_change),
-    ("trend_score", lambda row: row.trend_score),
+    ("sales_per_month", lambda row: row.sales_per_month),
+    ("period_median_likes", lambda row: row.period_median_likes),
     ("liquidity_score", lambda row: row.liquidity_score),
     ("p30", lambda row: row.p30),
     ("p30_n", lambda row: row.p30_n),
@@ -127,10 +129,12 @@ async def export_trends(
     found: list[tuple[Any, ...]] = list(
         (await session.execute(selected.ordered(query).limit(EXPORT_MAX_ROWS))).tuples()
     )
+    period_days = (await effective_policy(session)).period_days
+    by_period = selected.period is not None
     rows: list[TrendRow] = []
     for start in range(0, len(found), LOOKUP_BATCH):
         batch = found[start : start + LOOKUP_BATCH]
-        rows.extend(await trend_rows(session, batch, query, by_period=selected.period is not None))
+        rows.extend(await trend_rows(session, batch, query, period_days, by_period=by_period))
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
     return StreamingResponse(
         csv_chunks(rows),

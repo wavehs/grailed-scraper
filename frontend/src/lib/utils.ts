@@ -13,6 +13,18 @@ export function formatPercent(value?: string | number | null): string {
   return `${(num * multiplier).toFixed(1)}%`;
 }
 
+/** A decimal string or number with at most `fractionDigits` digits; '—' when missing. */
+export function formatNumber(
+  value?: string | number | null,
+  fractionDigits: number = 0,
+  locale: string = 'en-US',
+): string {
+  if (value === undefined || value === null || value === '') return '—';
+  const num = Number(value);
+  if (Number.isNaN(num)) return '—';
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: fractionDigits }).format(num);
+}
+
 export function formatCurrency(cents?: number | null, locale: string = 'en-US'): string {
   if (cents === undefined || cents === null) return '—';
   return new Intl.NumberFormat(locale, {

@@ -56,16 +56,17 @@ def test_domain_migration_creates_required_tables_and_indexes(tmp_path) -> None:
     assert not {"cover_dhash", "identity_version"} & listing_columns
     assert not {"identity_matches", "physical_items"} & set(inspector.get_table_names())
     assert "scoring_snapshots" not in inspector.get_table_names()
-    assert {"trend_score", "weekly_sales", "sell_through_30d", "colors", "sizes"}.issubset(
-        {column["name"] for column in inspector.get_columns("group_metrics")}
-    )
-    assert "model_rules" not in inspector.get_table_names()
+    metric_columns = {column["name"] for column in inspector.get_columns("group_metrics")}
+    assert {"liquidity_score", "windows", "period_sold", "weekly_sales"} <= metric_columns
+    assert {"sell_through_30d", "colors", "sizes"} <= metric_columns
+    assert not {"trend_score", "ls_ref_scope"} & metric_columns
     assert "expected_source" in {
         column["name"] for column in inspector.get_columns("parser_run_tasks")
     }
-    assert "ix_group_metrics_scope_trend" in {
+    assert "ix_group_metrics_scope_liquidity" in {
         index["name"] for index in inspector.get_indexes("group_metrics")
     }
+    assert "model_rules" not in inspector.get_table_names()
     parser_run_column = next(
         column for column in inspector.get_columns("listings") if column["name"] == "parser_run_id"
     )

@@ -1,89 +1,226 @@
-"""P30, the chance an item sells within 30 days of being listed (v2 plan 2.2).
+"""Liquidity score: how often, how fast, how liked and how expensive an item sells.
 
-The cohort is relist chains whose root was listed 30-120 days ago; a chain succeeds when any
-of its listings sold within 30 days of the root. Raw counts are smoothed towards a parent
-rate, so one sale out of one is not 100%.
+Pure functions; ``MetricsService`` feeds them all rows of one scope. The policy (period,
+threshold, weights) is edited on the trends screen; config/liquidity.yaml holds the
+defaults. See docs/METRICS.md, section 3.
 """
 
 from __future__ import annotations
 
-import math
-from collections import defaultdict
-from collections.abc import Callable, Hashable, Sequence
-from datetime import datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING
+from bisect import bisect_left, bisect_right
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
-from app.services.metrics.supply import is_effective
+import yaml  # type: ignore[import-untyped]
 
-if TYPE_CHECKING:
-    from app.services.metrics.calculator import MetricListing
+from app.core.config import PROJECT_ROOT
+from app.services.metrics.calculator import PERIODS
 
-P30_DAYS = 30
-COHORT_MIN_AGE_DAYS = 30
-COHORT_MAX_AGE_DAYS = 120
-SMOOTHING_WEIGHT = 20
-MIN_EXPECTED_DAYS = 7
-MAX_EXPECTED_DAYS = 365
-_SURE = Decimal("0.999")
-_SHARE = Decimal("0.000001")
+POLICY_PATH = PROJECT_ROOT / "config" / "liquidity.yaml"
+WEIGHT_NAMES = ("sales", "speed", "likes", "price")
+DAYS_PER_MONTH = Decimal(30)
+_SCORE = Decimal("0.01")
+_WEIGHT = Decimal("0.0001")
+_MONTHLY = Decimal("0.1")
+_HUNDRED = Decimal(100)
+_HALF = Decimal("0.5")
 
 
-def p30_counts(listings: Sequence[MetricListing], as_of: datetime) -> tuple[int, int]:
-    """(chains sold within 30 days, chains in the cohort) for the scope's listings."""
+@dataclass(frozen=True, slots=True)
+class Weights:
+    sales: Decimal
+    speed: Decimal
+    likes: Decimal
+    price: Decimal
 
-    earliest = as_of - timedelta(days=COHORT_MAX_AGE_DAYS)
-    latest = as_of - timedelta(days=COHORT_MIN_AGE_DAYS)
-    cohort = {
-        item.id
-        for item in listings
-        if item.root_id is None and is_effective(item) and earliest <= item.listed_at <= latest
+
+@dataclass(frozen=True, slots=True)
+class LiquidityPolicy:
+    version: str
+    period_days: int
+    min_sales_per_month: Decimal
+    min_price: Decimal
+    excluded_sections: frozenset[str]
+    weights: Weights
+
+
+@dataclass(frozen=True, slots=True)
+class LiquidityCandidate:
+    """One metrics row over the policy period; ``key`` is the row id."""
+
+    key: int
+    section: str | None
+    sold: int
+    median_days_to_sell: Decimal | None
+    median_likes: Decimal | None
+    median_price: Decimal | None
+
+
+def sales_per_month(sold: int, period_days: int) -> Decimal:
+    return (Decimal(sold) * DAYS_PER_MONTH / Decimal(period_days)).quantize(
+        _MONTHLY, ROUND_HALF_UP
+    )
+
+
+def is_eligible(candidate: LiquidityCandidate, policy: LiquidityPolicy) -> bool:
+    """Frequent, expensive enough, with a known speed and not in an excluded section."""
+
+    monthly = Decimal(candidate.sold) * DAYS_PER_MONTH / Decimal(policy.period_days)
+    return (
+        candidate.sold > 0
+        and monthly >= policy.min_sales_per_month
+        and candidate.median_price is not None
+        and candidate.median_price >= policy.min_price
+        and candidate.median_days_to_sell is not None
+        and candidate.section not in policy.excluded_sections
+    )
+
+
+def liquidity_scores(
+    candidates: Sequence[LiquidityCandidate], policy: LiquidityPolicy
+) -> dict[int, Decimal]:
+    """Weighted percentiles (0-100) of the eligible candidates; others get no score."""
+
+    pool = [item for item in candidates if is_eligible(item, policy)]
+    if not pool:
+        return {}
+    sales = _Ranks([Decimal(item.sold) for item in pool])
+    days = _Ranks([_known(item.median_days_to_sell) for item in pool])
+    likes = _Ranks([_known(item.median_likes) for item in pool])
+    prices = _Ranks([_known(item.median_price) for item in pool])
+    weights = policy.weights
+    return {
+        item.key: (
+            _HUNDRED
+            * (
+                weights.sales * sales.share(Decimal(item.sold))
+                + weights.speed * days.share(_known(item.median_days_to_sell), lower_is_better=True)
+                + weights.likes * likes.share(_known(item.median_likes))
+                + weights.price * prices.share(_known(item.median_price))
+            )
+        ).quantize(_SCORE, ROUND_HALF_UP)
+        for item in pool
     }
-    window = timedelta(days=P30_DAYS)
-    sold: set[int] = set()
-    for item in listings:
-        chain = item.root_id if item.root_id is not None else item.id
-        if chain not in cohort or item.status != "sold" or item.sold_at is None:
-            continue
-        if item.sold_at <= as_of and item.sold_at - item.item_created_at <= window:
-            sold.add(chain)
-    return len(sold), len(cohort)
 
 
-def p30_by(
-    listings: Sequence[MetricListing], as_of: datetime, value: Callable[[MetricListing], Hashable]
-) -> dict[Hashable, tuple[int, int]]:
-    """``p30_counts`` per value (a size, say); a relist joins its root's value."""
+class _Ranks:
+    """Percentile of a value in a pool: worse values count fully, ties count half."""
 
-    own = {item.id: value(item) for item in listings}
-    split: dict[Hashable, list[MetricListing]] = defaultdict(list)
-    for item in listings:
-        root = item.root_id if item.root_id in own else item.id
-        split[own[root]].append(item)
-    return {key: p30_counts(items, as_of) for key, items in split.items()}
+    def __init__(self, values: list[Decimal]) -> None:
+        self._sorted = sorted(values)
+        self._size = Decimal(len(values))
 
-
-def rate(sold: int, cohort: int) -> Decimal | None:
-    if cohort <= 0:
-        return None
-    return (Decimal(sold) / Decimal(cohort)).quantize(_SHARE, ROUND_HALF_UP)
+    def share(self, value: Decimal, *, lower_is_better: bool = False) -> Decimal:
+        low = bisect_left(self._sorted, value)
+        high = bisect_right(self._sorted, value)
+        worse = len(self._sorted) - high if lower_is_better else low
+        return (Decimal(worse) + _HALF * (high - low)) / self._size
 
 
-def smooth(sold: int, cohort: int, parent: Decimal) -> Decimal:
-    """Empirical Bayes: ``(k + m·p) / (n + m)`` with ``m = 20``."""
-
-    weight = Decimal(SMOOTHING_WEIGHT)
-    value = (Decimal(sold) + weight * parent) / (Decimal(cohort) + weight)
-    return min(Decimal(1), max(Decimal(0), value)).quantize(_SHARE, ROUND_HALF_UP)
+def _known(value: Decimal | None) -> Decimal:
+    # Unknown likes count as none; days and price are known for every eligible row.
+    return value if value is not None else Decimal(0)
 
 
-def expected_days(p30: Decimal) -> Decimal:
-    """Days to sell at a constant hazard ``λ = −ln(1 − P̃30) / 30``, clamped to 7-365."""
+@lru_cache(maxsize=1)
+def default_policy() -> LiquidityPolicy:
+    """The shipped defaults, read once per process."""
 
-    if p30 >= _SURE:
-        return Decimal(MIN_EXPECTED_DAYS)
-    if p30 <= 0:
-        return Decimal(MAX_EXPECTED_DAYS)
-    days = P30_DAYS / -math.log(1 - float(p30))
-    clamped = min(MAX_EXPECTED_DAYS, max(MIN_EXPECTED_DAYS, days))
-    return Decimal(str(round(clamped, 2)))
+    return load_liquidity_policy()
+
+
+def load_liquidity_policy(path: Path = POLICY_PATH) -> LiquidityPolicy:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"Cannot read the liquidity policy {path}: {error}") from error
+    if not isinstance(data, Mapping):
+        raise ValueError(f"The liquidity policy {path} must be a mapping")
+    return parse_policy(data, known_sections=known_sections())
+
+
+def known_sections() -> Collection[str]:
+    from app.services.grouping.policy import load_policy
+
+    return load_policy().taxonomy.sections.keys()
+
+
+def parse_policy(data: Mapping[str, Any], *, known_sections: Collection[str]) -> LiquidityPolicy:
+    period = data.get("period_days")
+    # Strictly int: a stored 30.0 would miss the "30" window and empty the ranking.
+    if type(period) is not int or period not in PERIODS:
+        raise ValueError(f"period_days must be one of: {', '.join(map(str, PERIODS))}")
+    min_sales = _decimal(data.get("min_sales_per_month"), "min_sales_per_month")
+    if min_sales < 0:
+        raise ValueError("min_sales_per_month must not be negative")
+    min_price = _decimal(data.get("min_price_usd"), "min_price_usd")
+    if min_price < 0:
+        raise ValueError("min_price_usd must not be negative")
+    sections = data.get("excluded_sections") or []
+    if not isinstance(sections, list) or not all(isinstance(item, str) for item in sections):
+        raise ValueError("excluded_sections must be a list of section ids")
+    unknown = sorted(set(sections) - set(known_sections))
+    if unknown:
+        raise ValueError(f"excluded_sections has an unknown section: {', '.join(unknown)}")
+    return LiquidityPolicy(
+        version=str(data.get("version") or "liquidity"),
+        period_days=period,
+        min_sales_per_month=min_sales,
+        min_price=min_price,
+        excluded_sections=frozenset(sections),
+        weights=_weights(data.get("weights")),
+    )
+
+
+def policy_data(policy: LiquidityPolicy) -> dict[str, Any]:
+    """The JSON form ``parse_policy`` reads back; stored in app_settings."""
+
+    weights = policy.weights
+    return {
+        "version": policy.version,
+        "period_days": policy.period_days,
+        "min_sales_per_month": str(policy.min_sales_per_month),
+        "min_price_usd": str(policy.min_price),
+        "excluded_sections": sorted(policy.excluded_sections),
+        "weights": {name: str(getattr(weights, name)) for name in WEIGHT_NAMES},
+    }
+
+
+def _weights(raw: object) -> Weights:
+    """Any non-negative shares; they are scaled to sum to 1."""
+
+    if not isinstance(raw, Mapping) or set(raw) != set(WEIGHT_NAMES):
+        raise ValueError(f"weights must name exactly: {', '.join(WEIGHT_NAMES)}")
+    values = {name: _decimal(raw[name], f"weights.{name}") for name in WEIGHT_NAMES}
+    if any(value < 0 for value in values.values()):
+        raise ValueError("weights must not be negative")
+    try:
+        total = sum(values.values(), Decimal(0))
+        if total <= 0:
+            raise ValueError("at least one weight must be above 0")
+        shares = {
+            name: (value / total).quantize(_WEIGHT, ROUND_HALF_UP)
+            for name, value in values.items()
+        }
+    except ArithmeticError as error:
+        raise ValueError("weights are too large") from error
+    # The largest share takes the rounding remainder so the weights sum to exactly 1.
+    largest = max(WEIGHT_NAMES, key=lambda name: shares[name])
+    remainder = Decimal(1) - sum(shares.values(), Decimal(0))
+    return Weights(**{**shares, largest: shares[largest] + remainder})
+
+
+def _decimal(value: object, name: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        raise ValueError(f"{name} must be a number")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ArithmeticError) as error:
+        raise ValueError(f"{name} must be a number") from error
+    if not number.is_finite():
+        raise ValueError(f"{name} must be a number")
+    return number

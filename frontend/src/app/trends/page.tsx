@@ -15,6 +15,7 @@ import { ExportCsvLink } from '@/components/export-csv-link';
 import { MetricBadges } from '@/components/metric-badges';
 import { WatchStar } from '@/components/watch-star';
 import { PeriodCoverageLine, PeriodPicker } from '@/components/period-picker';
+import { PeriodControl, RankingSettings, RankingStatus, useRankingControls } from '@/components/ranking-settings';
 import { Sparkline } from '@/components/trend-charts';
 import { CLEAR_WARDROBE, WardrobePresets } from '@/components/wardrobe-presets';
 import { Badge } from '@/components/ui/badge';
@@ -24,9 +25,10 @@ import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/co
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
+import { periodLabel } from '@/lib/liquidity';
 import { useBrandsQuery, useTrendsQuery, useTypeNames } from '@/lib/queries';
-import type { NoModelShare, TrendFilters, TrendLevel, TrendRow, TrendSort } from '@/lib/types';
-import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
+import type { NoModelShare, TrendFilters, TrendLevel, TrendRanking, TrendRow, TrendSort } from '@/lib/types';
+import { formatCurrency, formatDate, formatNumber, formatPercent } from '@/lib/utils';
 
 const STORAGE_KEY = 'gla-trend-filters';
 const DEFAULT_FILTERS: TrendFilters = {
@@ -42,27 +44,25 @@ const DEFAULT_FILTERS: TrendFilters = {
   monthTo: '',
   priceMin: '',
   priceMax: '',
-  newOnly: false,
   minSales: 0,
+  includeUnranked: false,
   search: '',
   descriptors: false,
   condition: 'all',
   department: '',
   hideLowData: false,
   watchedOnly: false,
-  sort: 'trend',
+  sort: 'liquidity',
   desc: true,
 };
 const SORTS: Array<[TrendSort, string]> = [
-  ['trend', 'sortTrend'],
   ['liquidity', 'sortLiquidity'],
   ['p30', 'sortP30'],
   ['growth', 'sortGrowth'],
-  ['speed', 'sortSpeed'],
   ['sales', 'sortSales'],
+  ['speed', 'sortSpeed'],
+  ['likes', 'sortLikes'],
   ['price', 'sortPrice'],
-  ['supply', 'sortSupply'],
-  ['new', 'sortNew'],
 ];
 const LEVELS: Array<[TrendLevel, string]> = [
   ['model', 'levelModels'],
@@ -73,7 +73,15 @@ const LEVELS: Array<[TrendLevel, string]> = [
 function loadFilters(): TrendFilters {
   try {
     const saved = window.sessionStorage.getItem(STORAGE_KEY);
-    return saved ? { ...DEFAULT_FILTERS, ...(JSON.parse(saved) as Partial<TrendFilters>) } : DEFAULT_FILTERS;
+    if (!saved) return DEFAULT_FILTERS;
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    // Keep only known filters: an older session may hold keys such as the removed `window`.
+    const known = Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => key in DEFAULT_FILTERS),
+    ) as Partial<TrendFilters>;
+    const merged = { ...DEFAULT_FILTERS, ...known };
+    // A session saved before the liquidity ranking may hold a sort the API no longer accepts.
+    return SORTS.some(([value]) => value === merged.sort) ? merged : { ...merged, sort: DEFAULT_FILTERS.sort };
   } catch {
     return DEFAULT_FILTERS;
   }
@@ -107,6 +115,8 @@ export default function TrendsPage() {
   }, [search]);
   useEffect(() => setPage(0), [filters]);
   const trends = useTrendsQuery(filters, page * 50);
+  const ranking = useRankingControls();
+  const periodDays = trends.data?.ranking?.period_days ?? ranking.settings?.period_days;
   const update = (patch: Partial<TrendFilters>) => setFilters((current) => ({ ...current, ...patch }));
   const types = useMemo(
     () =>
@@ -236,6 +246,7 @@ export default function TrendsPage() {
         <WardrobePresets presets={taxonomy?.seasons} filters={filters} update={update} />
         <div className="flex flex-wrap items-end gap-3 text-sm">
           <PeriodPicker filters={filters} update={update} />
+          <PeriodControl controls={ranking} />
           <label className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
             {t('priceFrom')}
             <input
@@ -266,8 +277,12 @@ export default function TrendsPage() {
           </label>
           <LiquidityFilters filters={filters} update={update} />
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <input type="checkbox" checked={filters.newOnly} onChange={(event) => update({ newOnly: event.target.checked })} />
-            {t('newOnly')}
+            <input
+              type="checkbox"
+              checked={filters.includeUnranked}
+              onChange={(event) => update({ includeUnranked: event.target.checked })}
+            />
+            {t('includeUnranked')}
           </label>
           {filters.level === 'model' && (
             <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]" title={t('showDescriptorsHelp')}>
@@ -310,11 +325,9 @@ export default function TrendsPage() {
       </Card>
 
       <PeriodCoverageLine filters={filters} coverage={trends.data?.period} />
-
-      <details className="text-xs text-[var(--text-muted)]">
-        <summary className="cursor-pointer">{t('trendFormula')}</summary>
-        <p className="mt-1 max-w-3xl">{t('trendFormulaText')}</p>
-      </details>
+      <RankingSettings controls={ranking} />
+      <RankingStatus controls={ranking} />
+      <RankingHint ranking={trends.data?.ranking} />
 
       {trends.isLoading ? (
         <LoadingState />
@@ -330,20 +343,18 @@ export default function TrendsPage() {
             <TableHead>
               <tr>
                 <TableHeaderCell>{t(filters.level === 'model' ? 'model' : filters.level === 'type' ? 'productType' : 'brand')}</TableHeaderCell>
-                <TableHeaderCell>{t('weeklyTrend')}</TableHeaderCell>
-                <TableHeaderCell>{t('trendScore')}</TableHeaderCell>
                 <TableHeaderCell>{t('liquidityScore')}</TableHeaderCell>
                 <TableHeaderCell>{t('p30')}</TableHeaderCell>
-                <TableHeaderCell>{t('salesGrowth')}</TableHeaderCell>
-                <TableHeaderCell>{t('timeToSell')}</TableHeaderCell>
-                <TableHeaderCell>{t('sellThrough')}</TableHeaderCell>
                 <TableHeaderCell>
                   {periodMode ? t('salesInPeriod') : `${t('salesInWindow')}, ${filters.window} ${t('daysShort')}`}
                 </TableHeaderCell>
+                <TableHeaderCell>{t('salesPerMonth')}</TableHeaderCell>
+                <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
+                <TableHeaderCell>{t('likesColumn')}</TableHeaderCell>
                 <TableHeaderCell>{periodMode ? `${t('medianPrice')} ≈` : t('medianPrice')}</TableHeaderCell>
                 <TableHeaderCell>{t('askVsSold')}</TableHeaderCell>
                 <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
-                <TableHeaderCell>{t('gmv90d')}</TableHeaderCell>
+                <TableHeaderCell>{t('weeklyTrend')}</TableHeaderCell>
               </tr>
             </TableHead>
             <tbody>
@@ -351,6 +362,7 @@ export default function TrendsPage() {
                 <TrendTableRow
                   key={row.scope_key}
                   row={row}
+                  periodDays={periodDays}
                   onDrill={drill}
                   typeName={typeName}
                   periodMode={periodMode}
@@ -384,21 +396,19 @@ export default function TrendsPage() {
 
 function TrendTableRow({
   row,
+  periodDays,
   onDrill,
   typeName,
   periodMode,
 }: {
   row: TrendRow;
+  periodDays?: number;
   onDrill: (row: TrendRow) => void;
   typeName: (id?: string | null) => string;
   /** Sales and price cover calendar months; the price is an approximate mean of medians. */
   periodMode: boolean;
 }) {
   const { locale, t } = useI18n();
-  const parts = t('trendParts')
-    .replace('{growth}', Number(row.growth).toFixed(2))
-    .replace('{speed}', row.speed === null ? '—' : Number(row.speed).toFixed(2))
-    .replace('{share}', formatPercent(row.sell_through_30d));
   const title =
     row.scope === 'model'
       ? `${row.brand} · ${groupLabel({ name: row.name ?? '', is_fallback: row.is_fallback, kind: row.kind }, t)} · ${typeName(row.product_type)}`
@@ -435,37 +445,36 @@ function TrendTableRow({
         </span>
       </TableCell>
       <TableCell>
-        <Sparkline values={row.weekly_sales} label={t('weeklyTrend')} />
-      </TableCell>
-      <TableCell>
-        <span className="font-semibold tabular-nums text-[var(--text-primary)]" title={parts}>
-          {row.trend_score === null ? '—' : Number(row.trend_score).toFixed(0)}
+        <span
+          className="font-semibold tabular-nums text-[var(--text-primary)]"
+          title={row.liquidity_score === null ? t('belowThreshold') : undefined}
+        >
+          {formatNumber(row.liquidity_score, 0, locale)}
         </span>
-      </TableCell>
-      <TableCell>
-        <LiquidityScoreCell row={row} />
       </TableCell>
       <TableCell>
         <P30Cell row={row} />
       </TableCell>
       <TableCell>
-        <span className="tabular-nums" title={t('vsPrevious')}>
-          ×{Number(row.growth).toFixed(2)}
-        </span>
-        <p className="text-xs tabular-nums text-[var(--text-muted)]">
-          {row.sold_30d} / {row.sold_prev_30d}
-        </p>
-      </TableCell>
-      <TableCell>
-        <span className="tabular-nums">
-          {row.median_days_to_sell === null ? '—' : `${Number(row.median_days_to_sell).toFixed(0)} ${t('daysShort')}`}
-        </span>
-      </TableCell>
-      <TableCell>
-        <span className="tabular-nums">{formatPercent(row.sell_through_30d)}</span>
-      </TableCell>
-      <TableCell>
         <span className="tabular-nums">{row.sold}</span>
+      </TableCell>
+      <TableCell>
+        <span className="tabular-nums">{formatNumber(row.sales_per_month, 1, locale)}</span>
+        {periodDays !== undefined && (
+          <span className="block text-xs tabular-nums text-[var(--text-muted)]">
+            {t('soldInPeriod')
+              .replace('{count}', String(row.period_sold))
+              .replace('{period}', periodLabel(periodDays, t))}
+          </span>
+        )}
+      </TableCell>
+      <TableCell>
+        <span className="tabular-nums">{formatNumber(row.period_median_days, 1, locale)}</span>
+      </TableCell>
+      <TableCell>
+        <span className="tabular-nums" title={t('medianLikes')}>
+          {formatNumber(row.period_median_likes, 0, locale)}
+        </span>
       </TableCell>
       <TableCell>
         <span className="tabular-nums" title={periodMode ? t('periodPriceNote') : undefined}>
@@ -486,14 +495,43 @@ function TrendTableRow({
         <SupplyCell row={row} />
       </TableCell>
       <TableCell>
-        <span className="tabular-nums">{formatCurrency(row.gmv_90d, locale)}</span>
+        <Sparkline values={row.weekly_sales} label={t('weeklyTrend')} />
       </TableCell>
     </TableRow>
   );
 }
 
-/** The share of "No model" in the scope: of sales in the window, or of listings without sales. */
-function NoModelLine({ share, window, periodMode }: { share?: NoModelShare; window: number; periodMode: boolean }) {
+/** What a row needs to be ranked and how the four metrics are weighted. */
+function RankingHint({ ranking }: { ranking?: TrendRanking }) {
+  const { locale, t } = useI18n();
+  const { sectionName } = useTypeNames();
+  if (!ranking) return null;
+  const weight = (value: string) => `${Math.round(Number(value) * 100)}%`;
+  const excluded = ranking.excluded_sections.length
+    ? t('rankingExcluded').replace('{sections}', ranking.excluded_sections.map(sectionName).join(', '))
+    : '';
+  const text = t('rankingHint')
+    .replace('{period}', periodLabel(ranking.period_days, t))
+    .replace('{minSales}', formatNumber(ranking.min_sales_per_month, 1, locale))
+    .replace('{minPrice}', formatCurrency(ranking.min_price, locale))
+    .replace('{excluded}', excluded)
+    .replace('{sales}', weight(ranking.weights.sales))
+    .replace('{speed}', weight(ranking.weights.speed))
+    .replace('{likes}', weight(ranking.weights.likes))
+    .replace('{price}', weight(ranking.weights.price));
+  return <p className="max-w-3xl text-xs text-[var(--text-muted)]">{text}</p>;
+}
+
+/** The share of "No model" in the scope: of sales in the window or period, or of listings without sales. */
+function NoModelLine({
+  share,
+  window,
+  periodMode,
+}: {
+  share?: NoModelShare;
+  window: number;
+  periodMode: boolean;
+}) {
   const { t } = useI18n();
   if (!share) return null;
   const bySales = share.sold_share !== null;
@@ -503,7 +541,7 @@ function NoModelLine({ share, window, periodMode }: { share?: NoModelShare; wind
   const help = (bySales ? salesHelp : t('noModelShareListings'))
     .replace('{part}', String(bySales ? share.sold : share.listings))
     .replace('{total}', String(bySales ? share.total_sold : share.total_listings))
-    .replace('{days}', String(window));
+    .replace('{period}', `${window} ${t('daysShort')}`);
   return (
     <span className="text-xs tabular-nums text-[var(--text-secondary)]" title={help}>
       {t('noModel')}: {formatPercent(value)}

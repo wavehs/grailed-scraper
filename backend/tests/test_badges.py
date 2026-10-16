@@ -35,7 +35,6 @@ def _sample(count: int = 10, *, section: str = "bags", start: int = 1) -> list[B
             id=start + index,
             section=section,
             sold_90d=12,
-            ls_ref_scope="all",
             liquidity_score=Decimal(10 * (index + 1)),
             p30=Decimal(index + 1) / 100,
             median_days_to_sell=Decimal(5 * (index + 1)),
@@ -103,18 +102,30 @@ def test_zero_supply_is_never_saturated() -> None:
     assert not any(SATURATED in codes for codes in assign_badges(rows).values())
 
 
-def test_a_section_scored_on_its_own_uses_its_own_thresholds() -> None:
-    weak = [replace(row, ls_ref_scope="section") for row in _sample(section="shoes", start=1)]
-    strong = [
+def _strong(section: str, count: int, start: int) -> list[BadgeRow]:
+    return [
         replace(row, liquidity_score=row.liquidity_score * 10 if row.liquidity_score else None)
-        for row in _sample(section="bags", start=101)
+        for row in _sample(count, section=section, start=start)
     ]
 
-    badges = assign_badges([*weak, *strong])
 
-    # Against every model the shoes' best score of 100 is far below the p90 of 810.
-    assert HOT in badges[10]
+def test_a_section_with_twenty_models_uses_its_own_thresholds() -> None:
+    weak = _sample(20, section="shoes", start=1)
+
+    badges = assign_badges([*weak, *_strong("bags", 10, 101)])
+
+    # Against every model the shoes' best score of 200 is far below the overall p90.
+    assert HOT in badges[20]
     assert HOT in badges[110]
+
+
+def test_a_small_section_uses_the_overall_thresholds() -> None:
+    weak = _sample(10, section="shoes", start=1)
+
+    badges = assign_badges([*weak, *_strong("bags", 20, 101)])
+
+    assert HOT not in badges[10]
+    assert HOT in badges[120]
 
 
 def test_fallback_rows_get_no_badges_and_stay_out_of_the_sample() -> None:

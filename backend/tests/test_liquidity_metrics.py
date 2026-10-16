@@ -39,7 +39,6 @@ NEW_COLUMNS = {
     "pricing",
     "department",
     "liquidity_score",
-    "ls_ref_scope",
 }
 
 
@@ -178,7 +177,6 @@ async def test_a_recompute_keeps_the_last_cross_brand_values(tmp_path: Path) -> 
             .values(
                 p30=Decimal("0.4"),
                 liquidity_score=Decimal("55.5"),
-                ls_ref_scope="all",
                 badges=["hot"],
             )
         )
@@ -186,10 +184,9 @@ async def test_a_recompute_keeps_the_last_cross_brand_values(tmp_path: Path) -> 
 
     row = await _recompute(factory)
 
-    assert (row.p30, row.liquidity_score, row.ls_ref_scope, row.badges) == (
+    assert (row.p30, row.liquidity_score, row.badges) == (
         Decimal("0.400000"),
         Decimal("55.50"),
-        "all",
         ["hot"],
     )
 
@@ -206,8 +203,8 @@ async def test_recomputing_brands_ranks_them_and_their_snapshots(tmp_path: Path)
 
     assert row is not None and snapshot is not None
     assert row.p30 is not None and Decimal(0) < row.p30 < Decimal(1)
-    # Three sales in 90 days: no model reaches the reference sample, so no score.
-    assert (row.liquidity_score, row.ls_ref_scope) == (Decimal(0), "none")
+    # Three sales in 30 days are below the policy's five a month: no score.
+    assert row.liquidity_score is None
     assert row.badges == ["low_data"]
     assert (snapshot.p30, snapshot.liquidity_score) == (row.p30, row.liquidity_score)
     assert (snapshot.active_effective, snapshot.active_fresh) == (2, 0)
@@ -228,7 +225,7 @@ async def test_a_failed_season_rebuild_keeps_the_ranking(
     async with factory() as session:
         row = await session.scalar(select(GroupMetric).where(GroupMetric.scope_key == "model:10"))
 
-    assert row is not None and row.p30 is not None and row.ls_ref_scope == "none"
+    assert row is not None and row.p30 is not None and row.badges == ["low_data"]
 
 
 def _columns(database: Path) -> set[str]:
@@ -249,4 +246,6 @@ def test_the_migration_adds_and_drops_the_liquidity_columns(tmp_path: Path) -> N
     dropped = _columns(database)
 
     assert NEW_COLUMNS <= added
+    # 0029 drops the reference sample of the P30-based score it replaced.
+    assert "ls_ref_scope" not in added
     assert not NEW_COLUMNS & dropped

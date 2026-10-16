@@ -17,6 +17,7 @@ from app.api.discovery import router as discovery_router
 from app.api.errors import ApiError
 from app.api.fees import router as fees_router
 from app.api.groups import router as groups_router
+from app.api.liquidity import router as liquidity_router
 from app.api.listings import router as listings_router
 from app.api.mutation import MutationRoute
 from app.api.parser import router as parser_router
@@ -43,6 +44,7 @@ router.include_router(deals_router)
 router.include_router(groups_router)
 router.include_router(settings_router)
 router.include_router(fees_router)
+router.include_router(liquidity_router)
 
 
 class HealthResponse(BaseModel):

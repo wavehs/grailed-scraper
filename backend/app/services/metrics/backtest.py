@@ -1,11 +1,11 @@
 """Backtest of the liquidity metrics: the state at ``T`` against what happened after (plan 2.7).
 
 Every scope is rebuilt as it stood at ``T = now - as_of_days`` (``MetricsService.scopes``
-with ``historical``), scored with the same calculator and cross-brand ranking as a recompute,
-and compared with two targets:
+with ``historical``), scored with the same calculator, P30 smoothing and saved liquidity
+policy as a recompute, and compared with two targets:
 
 - volume: the group's sales in ``(T, now]`` — for depth ``D`` and the Liquidity Score
-  against the baselines ``sold_30d`` and ``trend_score``;
+  against the baseline ``sold_30d``;
 - velocity: the share of the supply at ``T`` sold in ``(T, T+30]`` — for smoothed P30 and
   the Liquidity Score against the baseline ``sell_through_30d``. A rate is never scored
   against a count.
@@ -19,15 +19,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Brand
-from app.services.grouping.policy import load_policy
+from app.services.grouping.descriptors import DESCRIPTOR_PREFIX
+from app.services.grouping.policy import REVIEW_TYPE, load_policy
 from app.services.metrics.calculator import MetricListing, ScopeMetrics, compute_metrics
-from app.services.metrics.ranking import Ranked, RankRow, rank
-from app.services.metrics.service import METRICS_VERSION, BrandScopes, MetricsService
+from app.services.metrics.liquidity import LiquidityCandidate, LiquidityPolicy, liquidity_scores
+from app.services.metrics.liquidity_store import effective_policy
+from app.services.metrics.ranking import RankRow, rank
+from app.services.metrics.service import (
+    METRICS_VERSION,
+    BrandScopes,
+    MetricsService,
+    liquidity_candidate,
+)
 
 AS_OF_DAYS = 30
 FORWARD_DAYS = 30
@@ -56,7 +65,6 @@ class Outcome:
     forward_sell_through: float | None
     sold_30d: int
     sold_90d: int
-    trend_score: Decimal | None
     sell_through_30d: Decimal
     p30_raw: Decimal | None
     p30: Decimal | None
@@ -153,8 +161,10 @@ async def run_backtest(
     horizon = min(as_of + timedelta(days=FORWARD_DAYS), moment)
     service = MetricsService(session)
     sections = {type_id: item.section for type_id, item in load_policy().taxonomy.types.items()}
+    policy = await effective_policy(session)
     brand_ids = list(await session.scalars(select(Brand.id).order_by(Brand.id)))
     rows: list[RankRow] = []
+    pool: list[LiquidityCandidate] = []
     candidates: list[_Candidate] = []
     for brand_id in brand_ids:
         past = await service.scopes(brand_id, as_of, historical=True)
@@ -162,8 +172,11 @@ async def run_backtest(
         sold_at = _sales(present)
         for key, items in past.by_scope.items():
             metrics = compute_metrics(items, as_of)
-            row = _rank_row(len(rows), past, key, metrics, sections)
+            row = _rank_row(len(rows), past, key, metrics)
             rows.append(row)
+            if _scored(past, key, row):
+                section = sections.get(row.product_type) if row.product_type else None
+                pool.append(_liquidity(row.id, section, metrics, policy))
             if not _evaluated(past, key, metrics, row):
                 continue
             active = [item for item in items if item.status == "active"]
@@ -179,8 +192,9 @@ async def run_backtest(
                     forward_sell_through=_forward(active, sold_at, as_of, horizon),
                 )
             )
-    ranked = rank(rows)
-    outcomes = tuple(_outcome(candidate, ranked) for candidate in candidates)
+    p30 = rank(rows)
+    scores = liquidity_scores(pool, policy)
+    outcomes = tuple(_outcome(candidate, p30, scores) for candidate in candidates)
     return BacktestReport(
         as_of=as_of,
         now=moment,
@@ -201,34 +215,45 @@ def _sales(scopes: BrandScopes) -> dict[int, datetime]:
     }
 
 
-def _rank_row(
-    row_id: int,
-    scopes: BrandScopes,
-    key: str,
-    metrics: ScopeMetrics,
-    sections: dict[str, str],
-) -> RankRow:
+def _rank_row(row_id: int, scopes: BrandScopes, key: str, metrics: ScopeMetrics) -> RankRow:
     meta = scopes.scope_meta[key]
-    product_type = meta.get("product_type")
     group = scopes.groups.get(meta["group_id"]) if "group_id" in meta else None
     return RankRow(
         id=row_id,
         scope=meta["scope"],
         brand_id=meta["brand_id"],
-        product_type=product_type,
-        section=sections.get(product_type) if product_type else None,
+        product_type=meta.get("product_type"),
         p30_sold=metrics.p30_sold,
         p30_cohort=metrics.p30_cohort,
-        sold_90d=metrics.sold_90d,
         retired=group is not None and group.retired_at is not None,
-        fallback=meta.get("is_fallback", False),
     )
 
 
-def _evaluated(scopes: BrandScopes, key: str, metrics: ScopeMetrics, row: RankRow) -> bool:
-    if row.scope != "model" or row.retired or row.fallback or metrics.listings < MIN_LISTINGS:
+def _liquidity(
+    row_id: int, section: str | None, metrics: ScopeMetrics, policy: LiquidityPolicy
+) -> LiquidityCandidate:
+    windows: dict[str, Any] = dict(metrics.windows)
+    return liquidity_candidate(row_id, section, windows, policy.period_days)
+
+
+def _scored(scopes: BrandScopes, key: str, row: RankRow) -> bool:
+    """The model rows a recompute ranks against each other (``service._ranked_rows``)."""
+
+    meta = scopes.scope_meta[key]
+    if row.scope != "model" or row.retired or meta.get("is_fallback", False):
         return False
-    return scopes.groups[scopes.scope_meta[key]["group_id"]].status != "ignored"
+    if not meta.get("is_line", False) or row.product_type == REVIEW_TYPE:
+        return False
+    return not scopes.groups[meta["group_id"]].slug.startswith(DESCRIPTOR_PREFIX)
+
+
+def _evaluated(scopes: BrandScopes, key: str, metrics: ScopeMetrics, row: RankRow) -> bool:
+    meta = scopes.scope_meta[key]
+    if row.scope != "model" or row.retired or meta.get("is_fallback", False):
+        return False
+    if metrics.listings < MIN_LISTINGS:
+        return False
+    return scopes.groups[meta["group_id"]].status != "ignored"
 
 
 def _sold_between(items: Sequence[MetricListing], start: datetime, end: datetime) -> int:
@@ -250,9 +275,10 @@ def _forward(
     return sold / len(active)
 
 
-def _outcome(candidate: _Candidate, ranked: dict[int, Ranked]) -> Outcome:
+def _outcome(
+    candidate: _Candidate, p30: dict[int, Decimal], scores: dict[int, Decimal]
+) -> Outcome:
     metrics = candidate.metrics
-    scored = ranked.get(candidate.row_id)
     cohort = metrics.p30_cohort
     return Outcome(
         key=candidate.key,
@@ -264,11 +290,10 @@ def _outcome(candidate: _Candidate, ranked: dict[int, Ranked]) -> Outcome:
         forward_sell_through=candidate.forward_sell_through,
         sold_30d=metrics.sold_30d,
         sold_90d=metrics.sold_90d,
-        trend_score=metrics.trend_score,
         sell_through_30d=metrics.sell_through_30d,
         p30_raw=Decimal(metrics.p30_sold) / cohort if cohort else None,
-        p30=scored.p30 if scored else None,
-        liquidity_score=scored.liquidity_score if scored else None,
+        p30=p30.get(candidate.row_id),
+        liquidity_score=scores.get(candidate.row_id),
     )
 
 
@@ -281,7 +306,6 @@ _VOLUME_METRICS: tuple[_Metric, ...] = (
     ("depth", NEW, lambda outcome: math.log1p(outcome.sold_90d)),
     ("liquidity_score", NEW, lambda outcome: _number(outcome.liquidity_score)),
     ("sold_30d", BASELINE, lambda outcome: float(outcome.sold_30d)),
-    ("trend_score", BASELINE, lambda outcome: _number(outcome.trend_score)),
 )
 _VELOCITY_METRICS: tuple[_Metric, ...] = (
     ("p30", NEW, lambda outcome: _number(outcome.p30)),

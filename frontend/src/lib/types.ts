@@ -251,14 +251,14 @@ export type GroupList = { data: GroupSummary[]; total: number };
 
 export type TrendLevel = 'model' | 'type' | 'brand';
 export type TrendSort =
-  | 'trend'
-  | 'growth'
-  | 'speed'
+  | 'liquidity'
   | 'sales'
+  | 'speed'
+  | 'likes'
   | 'price'
+  | 'growth'
   | 'supply'
   | 'new'
-  | 'liquidity'
   | 'p30';
 export type TrendCondition = 'all' | 'new' | 'used';
 export type TrendDepartment = '' | 'menswear' | 'womenswear';
@@ -298,19 +298,23 @@ export type TrendRow = {
   sold: number;
   sold_7d: number;
   sold_30d: number;
-  sold_prev_30d: number;
   sold_90d: number;
-  growth: string;
-  speed: string | null;
-  trend_score: string | null;
+  /** Decimal string "0.00".."100.00"; null when the row is below the liquidity threshold. */
+  liquidity_score: string | null;
+  /** Median days to sell over 30 days. */
   median_days_to_sell: string | null;
-  sell_through_30d: string;
+  /** Cents; the card's window on the group card, 30 days in the list. */
   median_price: number | null;
-  price_change: string | null;
+  /** Sales in the ranking period (`TrendRanking.period_days`). */
+  period_sold: number;
+  /** Decimal string: sales in the ranking period scaled to 30 days, e.g. "12.5". */
+  sales_per_month: string;
+  period_median_days: string | null;
+  /** Median likes of listings sold in the ranking period, a decimal string such as "38.0". */
+  period_median_likes: string | null;
+  /** Cents. */
+  period_median_price: number | null;
   active_now: number;
-  new_listings_14d: number;
-  is_new: boolean;
-  first_seen_at: string | null;
   weekly_sales: number[];
   liquidity_score: string | null;
   /** Smoothed P30 (β) and the raw rate of its cohort of p30_n listings. */
@@ -348,6 +352,50 @@ export type PeriodCoverage = {
   late_brands: number;
 };
 
+export type LiquidityWeightKey = 'sales' | 'speed' | 'likes' | 'price';
+/** Decimal-string shares that sum to 1. */
+export type LiquidityWeights = Record<LiquidityWeightKey, string>;
+
+/** The ranking period, threshold and weights behind `liquidity_score`. */
+export type TrendRanking = {
+  period_days: number;
+  /** Decimal string. */
+  min_sales_per_month: string;
+  /** Cents. */
+  min_price: number;
+  excluded_sections: string[];
+  weights: LiquidityWeights;
+};
+
+/** The editable liquidity policy as /settings/liquidity returns it. */
+export type LiquidityPolicy = {
+  period_days: number;
+  /** Decimal string. */
+  min_sales_per_month: string;
+  /** Whole dollars. */
+  min_price_usd: number;
+  excluded_sections: string[];
+  weights: LiquidityWeights;
+};
+
+export type LiquiditySettings = LiquidityPolicy & {
+  /** False while the defaults are in use. */
+  saved: boolean;
+  periods: number[];
+  defaults: LiquidityPolicy;
+  /** Rows that got a score; set only in PUT and DELETE responses. */
+  ranked: number | null;
+};
+
+/** The PUT body; weights are any non-negative numbers, the API scales them to sum to 1. */
+export type LiquidityPolicyUpdate = {
+  period_days: number;
+  min_sales_per_month: number | string;
+  min_price_usd: number;
+  excluded_sections: string[];
+  weights: Record<LiquidityWeightKey, number | string>;
+};
+
 export type TrendList = {
   data: TrendRow[];
   total: number;
@@ -355,6 +403,7 @@ export type TrendList = {
   no_model: NoModelShare;
   /** Set when the list covers calendar months instead of the day window. */
   period?: PeriodCoverage | null;
+  ranking: TrendRanking;
 };
 
 export type TrendVariant = {
@@ -449,8 +498,9 @@ export type TrendFilters = {
   monthTo: string;
   priceMin: string;
   priceMax: string;
-  newOnly: boolean;
   minSales: number;
+  /** Also show rows below the liquidity threshold; the API returns only ranked rows by default. */
+  includeUnranked: boolean;
   search: string;
   /** Show description groups ("Baggy · jeans"); the API hides them by default. */
   descriptors: boolean;

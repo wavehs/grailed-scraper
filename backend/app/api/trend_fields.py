@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.db.models import GroupMetric
 from app.domain.listings import decimal_to_cents
-from app.services.metrics.liquidity import expected_days, rate
+from app.services.metrics.p30 import expected_days, rate
 
 Condition = Literal["all", "new", "used"]
 Department = Literal["menswear", "womenswear"]

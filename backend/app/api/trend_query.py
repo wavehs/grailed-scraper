@@ -17,7 +17,7 @@ from app.services.grouping.policy import REVIEW_TYPE
 
 WINDOWS = (7, 30, 90)
 Level = Literal["model", "type", "brand"]
-SortKey = Literal["trend", "growth", "speed", "sales", "price", "supply", "new", "liquidity", "p30"]
+SortKey = Literal["liquidity", "sales", "speed", "likes", "price", "growth", "supply", "new", "p30"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,9 +38,10 @@ class TrendQuery:
     hide_low_data: bool = False
     include_fallback: bool = False
     include_descriptors: bool = False
+    include_unranked: bool = False
     search: str = ""
     watched_only: bool = False
-    sort: SortKey = "trend"
+    sort: SortKey = "liquidity"
     desc: bool = True
 
 
@@ -62,10 +63,12 @@ def trend_query(
     hide_low_data: bool = False,
     include_fallback: bool = False,
     include_descriptors: bool = False,
+    # Rows below the liquidity policy's threshold have no score and are hidden by default.
+    include_unranked: bool = False,
     search: Annotated[str, Query(max_length=200)] = "",
     # Models on the watchlist only (v2 plan 3.7); other levels ignore it.
     watched_only: bool = False,
-    sort: SortKey = "trend",
+    sort: SortKey = "liquidity",
     desc: bool = True,
 ) -> TrendQuery:
     """The list's query parameters; an unknown window is rejected here."""
@@ -88,6 +91,7 @@ def trend_query(
         hide_low_data=hide_low_data,
         include_fallback=include_fallback,
         include_descriptors=include_descriptors,
+        include_unranked=include_unranked,
         search=search,
         watched_only=watched_only,
         sort=sort,
@@ -172,7 +176,26 @@ def _level_filters(query: TrendQuery, typed: bool) -> list[ColumnElement[bool]]:
             filters.append(GroupMetric.group_id.in_(select(WatchlistItem.group_id)))
     if not typed and query.level != "brand":
         filters.append(GroupMetric.product_type != REVIEW_TYPE)
+    ranked = _ranked_filter(query)
+    if ranked is not None:
+        filters.append(ranked)
     return filters
+
+
+def _ranked_filter(query: TrendQuery) -> ColumnElement[bool] | None:
+    """Scored rows only, unless unranked rows are asked for or the watchlist is shown.
+
+    "No model" and descriptions are never scored: asking for them still shows them.
+    """
+
+    if query.include_unranked or (query.level == "model" and query.watched_only):
+        return None
+    shown: list[ColumnElement[bool]] = [GroupMetric.liquidity_score.is_not(None)]
+    if query.level == "model" and query.include_fallback:
+        shown.append(GroupMetric.is_fallback.is_(True))
+    if query.level == "model" and query.include_descriptors:
+        shown.append(ModelGroup.slug.startswith(DESCRIPTOR_PREFIX, autoescape=True))
+    return or_(*shown)
 
 
 def _value_filters(
@@ -218,13 +241,13 @@ def price_column(window: int) -> Any:
 
 def order(sort: str, desc: bool, sold: Any, price: Any) -> list[Any]:
     columns: dict[str, Any] = {
-        "trend": GroupMetric.trend_score,
+        "liquidity": GroupMetric.liquidity_score,
+        "likes": GroupMetric.period_median_likes,
         "growth": GroupMetric.growth,
         "sales": sold,
         "price": price,
         "supply": GroupMetric.active_now,
         "new": GroupMetric.first_seen_at,
-        "liquidity": GroupMetric.liquidity_score,
         "p30": GroupMetric.p30,
     }
     if sort == "speed":

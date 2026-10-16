@@ -1,0 +1,24 @@
+# Default liquidity ranking of the trends screen (docs/METRICS.md, section 3).
+#
+# Every value is edited on the trends screen ("Ranking settings") and stored in the
+# database; this file is what "Reset to defaults" brings back.
+# Only items that sell often, fast and at a good price get a score; everything else stays
+# visible with "below the threshold" but is not ranked.
+# - period_days: the sales window of all four metrics: 7, 14, 30, 60, 90, 180 or 365.
+# - min_sales_per_month: sales in the period scaled to 30 days; fewer is noise.
+# - min_price_usd: median sale price in the period.
+# - excluded_sections: taxonomy sections that are never ranked (config/taxonomy.yaml).
+# - weights: shares of the four percentiles in the score; they are scaled to sum to 1.
+#   On the 2026-10-15 data 30 days, 5 sales and $150 leave about 100 of 15 000 model lines.
+version: liquidity-v2
+
+period_days: 30
+min_sales_per_month: 5
+min_price_usd: 150
+excluded_sections: [dresses, other]
+
+weights:
+  sales: 0.40   # sales in the period
+  speed: 0.25   # median days to sell, fewer is better
+  likes: 0.20   # median likes of the listings sold in the period
+  price: 0.15   # median sale price in the period

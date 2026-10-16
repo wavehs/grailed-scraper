@@ -330,7 +330,7 @@ class GroupMetric(Base):
     __tablename__ = "group_metrics"
     __table_args__ = (
         CheckConstraint("scope IN ('model', 'type', 'brand')", name="ck_group_metrics_scope"),
-        Index("ix_group_metrics_scope_trend", "scope", "trend_score"),
+        Index("ix_group_metrics_scope_liquidity", "scope", "liquidity_score"),
         Index("ix_group_metrics_brand_scope", "brand_id", "scope"),
     )
 
@@ -365,7 +365,13 @@ class GroupMetric(Base):
     sell_through_30d: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
     growth: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
-    trend_score: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    # Sales of every rankable period: {"30": {"sold", "price", "days", "likes"}}.
+    windows: Mapped[dict[str, dict[str, Any]] | None] = mapped_column(JSON)
+    # The ranking period (liquidity policy) copied out of ``windows`` for sorting.
+    period_sold: Mapped[int | None] = mapped_column(Integer)
+    period_median_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    period_median_days: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    period_median_likes: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_new: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     colors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
@@ -382,12 +388,11 @@ class GroupMetric(Base):
     # Per condition bucket ("all", "new", "used"): see services/metrics/pricing.py.
     pricing: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     department: Mapped[str | None] = mapped_column(String(32))
+    # 0-100 among the rows of the same scope that pass the threshold of the liquidity policy
+    # (services/metrics/liquidity.py); added by 0024, ranked this way since 0029.
     liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
-    # Reference sample of the score: "section", "all", or "none" when it was empty.
-    ls_ref_scope: Mapped[str | None] = mapped_column(String(8))
     # Model badges (services/metrics/badges.py); None on other scopes and before 0026.
     badges: Mapped[list[str] | None] = mapped_column(JSON)
-
 
 
 class GroupMetricDaily(Base):

@@ -1,4 +1,4 @@
-"""Trends: which models sell faster, more often and at better prices right now."""
+"""Trends: which models sell most often, fastest, most liked and at the best prices."""
 
 from __future__ import annotations
 
@@ -28,8 +28,11 @@ from app.db.session import get_db
 from app.domain.listings import decimal_to_cents
 from app.services.grouping.kinds import GroupKind, group_kind
 from app.services.grouping.policy import REVIEW_TYPE
+from app.services.metrics.liquidity import LiquidityPolicy, sales_per_month
+from app.services.metrics.liquidity_store import effective_policy
 
 router = APIRouter(prefix="/trends", tags=["trends"], route_class=MutationRoute)
+_WEIGHT = Decimal("0.01")
 
 
 class TrendRow(LiquidityFields):
@@ -54,11 +57,18 @@ class TrendRow(LiquidityFields):
     sold_90d: int
     growth: Decimal
     speed: Decimal | None
-    trend_score: Decimal | None
+    # 0-100 against the rows of the same level; None below the threshold.
+    liquidity_score: Decimal | None
     median_days_to_sell: Decimal | None
     sell_through_30d: Decimal
     median_price: int | None
     price_change: Decimal | None
+    # The ranking period of the liquidity policy (``RankingInfo.period_days``).
+    period_sold: int
+    sales_per_month: Decimal
+    period_median_days: Decimal | None
+    period_median_likes: Decimal | None
+    period_median_price: int | None
     active_now: int
     new_listings_14d: int
     is_new: bool
@@ -80,11 +90,29 @@ class NoModelShare(BaseModel):
     sold_share: Decimal | None
 
 
+class RankingWeights(BaseModel):
+    sales: Decimal
+    speed: Decimal
+    likes: Decimal
+    price: Decimal
+
+
+class RankingInfo(BaseModel):
+    """The period, threshold and weights behind ``liquidity_score`` (/settings/liquidity)."""
+
+    period_days: int
+    min_sales_per_month: Decimal
+    min_price: int
+    excluded_sections: list[str]
+    weights: RankingWeights
+
+
 class TrendListResponse(BaseModel):
     data: list[TrendRow]
     total: int
     computed_at: datetime | None
     no_model: NoModelShare
+    ranking: RankingInfo
     # Set when the list counts calendar months instead of the day window.
     period: PeriodCoverage | None = None
 
@@ -148,13 +176,17 @@ async def list_trends(
     )
     computed_at = await session.scalar(select(func.max(GroupMetric.computed_at)))
     period = selected.period
+    policy = await effective_policy(session)
     return TrendListResponse(
-        data=await trend_rows(session, rows, query, by_period=period is not None),
+        data=await trend_rows(
+            session, rows, query, policy.period_days, by_period=period is not None
+        ),
         total=total,
         computed_at=computed_at,
         no_model=await _no_model_share(
             session, selected.scope, bool(selected.types), selected.sold, selected.totals
         ),
+        ranking=_ranking(policy),
         period=(
             await period_coverage(session, period, selected.brand_ids, computed_at)
             if period
@@ -164,7 +196,12 @@ async def list_trends(
 
 
 async def trend_rows(
-    session: AsyncSession, rows: list[tuple[Any, ...]], query: TrendQuery, *, by_period: bool
+    session: AsyncSession,
+    rows: list[tuple[Any, ...]],
+    query: TrendQuery,
+    period_days: int,
+    *,
+    by_period: bool,
 ) -> list[TrendRow]:
     """API rows of ``(metric, brand, group, sold, price)`` tuples from ``trend_select``."""
 
@@ -175,8 +212,9 @@ async def trend_rows(
             metric,
             brand,
             group,
-            query.window,
+            period_days,
             versions.get(group.id, 0) if group else 0,
+            window=query.window,
             condition=query.condition,
             parent_pricing=parents.get(parent_key(metric) or ""),
             period_sales=(int(sold), period_price(price)) if by_period else None,
@@ -198,6 +236,7 @@ async def trend_card(
         raise ApiError(404, "group_not_found", "Model group does not exist")
     detail = await group_detail_data(session, group)
     brand = detail.brand
+    period = (await effective_policy(session)).period_days
     metric = await session.scalar(
         select(GroupMetric).where(GroupMetric.scope_key == f"model:{group_id}")
     )
@@ -234,8 +273,9 @@ async def trend_card(
                 metric,
                 brand,
                 group,
-                window,
+                period,
                 len(version_ids),
+                window=window,
                 condition=condition,
                 parent_pricing=type_metric.pricing if type_metric else None,
             )
@@ -255,8 +295,9 @@ async def trend_card(
                     item,
                     brand,
                     None,
-                    window,
+                    period,
                     0,
+                    window=window,
                     name=version_groups[item.group_id].name,
                     kind=version_groups[item.group_id].kind,
                     condition=condition,
@@ -268,7 +309,9 @@ async def trend_card(
             key=lambda row: (-row.sold_90d, row.name or ""),
         ),
         type_metrics=(
-            _row(type_metric, brand, None, window, 0, condition=condition) if type_metric else None
+            _row(type_metric, brand, None, period, 0, window=window, condition=condition)
+            if type_metric
+            else None
         ),
         recent_sales=recent,
         active_listings=active,
@@ -277,13 +320,30 @@ async def trend_card(
     )
 
 
+def _ranking(policy: LiquidityPolicy) -> RankingInfo:
+    weights = policy.weights
+    return RankingInfo(
+        period_days=policy.period_days,
+        min_sales_per_month=policy.min_sales_per_month,
+        min_price=decimal_to_cents(policy.min_price),
+        excluded_sections=sorted(policy.excluded_sections),
+        weights=RankingWeights(
+            sales=weights.sales.quantize(_WEIGHT),
+            speed=weights.speed.quantize(_WEIGHT),
+            likes=weights.likes.quantize(_WEIGHT),
+            price=weights.price.quantize(_WEIGHT),
+        ),
+    )
+
+
 def _row(
     metric: GroupMetric,
     brand: str,
     group: ModelGroup | None,
-    window: int,
+    period_days: int,
     versions: int,
     *,
+    window: int = 30,
     name: str | None = None,
     kind: GroupKind | None = None,
     condition: Condition = "all",
@@ -327,11 +387,18 @@ def _row(
         sold_90d=metric.sold_90d,
         growth=metric.growth,
         speed=metric.speed,
-        trend_score=metric.trend_score,
+        liquidity_score=metric.liquidity_score,
         median_days_to_sell=metric.median_days_to_sell,
         sell_through_30d=metric.sell_through_30d,
         median_price=decimal_to_cents(price) if price is not None else None,
         price_change=metric.price_change,
+        period_sold=metric.period_sold or 0,
+        sales_per_month=sales_per_month(metric.period_sold or 0, period_days),
+        period_median_days=metric.period_median_days,
+        period_median_likes=metric.period_median_likes,
+        period_median_price=decimal_to_cents(metric.period_median_price)
+        if metric.period_median_price is not None
+        else None,
         active_now=metric.active_now,
         new_listings_14d=metric.new_listings_14d,
         is_new=metric.is_new,

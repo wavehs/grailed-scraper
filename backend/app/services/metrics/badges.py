@@ -7,8 +7,9 @@
   or below its p25.
 * ``saturated`` (⚠️): fresh asks per month of sales at or above the reference p80.
 
-The reference sample is the one the model's score used (its section or all models, D10):
-live, non-fallback models with five sales in 90 days. Retired models keep frozen badges.
+The reference sample is live, non-fallback models with five sales in 90 days: the model's
+own section once it holds twenty of them, all models before that. Retired models keep
+frozen badges.
 """
 
 from __future__ import annotations
@@ -23,8 +24,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import GroupMetric, ModelGroup
-from app.services.metrics.ranking import REFERENCE_MIN_SALES, SECTION, quantile
+from app.services.metrics.ranking import quantile
 
+REFERENCE_MIN_SALES = 5
+REFERENCE_MIN_MODELS = 20
 LOW_DATA = "low_data"
 HOT = "hot"
 STABLE = "stable"
@@ -46,7 +49,6 @@ class BadgeRow:
     id: int
     section: str | None
     sold_90d: int
-    ls_ref_scope: str | None = None
     liquidity_score: Decimal | None = None
     p30: Decimal | None = None
     median_days_to_sell: Decimal | None = None
@@ -134,11 +136,14 @@ def assign_badges(rows: Sequence[BadgeRow]) -> dict[int, list[str]]:
     by_section: dict[str | None, list[BadgeRow]] = defaultdict(list)
     for row in sample:
         by_section[row.section].append(row)
-    sections = {name: thresholds(items) for name, items in by_section.items()}
+    sections = {
+        name: thresholds(items)
+        for name, items in by_section.items()
+        if len(items) >= REFERENCE_MIN_MODELS
+    }
     result: dict[int, list[str]] = {row.id: [] for row in rows if row.fallback}
     for row in models:
-        own = row.ls_ref_scope == SECTION and row.section in sections
-        result[row.id] = badges_of(row, sections[row.section] if own else overall)
+        result[row.id] = badges_of(row, sections.get(row.section, overall))
     return result
 
 
@@ -150,7 +155,6 @@ async def write_badges(session: AsyncSession) -> int:
             GroupMetric.id,
             GroupMetric.section,
             GroupMetric.sold_90d,
-            GroupMetric.ls_ref_scope,
             GroupMetric.liquidity_score,
             GroupMetric.p30,
             GroupMetric.median_days_to_sell,
@@ -166,13 +170,12 @@ async def write_badges(session: AsyncSession) -> int:
             id=row[0],
             section=row[1],
             sold_90d=row[2],
-            ls_ref_scope=row[3],
-            liquidity_score=row[4],
-            p30=row[5],
-            median_days_to_sell=row[6],
-            active_fresh=row[7],
-            spread=spread(row[8]),
-            fallback=row[9],
+            liquidity_score=row[3],
+            p30=row[4],
+            median_days_to_sell=row[5],
+            active_fresh=row[6],
+            spread=spread(row[7]),
+            fallback=row[8],
         )
         for row in (await session.execute(statement)).tuples().all()
     ]

@@ -54,5 +54,5 @@
 | `sqlite_busy_timeout_ms` | 5000 | |
 
 Соль никогда не отдаётся наружу. Источник данных, словари типов и моделей описаны в
-`config/sources/grailed.yaml`, `config/taxonomy.yaml`, `config/grouping.yaml` и
-`config/models/*.yaml`.
+`config/sources/grailed.yaml`, `config/taxonomy.yaml`, `config/grouping.yaml`,
+`config/liquidity.yaml` (значения по умолчанию для рейтинга ликвидности; сами настройки меняются на экране трендов, `docs/METRICS.md`) и `config/models/*.yaml`.

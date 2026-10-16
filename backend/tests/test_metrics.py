@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,12 +17,20 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.db.models import Base, Brand, GroupMetric, Listing, ListingPriceHistory
+from app.db.models import (
+    AppSetting,
+    Base,
+    Brand,
+    GroupMetric,
+    Listing,
+    ListingPriceHistory,
+)
 from app.db.session import get_db
 from app.main import app
 from app.services.grouping import GroupingService
 from app.services.metrics import MetricsService
-from app.services.metrics.calculator import MetricListing, compute_metrics, trend_score
+from app.services.metrics.calculator import MetricListing, compute_metrics
+from app.services.metrics.liquidity_store import POLICY_KEY
 
 AS_OF = datetime(2026, 10, 1, 12, tzinfo=UTC)
 
@@ -40,6 +48,7 @@ def _item(
     relist: bool = False,
     color: str | None = "Black",
     size: str | None = "M",
+    likes: int = 0,
 ) -> MetricListing:
     listed = AS_OF - timedelta(days=listed_days)
     return MetricListing(
@@ -55,21 +64,25 @@ def _item(
         is_relist=relist,
         color=color,
         size=size,
+        likes=likes,
     )
 
 
-def test_windows_series_medians_and_trend_formula() -> None:
+def test_windows_series_and_medians() -> None:
     listings = [
-        _item(1, price="100", sold_days=1, listed_days=11),
-        _item(2, price="200", sold_days=5, listed_days=25),
-        _item(3, price="300", sold_days=20, listed_days=30),
-        _item(4, price="900", sold_days=25, listed_days=30, usable=False),
-        _item(5, price="150", sold_days=40, listed_days=60),
-        _item(6, price="120", sold_days=80, listed_days=100, exact=False),
-        _item(7, status="active", price="250", listed_days=3, color="Grey", size="L"),
+        _item(1, price="100", sold_days=1, listed_days=11, likes=10),
+        _item(2, price="200", sold_days=5, listed_days=25, likes=40),
+        _item(3, price="300", sold_days=20, listed_days=30, likes=25),
+        _item(4, price="900", sold_days=25, listed_days=30, usable=False, likes=7),
+        _item(5, price="150", sold_days=40, listed_days=60, likes=30),
+        _item(6, price="120", sold_days=80, listed_days=100, exact=False, likes=12),
+        # Active likes are not demand that turned into a sale.
+        _item(7, status="active", price="250", listed_days=3, color="Grey", size="L", likes=500),
         _item(8, status="active", price="260", listed_days=20, color=None),
         # A relist: time to sell starts at the first listing of the item.
-        _item(9, price="210", sold_days=2, listed_days=4, created_days=62, relist=True),
+        _item(9, price="210", sold_days=2, listed_days=4, created_days=62, relist=True, likes=19),
+        # Older than 90 days: only in the 180 and 365 day periods.
+        _item(10, price="210", sold_days=120, listed_days=130, likes=900),
     ]
     metrics = compute_metrics(listings, AS_OF)
     assert (metrics.sold_7d, metrics.sold_30d, metrics.sold_prev_30d, metrics.sold_90d) == (
@@ -87,7 +100,14 @@ def test_windows_series_medians_and_trend_formula() -> None:
     assert metrics.sell_through_30d == Decimal("0.714286")
     assert metrics.growth == Decimal("3.0000")  # (5 + 1) / (1 + 1)
     assert metrics.speed == Decimal("0.7500")  # 30 / (30 + 10)
-    assert metrics.trend_score == Decimal("160.71")
+    # Every rankable period: sales, median price (usable), days to sell (exact), likes.
+    assert metrics.windows["7"] == {"sold": 3, "price": "200.00", "days": "20.00", "likes": "19.0"}
+    assert metrics.windows["14"] == metrics.windows["7"]
+    assert metrics.windows["30"] == {"sold": 5, "price": "205.00", "days": "10.00", "likes": "19.0"}
+    assert metrics.windows["60"] == {"sold": 6, "price": "200.00", "days": "15.00", "likes": "22.0"}
+    assert metrics.windows["90"] == {"sold": 7, "price": "175.00", "days": "15.00", "likes": "19.0"}
+    year = {"sold": 8, "price": "200.00", "days": "10.00", "likes": "22.0"}
+    assert metrics.windows["180"] == year and metrics.windows["365"] == year
     assert metrics.colors[0] == {
         "value": "black",
         "sold": 7,
@@ -98,12 +118,13 @@ def test_windows_series_medians_and_trend_formula() -> None:
     assert not metrics.is_new  # the oldest listing is 100 days old
 
 
-def test_trend_needs_three_sales_and_smooths_growth() -> None:
-    assert trend_score(2, Decimal(3), Decimal(1), Decimal(1)) is None
-    assert trend_score(3, Decimal(4), None, Decimal("0.5")) == Decimal("100.00")
-    single = compute_metrics([_item(1, sold_days=3, listed_days=10)], AS_OF)
-    assert single.growth == Decimal("2.0000") and single.trend_score is None
-    assert single.is_new
+def test_periods_without_sales_are_left_out() -> None:
+    single = compute_metrics([_item(1, sold_days=10, listed_days=12, likes=3)], AS_OF)
+    unsold = compute_metrics([_item(1, status="active", likes=50)], AS_OF)
+
+    assert set(single.windows) == {"14", "30", "60", "90", "180", "365"} and single.is_new
+    assert single.windows["14"]["likes"] == "3.0"
+    assert unsold.windows == {}
 
 
 _TYPICAL = ("100", "105", "95", "110", "90", "100", "102", "98")
@@ -165,6 +186,7 @@ def _listing(
     days_ago: int,
     seller: str,
     sold_days: int | None = None,
+    likes: int = 0,
 ) -> Listing:
     created = AS_OF - timedelta(days=days_ago)
     return Listing(
@@ -190,6 +212,7 @@ def _listing(
         designer_names=[],
         seller_identity=seller,
         seller_identity_mode="hashed",
+        likes_count=likes,
         quality_flags=[],
         fetch_tier="T1",
         raw_json={},
@@ -229,6 +252,7 @@ async def _seed(tmp_path: Path) -> tuple[AsyncEngine, async_sessionmaker[AsyncSe
                     days_ago=20 + index,
                     sold_days=index + 1,
                     seller=f"s{index}",
+                    likes=10 + index,
                 )
             )
         rows.append(
@@ -290,15 +314,24 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     try:
         client = TestClient(app)
         models = client.get("/api/trends").json()
+        everything = client.get("/api/trends", params={"include_unranked": "true"}).json()
         footwear = client.get(
-            "/api/trends", params={"section": "footwear", "sort": "sales", "window": 90}
+            "/api/trends", params={"section": "footwear", "sort": "sales"}
         ).json()
         filtered = client.get(
-            "/api/trends", params={"brand_ids": "2", "min_sales": 3, "price_min": 700}
+            "/api/trends",
+            params={
+                "brand_ids": "2", "min_sales": 3, "price_min": 700, "include_unranked": "true"
+            },
         ).json()
         cheap = client.get("/api/trends", params={"price_max": 100}).json()
-        types = client.get("/api/trends", params={"level": "type"}).json()
-        brands = client.get("/api/trends", params={"level": "brand", "sort": "growth"}).json()
+        types = client.get(
+            "/api/trends", params={"level": "type", "include_unranked": "true"}
+        ).json()
+        brands = client.get(
+            "/api/trends", params={"level": "brand", "sort": "likes", "include_unranked": "true"}
+        ).json()
+        old_sort = client.get("/api/trends", params={"sort": "growth"})
         card = client.get(f"/api/trends/groups/{line_id}").json()
         catalog = client.get("/api/listings", params={"product_type": "hoodie"}).json()
         first = client.get("/api/listings", params={"limit": 2}).json()
@@ -313,13 +346,30 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     finally:
         app.dependency_overrides.clear()
 
-    names = {(row["brand"], row["name"]) for row in models["data"]}
-    assert {("Balenciaga", "Track"), ("Rick Owens", "Geobasket")} <= names
+    # Geobasket sold 3 times in 30 days: below the threshold, so only Track is ranked.
+    assert [(row["brand"], row["name"]) for row in models["data"]] == [("Balenciaga", "Track")]
+    assert models["ranking"] == {
+        "period_days": 30,
+        "min_sales_per_month": "5",
+        "min_price": 15000,
+        "excluded_sections": ["dresses", "other"],
+        "weights": {"sales": "0.40", "speed": "0.25", "likes": "0.20", "price": "0.15"},
+    }
+    names = [row["name"] for row in everything["data"]]
+    assert names[0] == "Track" and "Geobasket" in names
+    geobasket = next(row for row in everything["data"] if row["name"] == "Geobasket")
+    assert geobasket["liquidity_score"] is None
     assert all(row["scope"] == "model" and not row["is_fallback"] for row in models["data"])
-    track = next(row for row in models["data"] if row["name"] == "Track")
+    track = models["data"][0]
     assert track["versions"] == 1 and track["sold_30d"] == 6 and track["active_now"] == 1
-    assert track["trend_score"] is not None and len(track["weekly_sales"]) == 12
-    assert isinstance(track["median_price"], int)
+    assert track["liquidity_score"] == "50.00"  # alone in the pool
+    assert track["period_median_likes"] == "12.5" and track["period_median_days"] == "19.00"
+    assert track["period_sold"] == 6 and track["sales_per_month"] == "6.0"
+    assert track["period_median_price"] == track["median_price"]
+    assert "median_likes" not in track
+    assert len(track["weekly_sales"]) == 12 and isinstance(track["median_price"], int)
+    assert "trend_score" not in track and "growth" not in track
+    assert old_sort.status_code == 422
     assert [row["section"] for row in footwear["data"]] == ["footwear"] * len(footwear["data"])
     assert footwear["data"][0]["name"] == "Track"
     assert [row["name"] for row in filtered["data"]] == ["Geobasket"]
@@ -341,4 +391,126 @@ def test_trends_show_every_brand_and_the_group_card(tmp_path: Path) -> None:
     assert history["data"][0]["price"] == 9999
     assert missing.status_code == 404
     assert removed == [404, 404, 404]
+    asyncio.run(engine.dispose())
+
+
+def test_ranking_settings_are_saved_and_re_rank_at_once(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def override_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    quarter = {
+        "period_days": 90,
+        "min_sales_per_month": 1,
+        "min_price_usd": 150,
+        "excluded_sections": ["dresses"],
+        "weights": {"sales": 60, "speed": 20, "likes": 20, "price": 0},
+    }
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        defaults = client.get("/api/settings/liquidity").json()
+        saved = client.put("/api/settings/liquidity", json=quarter).json()
+        ranked = client.get("/api/trends").json()
+        reread = client.get("/api/settings/liquidity").json()
+        bad_period = client.put("/api/settings/liquidity", json={**quarter, "period_days": 45})
+        bad_section = client.put(
+            "/api/settings/liquidity", json={**quarter, "excluded_sections": ["gowns"]}
+        )
+        no_weight = client.put(
+            "/api/settings/liquidity",
+            json={**quarter, "weights": {"sales": 0, "speed": 0, "likes": 0, "price": 0}},
+        )
+        reset = client.delete("/api/settings/liquidity").json()
+        after_reset = client.get("/api/trends").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert defaults["saved"] is False and defaults["period_days"] == 30
+    assert defaults["periods"] == [7, 14, 30, 60, 90, 180, 365]
+    assert defaults["defaults"]["min_price_usd"] == 150
+    assert saved["saved"] is True and saved["period_days"] == 90 and saved["ranked"] >= 2
+    assert saved["weights"] == {
+        "sales": "0.6000", "speed": "0.2000", "likes": "0.2000", "price": "0.0000"
+    }
+    assert reread["min_sales_per_month"] == "1" and reread["excluded_sections"] == ["dresses"]
+    # Over 90 days with one sale a month Geobasket passes too.
+    assert {row["name"] for row in ranked["data"]} >= {"Track", "Geobasket"}
+    assert ranked["ranking"]["period_days"] == 90
+    assert ranked["ranking"]["weights"]["sales"] == "0.60"
+    geobasket = next(row for row in ranked["data"] if row["name"] == "Geobasket")
+    assert geobasket["period_sold"] >= 3 and geobasket["liquidity_score"] is not None
+    assert [bad_period.status_code, bad_section.status_code, no_weight.status_code] == [422] * 3
+    assert bad_section.json()["error"]["code"] == "invalid_liquidity_policy"
+    assert reset["saved"] is False and reset["period_days"] == 30
+    assert [row["name"] for row in after_reset["data"]] == ["Track"]
+    asyncio.run(engine.dispose())
+
+
+def test_a_broken_saved_policy_falls_back_to_the_defaults(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def break_policy() -> None:
+        async with factory() as session:
+            session.add(
+                AppSetting(
+                    key=POLICY_KEY,
+                    value={"period_days": 30, "excluded_sections": ["gowns"]},
+                    updated_at=AS_OF,
+                )
+            )
+            await session.commit()
+
+    async def override_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    asyncio.run(break_policy())
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        settings = client.get("/api/settings/liquidity").json()
+        trends = client.get("/api/trends").json()
+        huge = client.put(
+            "/api/settings/liquidity",
+            json={
+                "period_days": 30,
+                "min_sales_per_month": 5,
+                "min_price_usd": 150,
+                "excluded_sections": [],
+                "weights": {name: "9E+999999" for name in ("sales", "speed", "likes", "price")},
+            },
+        )
+        reset = client.delete("/api/settings/liquidity")
+        reset_again = client.delete("/api/settings/liquidity")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert settings["saved"] is False and settings["period_days"] == 30
+    assert [row["name"] for row in trends["data"]] == ["Track"]
+    assert huge.status_code == 422
+    assert reset.status_code == 200 and reset_again.status_code == 200
+    assert reset_again.json()["saved"] is False and reset_again.json()["ranked"] >= 1
+    asyncio.run(engine.dispose())
+
+
+def test_rows_without_windows_stay_unranked(tmp_path: Path) -> None:
+    engine, factory = asyncio.run(_seed(tmp_path))
+
+    async def rank_after_migration() -> tuple[int, int]:
+        async with factory() as session:
+            # Right after migration 0021 no row has windows yet.
+            await session.execute(update(GroupMetric).values(windows=None))
+            ranked = await MetricsService(session).rank()
+            await session.commit()
+            empty = await session.scalar(
+                select(func.count()).where(GroupMetric.period_sold == 0)
+            )
+            return ranked, int(empty or 0)
+
+    ranked, empty = asyncio.run(rank_after_migration())
+
+    assert ranked == 0 and empty > 0
     asyncio.run(engine.dispose())

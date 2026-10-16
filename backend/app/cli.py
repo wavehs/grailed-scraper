@@ -403,6 +403,19 @@ async def reflag(settings: Settings, brand_ids: tuple[int, ...] = ()) -> dict[st
         await engine.dispose()
 
 
+async def recompute_metrics(settings: Settings) -> dict[str, object]:
+    """Recompute all group metrics and liquidity scores; grouping stays as it is."""
+
+    engine = create_database_engine(settings)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            metrics = await recompute_brands(session, None)
+        return {"status": "ok", "metrics": metrics.summary()}
+    finally:
+        await engine.dispose()
+
+
 async def grouping_report(
     settings: Settings,
     brand: str | None,
@@ -722,6 +735,9 @@ def main() -> int:
         default=[],
         help="also recompute these brands (after a recompute that failed)",
     )
+    subparsers.add_parser(
+        "metrics", help="recompute group metrics and liquidity scores (no regroup)"
+    )
     report_parser = subparsers.add_parser(
         "grouping-report", help="grouping quality per brand (offline)"
     )
@@ -859,6 +875,8 @@ def main() -> int:
         return _print(reflag(Settings(), tuple(args.brand_ids)))
     if args.command == "regroup":
         return _print(regroup(Settings(), full=not args.delta))
+    if args.command == "metrics":
+        return _print(recompute_metrics(Settings()))
     if args.command == "grouping-report":
         return _print(
             grouping_report(
