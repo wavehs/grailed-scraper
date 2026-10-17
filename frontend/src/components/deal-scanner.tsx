@@ -1,11 +1,12 @@
 'use client';
 
+import { type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Radar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { HelpTip } from '@/components/ui/help-tip';
+import { Popover } from '@/components/ui/popover';
 import { ErrorState, Notice } from '@/components/states';
 import { formatRatio } from '@/components/liquidity-cells';
 import { api } from '@/lib/api';
@@ -21,7 +22,21 @@ export function fill(template: string, values: Record<string, string | number>):
   );
 }
 
-export function DealScannerCard({
+/** One inline figure of the scanner strip: a muted label over its value. */
+function ScannerStat({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+        {label}
+        {help && <HelpTip label={label} text={help} />}
+      </p>
+      <div className="text-[13px] text-[var(--text-primary)]">{children}</div>
+    </div>
+  );
+}
+
+/** The scanner's state under the top bar: schedule, hit rate, last scan and a manual run. */
+export function DealScannerBar({
   scanner,
   summary,
   writable,
@@ -39,56 +54,62 @@ export function DealScannerCard({
   const last = scanner.last;
   const truncated = last?.truncated ?? [];
   return (
-    <Card className="space-y-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          <Radar size={16} /> {t('dealsScanner')}
+    <div className="-mx-4 space-y-2 border-b border-[var(--border-subtle)] px-4 py-3 md:-mx-6 md:px-6">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <ScannerStat label={t('dealsScanner')}>
           <Badge variant={scanner.enabled ? 'success' : 'muted'} dot>
             {scanner.enabled
               ? fill(t('dealsScannerOn'), { minutes: scanner.interval_minutes })
               : t('dealsScannerOff')}
           </Badge>
-        </h2>
-        <Button
-          size="sm"
-          variant="secondary"
-          icon={<Radar size={14} />}
-          disabled={!writable || scanner.running || scan.isPending}
-          onClick={() => scan.mutate()}
-        >
-          {scanner.running ? t('dealsScanning') : t('dealsScanNow')}
-        </Button>
-      </div>
-      {!scanner.enabled && <p className="text-sm text-[var(--text-secondary)]">{t('dealsScannerOffHelp')}</p>}
-      <dl className="grid gap-2 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="flex items-center gap-1 text-[var(--text-muted)]">
-            {t('dealsHitRate')} <HelpTip label={t('dealsHitRate')} text={t('dealsHitRateHelp')} />
-          </dt>
-          <dd className="text-[var(--text-primary)]">
-            <span className="text-lg font-semibold tabular-nums">{formatRatio(summary.hit_rate)}</span>{' '}
-            <span className="text-xs text-[var(--text-secondary)]">
-              {fill(t('dealsRated'), { good: summary.good, bad: summary.bad, unrated: summary.unrated })}
-            </span>
-          </dd>
-        </div>
+        </ScannerStat>
+        <ScannerStat label={t('dealsHitRate')} help={t('dealsHitRateHelp')}>
+          <span className="font-medium tabular-nums">{formatRatio(summary.hit_rate)}</span>{' '}
+          <span className="text-xs text-[var(--text-secondary)]">
+            {fill(t('dealsRated'), { good: summary.good, bad: summary.bad, unrated: summary.unrated })}
+          </span>
+        </ScannerStat>
         {last && (
-          <div>
-            <dt className="text-[var(--text-muted)]">{t('dealsLastScan')}</dt>
-            <dd className="text-[var(--text-primary)]">
-              {formatDate(last.finished_at, locale)}
-              <p className="text-xs text-[var(--text-secondary)]">
-                {fill(t('dealsLastScanSummary'), {
-                  brands: last.brands,
-                  hits: last.hits,
-                  deals: last.deals?.deals ?? 0,
-                  new: last.deals?.new ?? 0,
-                })}
-              </p>
-            </dd>
-          </div>
+          <ScannerStat label={t('dealsLastScan')}>
+            {formatDate(last.finished_at, locale)}{' '}
+            <span className="text-xs text-[var(--text-secondary)]">
+              {fill(t('dealsLastScanSummary'), {
+                brands: last.brands,
+                hits: last.hits,
+                deals: last.deals?.deals ?? 0,
+                new: last.deals?.new ?? 0,
+              })}
+            </span>
+          </ScannerStat>
         )}
-      </dl>
+        <div className="ml-auto flex items-center gap-2">
+          {scanner.brands.length > 0 && (
+            <Popover label={t('dealsBrandScans')} align="end" className="w-80">
+              <ul className="space-y-1 p-1.5 text-xs text-[var(--text-secondary)]">
+                {scanner.brands.map((brand) => (
+                  <li key={brand.brand_id} className="flex justify-between gap-3">
+                    <span className="truncate text-[var(--text-body)]">{brand.brand}</span>
+                    <span className="shrink-0 tabular-nums">
+                      {formatDate(brand.scanned_to, locale)} · {brand.hits}
+                      {brand.error && <span className="text-[var(--danger)]"> · {brand.error}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Popover>
+          )}
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Radar size={13} />}
+            disabled={!writable || scanner.running || scan.isPending}
+            onClick={() => scan.mutate()}
+          >
+            {scanner.running ? t('dealsScanning') : t('dealsScanNow')}
+          </Button>
+        </div>
+      </div>
+      {!scanner.enabled && <p className="text-xs text-[var(--text-muted)]">{t('dealsScannerOffHelp')}</p>}
       {scanner.skipped_at && (
         <p className="text-xs text-[var(--text-muted)]">
           {fill(t('dealsSkipped'), { time: formatDate(scanner.skipped_at, locale) })}
@@ -105,19 +126,6 @@ export function DealScannerCard({
       )}
       {scan.error && <ErrorState error={scan.error} />}
       {scan.isSuccess && <Notice>{t('dealsScanStarted')}</Notice>}
-      {scanner.brands.length > 0 && (
-        <details className="text-xs text-[var(--text-secondary)]">
-          <summary className="cursor-pointer">{t('dealsBrandScans')}</summary>
-          <ul className="mt-2 space-y-1">
-            {scanner.brands.map((brand) => (
-              <li key={brand.brand_id}>
-                {brand.brand}: {formatDate(brand.scanned_to, locale)} · {brand.hits}
-                {brand.error && <span className="text-[var(--danger)]"> · {brand.error}</span>}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </Card>
+    </div>
   );
 }

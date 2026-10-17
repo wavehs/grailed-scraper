@@ -140,6 +140,8 @@
     transition: background-color 100ms, border-color 100ms;
   }
   .chip:hover { background: var(--bg-control-hover); }
+  /* Inputs and selects sized to sit beside chips in a toolbar. */
+  .control-sm { height: 1.75rem; min-height: 0; padding-top: 0; padding-bottom: 0; font-size: 0.75rem; }
   .chip[aria-pressed='true'], .chip[data-state='open'] {
     border-color: var(--accent);
     background: var(--accent-soft);

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DealsPage from '@/app/deals/page';
 import { fill } from '@/components/deal-scanner';
+import { messages } from '@/lib/i18n';
 import { dealsEn, dealsRu } from '@/lib/i18n-deals';
 import type { DealItem, DealsResponse } from '@/lib/types';
 import { renderApp } from '@/test/render';
@@ -149,7 +150,7 @@ describe('deals', () => {
     );
     renderApp(<DealsPage />);
 
-    await userEvent.click(await screen.findByRole('button', { name: dealsEn.dealsNext }));
+    await userEvent.click(await screen.findByRole('button', { name: messages.en.next }));
 
     await waitFor(() => expect(calls.filter((url) => url.includes('offset=0')).length).toBeGreaterThan(1));
     expect(await screen.findByText('Geobasket 1')).toBeInTheDocument();

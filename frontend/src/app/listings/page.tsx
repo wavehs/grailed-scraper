@@ -1,13 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { groupLabel } from '@/components/group-editor';
 import { Badge, statusVariant } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
   DataTable,
   TableCell,
@@ -16,6 +13,9 @@ import {
   TableRow,
 } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
+import { Pager } from '@/components/ui/pager';
+import { SearchInput } from '@/components/ui/search-input';
+import { Toolbar } from '@/components/ui/toolbar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -51,73 +51,68 @@ export default function ListingsPage() {
       return getApi<CatalogListingList>(`/listings?${params}`, signal);
     },
   });
+  const resetPages = () => {
+    setCursors([null]);
+    setPage(0);
+  };
+  const rows = query.data?.data ?? [];
   return (
-    <section className="space-y-5" aria-labelledby="catalog-heading">
-      <PageHeader title={t('catalog')} description={t('catalogIntro')} />
-      <Card className="flex flex-wrap gap-3 p-4">
-        <label className="relative min-w-64 flex-1">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-          />
-          <span className="sr-only">{t('search')}</span>
-          <input
-            className="w-full pl-9"
-            placeholder={t('catalogSearch')}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <label>
-          <span className="sr-only">{t('status')}</span>
-          <select
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setCursors([null]);
-              setPage(0);
-            }}
-          >
-            <option value="">{t('allStatuses')}</option>
-            <option value="active">{t('active')}</option>
-            <option value="sold">{t('sold')}</option>
-            <option value="removed_pending">{t('removedPending')}</option>
-            <option value="removed">{t('removed')}</option>
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">{t('productType')}</span>
-          <select
-            aria-label={t('productType')}
-            value={productType}
-            onChange={(event) => {
-              setProductType(event.target.value);
-              setCursors([null]);
-              setPage(0);
-            }}
-          >
-            <option value="">{t('allTypes')}</option>
-            {(taxonomy?.types ?? []).map((item) => (
-              <option key={item.id} value={item.id}>
-                {item[locale]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </Card>
+    <section aria-labelledby="catalog-heading">
+      <PageHeader title={t('catalog')} headingId="catalog-heading" description={t('catalogIntro')} />
+      <Toolbar>
+        <SearchInput
+          label={t('search')}
+          placeholder={t('catalogSearch')}
+          className="sm:w-72"
+          value={search}
+          onChange={setSearch}
+        />
+        <select
+          aria-label={t('status')}
+          className="control-sm"
+          value={status}
+          onChange={(event) => {
+            setStatus(event.target.value);
+            resetPages();
+          }}
+        >
+          <option value="">{t('allStatuses')}</option>
+          <option value="active">{t('active')}</option>
+          <option value="sold">{t('sold')}</option>
+          <option value="removed_pending">{t('removedPending')}</option>
+          <option value="removed">{t('removed')}</option>
+        </select>
+        <select
+          aria-label={t('productType')}
+          className="control-sm"
+          value={productType}
+          onChange={(event) => {
+            setProductType(event.target.value);
+            resetPages();
+          }}
+        >
+          <option value="">{t('allTypes')}</option>
+          {(taxonomy?.types ?? []).map((item) => (
+            <option key={item.id} value={item.id}>
+              {item[locale]}
+            </option>
+          ))}
+        </select>
+        {query.data && (
+          <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)]">
+            {t('rowsTotal').replace('{count}', String(rows.length))}
+          </span>
+        )}
+      </Toolbar>
       {query.isLoading ? (
         <LoadingState />
       ) : query.error ? (
         <ErrorState error={query.error} retry={() => query.refetch()} />
+      ) : !rows.length ? (
+        <EmptyState />
       ) : (
         <>
-          <p className="text-sm text-[var(--text-muted)]">
-            {t('shown')}:{' '}
-            <span className="tabular-nums text-[var(--text-primary)]">
-              {query.data?.data.length ?? 0}
-            </span>
-          </p>
-          <DataTable>
+          <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
             <TableHead>
               <tr>
                 <TableHeaderCell>{t('listing')}</TableHeaderCell>
@@ -130,18 +125,18 @@ export default function ListingsPage() {
               </tr>
             </TableHead>
             <tbody>
-              {query.data?.data.map((item) => (
+              {rows.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell>
+                  <TableCell className="min-w-72 max-w-md">
                     <a
-                      className="font-medium text-[var(--accent)] hover:underline"
+                      className="text-[var(--text-primary)] hover:underline"
                       href={item.url}
                       rel="noreferrer"
                       target="_blank"
                     >
                       {item.title}
                     </a>
-                    <p className="text-xs text-[var(--text-muted)]">
+                    <p className="truncate text-xs text-[var(--text-muted)]">
                       {item.brand} · {typeName(item.product_type)} · {item.size ?? '—'} ·{' '}
                       {item.color ?? '—'} · #{item.grailed_id}
                     </p>
@@ -149,7 +144,7 @@ export default function ListingsPage() {
                   <TableCell>
                     {item.model_group_id ? (
                       <Link
-                        className="text-[var(--accent)] hover:underline"
+                        className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline"
                         href={`/group?id=${item.model_group_id}`}
                       >
                         {groupLabel({ name: item.model_name ?? '', is_fallback: item.is_fallback, kind: item.kind }, t)}
@@ -162,44 +157,36 @@ export default function ListingsPage() {
                     <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="text-xs tabular-nums text-[var(--text-secondary)]">
+                    <span className="tabular-nums text-[var(--text-secondary)]">
                       {formatDaysOnMarket(item.days_on_market, item.status, locale)}
                     </span>
                   </TableCell>
                   <TableCell>{formatCurrency(item.price, locale)}</TableCell>
                   <TableCell>
-                    <span className="tabular-nums">{item.model_sold_count}</span> /{' '}
-                    {item.model_active_count} {t('activeShort')}
+                    <span className="tabular-nums">{item.model_sold_count}</span>
+                    <span className="text-[var(--text-muted)]">
+                      {' '}/ {item.model_active_count} {t('activeShort')}
+                    </span>
                   </TableCell>
-                  <TableCell>{new Date(item.last_seen_at).toLocaleDateString(locale)}</TableCell>
+                  <TableCell className="text-[var(--text-secondary)]">
+                    {new Date(item.last_seen_at).toLocaleDateString(locale)}
+                  </TableCell>
                 </TableRow>
               ))}
             </tbody>
           </DataTable>
-          {!query.data?.data.length && <EmptyState />}
-          {(page > 0 || query.data?.next_cursor) && (
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="secondary"
-                disabled={page === 0 || query.isFetching}
-                onClick={() => setPage((current) => Math.max(0, current - 1))}
-              >
-                {t('previous')}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={!query.data?.next_cursor || query.isFetching}
-                onClick={() => {
-                  const next = query.data?.next_cursor;
-                  if (!next) return;
-                  setCursors((current) => [...current.slice(0, page + 1), next]);
-                  setPage((current) => current + 1);
-                }}
-              >
-                {t('next')}
-              </Button>
-            </div>
-          )}
+          <Pager
+            hasPrevious={page > 0}
+            hasNext={Boolean(query.data?.next_cursor)}
+            busy={query.isFetching}
+            onPrevious={() => setPage((current) => Math.max(0, current - 1))}
+            onNext={() => {
+              const next = query.data?.next_cursor;
+              if (!next) return;
+              setCursors((current) => [...current.slice(0, page + 1), next]);
+              setPage((current) => current + 1);
+            }}
+          />
         </>
       )}
     </section>

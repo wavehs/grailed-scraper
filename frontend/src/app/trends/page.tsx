@@ -8,8 +8,8 @@ import { RankingStatus, useRankingControls } from '@/components/ranking-settings
 import { SORTS, TrendsToolbar } from '@/components/trends/trends-toolbar';
 import { TrendsTable } from '@/components/trends/trends-table';
 import { CLEAR_WARDROBE, WardrobePresets } from '@/components/wardrobe-presets';
-import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { Pager } from '@/components/ui/pager';
 import { Toolbar } from '@/components/ui/toolbar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
@@ -166,21 +166,14 @@ export default function TrendsPage() {
 
 /** The row range and previous/next buttons under the list; hidden when one page holds every row. */
 function Pagination({ page, total, onPage }: { page: number; total: number; onPage: (page: number) => void }) {
-  const { t } = useI18n();
-  const hasNext = (page + 1) * PAGE_SIZE < total;
-  if (page === 0 && !hasNext) return null;
   return (
-    <div className="flex items-center justify-end gap-2 pt-3 text-xs">
-      <span className="tabular-nums text-[var(--text-muted)]">
-        {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} / {total}
-      </span>
-      <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => onPage(page - 1)}>
-        {t('previous')}
-      </Button>
-      <Button variant="secondary" size="sm" disabled={!hasNext} onClick={() => onPage(page + 1)}>
-        {t('next')}
-      </Button>
-    </div>
+    <Pager
+      range={`${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} / ${total}`}
+      hasPrevious={page > 0}
+      hasNext={(page + 1) * PAGE_SIZE < total}
+      onPrevious={() => onPage(page - 1)}
+      onNext={() => onPage(page + 1)}
+    />
   );
 }
 

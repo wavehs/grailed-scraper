@@ -4,11 +4,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, ThumbsDown, ThumbsUp } from 'lucide-react';
-import { DealScannerCard, fill } from '@/components/deal-scanner';
+import { DealScannerBar, fill } from '@/components/deal-scanner';
 import { formatRatio } from '@/components/liquidity-cells';
 import { Button } from '@/components/ui/button';
 import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
+import { Pager } from '@/components/ui/pager';
+import { Segmented } from '@/components/ui/segmented';
+import { Toolbar } from '@/components/ui/toolbar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { api, errorMessage } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -38,33 +41,36 @@ export default function DealsPage() {
     if (overflow) setFilters((old) => ({ ...old, offset: lastOffset }));
   }, [overflow, lastOffset]);
   return (
-    <div className="space-y-4">
-      <PageHeader title={t('deals')} description={t('dealsIntro')} />
-      {data && <DealScannerCard scanner={data.scanner} summary={data.summary} writable={health.writable} />}
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+    <section aria-labelledby="deals-heading">
+      <PageHeader title={t('deals')} headingId="deals-heading" description={t('dealsIntro')} />
+      {data && <DealScannerBar scanner={data.scanner} summary={data.summary} writable={health.writable} />}
+      <Toolbar>
         <Segmented
           label={t('dealsVerdict')}
-          options={VERDICTS}
+          options={VERDICTS.map((value) => ({ value, label: t(`dealsFilter_${value}`) }))}
           value={filters.verdict}
-          text={(item) => t(`dealsFilter_${item}`)}
           onChange={(verdict) => change({ verdict })}
         />
         <Segmented
           label={t('dealsSort_found')}
-          options={SORTS}
+          options={SORTS.map((value) => ({ value, label: t(`dealsSort_${value}`) }))}
           value={filters.sort}
-          text={(item) => t(`dealsSort_${item}`)}
           onChange={(sort) => change({ sort })}
         />
-        <label className="flex items-center gap-2 text-[var(--text-secondary)]">
-          <input
-            type="checkbox"
-            checked={filters.includeInactive}
-            onChange={(event) => change({ includeInactive: event.target.checked })}
-          />
+        <button
+          type="button"
+          className="chip"
+          aria-pressed={filters.includeInactive}
+          onClick={() => change({ includeInactive: !filters.includeInactive })}
+        >
           {t('dealsIncludeInactive')}
-        </label>
-      </div>
+        </button>
+        {data && (
+          <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)]">
+            {t('rowsTotal').replace('{count}', String(data.total))}
+          </span>
+        )}
+      </Toolbar>
       {deals.isLoading ? (
         <LoadingState />
       ) : deals.isError || !data ? (
@@ -73,7 +79,7 @@ export default function DealsPage() {
         <EmptyState message={t('dealsEmpty')} />
       ) : (
         <>
-          <DataTable>
+          <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
             <TableHead>
               <tr>
                 <TableHeaderCell>{t('dealsListing')}</TableHeaderCell>
@@ -93,62 +99,19 @@ export default function DealsPage() {
             </tbody>
           </DataTable>
           <Pager
-            offset={filters.offset}
-            total={data.total}
-            onChange={(offset) => setFilters((old) => ({ ...old, offset }))}
+            range={fill(t('dealsPage'), {
+              from: filters.offset + 1,
+              to: Math.min(filters.offset + DEALS_PAGE, data.total),
+              total: data.total,
+            })}
+            hasPrevious={filters.offset > 0}
+            hasNext={filters.offset + DEALS_PAGE < data.total}
+            onPrevious={() => setFilters((old) => ({ ...old, offset: Math.max(0, old.offset - DEALS_PAGE) }))}
+            onNext={() => setFilters((old) => ({ ...old, offset: old.offset + DEALS_PAGE }))}
           />
         </>
       )}
-    </div>
-  );
-}
-
-function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  text,
-  onChange,
-}: {
-  label: string;
-  options: T[];
-  value: T;
-  text: (item: T) => string;
-  onChange: (item: T) => void;
-}) {
-  return (
-    <div role="group" aria-label={label} className="flex overflow-hidden rounded-md border border-[var(--border-default)]">
-      {options.map((item) => (
-        <button
-          key={item}
-          type="button"
-          aria-pressed={item === value}
-          onClick={() => onChange(item)}
-          className={`px-2.5 py-1 text-xs ${
-            item === value ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'text-[var(--text-secondary)]'
-          }`}
-        >
-          {text(item)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Pager({ offset, total, onChange }: { offset: number; total: number; onChange: (offset: number) => void }) {
-  const { t } = useI18n();
-  if (total <= DEALS_PAGE) return null;
-  const to = Math.min(offset + DEALS_PAGE, total);
-  return (
-    <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-      <Button size="sm" variant="secondary" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - DEALS_PAGE))}>
-        {t('dealsPrev')}
-      </Button>
-      {fill(t('dealsPage'), { from: offset + 1, to, total })}
-      <Button size="sm" variant="secondary" disabled={to >= total} onClick={() => onChange(offset + DEALS_PAGE)}>
-        {t('dealsNext')}
-      </Button>
-    </div>
+    </section>
   );
 }
 
@@ -163,18 +126,18 @@ function DealRow({ deal, writable }: { deal: DealItem; writable: boolean }) {
   const choose = (verdict: DealVerdict) => rate.mutate(deal.verdict === verdict ? null : verdict);
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="min-w-72 max-w-md">
         <div className="flex items-start gap-3">
           {deal.photo && (
             // eslint-disable-next-line @next/next/no-img-element -- remote Grailed photo, static export
-            <img src={deal.photo} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded object-cover" />
+            <img src={deal.photo} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-[5px] object-cover" />
           )}
           <div className="min-w-0">
             <a
               href={deal.url}
               target="_blank"
               rel="noreferrer noopener"
-              className="flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+              className="flex items-center gap-1 text-[var(--text-primary)] hover:underline"
             >
               <span className="line-clamp-2">{deal.title}</span>
               <ExternalLink size={12} className="shrink-0" />
@@ -190,7 +153,7 @@ function DealRow({ deal, writable }: { deal: DealItem; writable: boolean }) {
         </div>
       </TableCell>
       <TableCell>
-        <span className="font-semibold tabular-nums">{formatCurrency(deal.price, locale)}</span>
+        <span className="font-medium tabular-nums text-[var(--text-primary)]">{formatCurrency(deal.price, locale)}</span>
         {deal.shipping ? (
           <p className="text-xs text-[var(--text-muted)]">
             {fill(t('dealsShipping'), { amount: formatCurrency(deal.shipping, locale) })}
@@ -201,11 +164,11 @@ function DealRow({ deal, writable }: { deal: DealItem; writable: boolean }) {
         {formatCurrency(deal.p25, locale)} / {formatCurrency(deal.p50, locale)}
       </TableCell>
       <TableCell className="tabular-nums">{formatCurrency(deal.net, locale)}</TableCell>
-      <TableCell className="font-semibold tabular-nums text-[var(--success)]">{formatRatio(deal.roi)}</TableCell>
+      <TableCell className="font-medium tabular-nums text-[var(--success)]">{formatRatio(deal.roi)}</TableCell>
       <TableCell className="tabular-nums">
         {deal.liquidity_score === null ? '—' : Number(deal.liquidity_score).toFixed(0)}
       </TableCell>
-      <TableCell className="text-xs">{formatDate(deal.found_at, locale)}</TableCell>
+      <TableCell className="text-[var(--text-secondary)]">{formatDate(deal.found_at, locale)}</TableCell>
       <TableCell>
         <div className="flex gap-1">
           <Button
@@ -213,7 +176,7 @@ function DealRow({ deal, writable }: { deal: DealItem; writable: boolean }) {
             variant={deal.verdict === 'good' ? 'primary' : 'ghost'}
             aria-label={t('dealsGood')}
             aria-pressed={deal.verdict === 'good'}
-            icon={<ThumbsUp size={14} />}
+            icon={<ThumbsUp size={13} />}
             disabled={!writable || rate.isPending}
             onClick={() => choose('good')}
           />
@@ -222,7 +185,7 @@ function DealRow({ deal, writable }: { deal: DealItem; writable: boolean }) {
             variant={deal.verdict === 'bad' ? 'danger' : 'ghost'}
             aria-label={t('dealsBad')}
             aria-pressed={deal.verdict === 'bad'}
-            icon={<ThumbsDown size={14} />}
+            icon={<ThumbsDown size={13} />}
             disabled={!writable || rate.isPending}
             onClick={() => choose('bad')}
           />

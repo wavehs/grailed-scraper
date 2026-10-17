@@ -18,17 +18,29 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 export default function WatchlistPage() {
   const { t } = useI18n();
   const watchlist = useWatchlistQuery();
+  const rows = watchlist.data?.data ?? [];
   return (
-    <div className="space-y-4">
-      <PageHeader title={t('watchlist')} description={t('watchlistIntro')} />
+    <section aria-labelledby="watchlist-heading">
+      <PageHeader
+        title={t('watchlist')}
+        headingId="watchlist-heading"
+        description={t('watchlistIntro')}
+        actions={
+          rows.length > 0 && (
+            <span className="text-xs tabular-nums text-[var(--text-muted)]">
+              {t('rowsTotal').replace('{count}', String(rows.length))}
+            </span>
+          )
+        }
+      />
       {watchlist.isLoading ? (
         <LoadingState />
       ) : watchlist.isError ? (
         <ErrorState error={watchlist.error} retry={() => watchlist.refetch()} />
-      ) : !watchlist.data?.data.length ? (
+      ) : !rows.length ? (
         <EmptyState message={t('watchEmpty')} />
       ) : (
-        <DataTable>
+        <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
           <TableHead>
             <tr>
               <TableHeaderCell>{t('watchModel')}</TableHeaderCell>
@@ -38,17 +50,19 @@ export default function WatchlistPage() {
               <TableHeaderCell>{t('watchSupply')}</TableHeaderCell>
               <TableHeaderCell>{t('watchSold')}</TableHeaderCell>
               <TableHeaderCell>{t('watchNote')}</TableHeaderCell>
-              <TableHeaderCell>{''}</TableHeaderCell>
+              <TableHeaderCell>
+                <span className="sr-only">{t('actions')}</span>
+              </TableHeaderCell>
             </tr>
           </TableHead>
           <tbody>
-            {watchlist.data.data.map((item) => (
+            {rows.map((item) => (
               <WatchRow key={item.group_id} item={item} />
             ))}
           </tbody>
         </DataTable>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -71,12 +85,12 @@ function WatchRow({ item }: { item: WatchItem }) {
   return (
     <TableRow>
       <TableCell>
-        <Link className="font-medium text-[var(--accent)] hover:underline" href={`/group?id=${item.group_id}`}>
+        <Link className="text-[var(--text-primary)] hover:underline" href={`/group?id=${item.group_id}`}>
           {item.brand} · {item.name}
         </Link>
         {item.retired && <p className="text-xs text-[var(--text-muted)]">{t('watchRetired')}</p>}
       </TableCell>
-      <TableCell>{formatDate(item.added_at, locale)}</TableCell>
+      <TableCell className="text-[var(--text-secondary)]">{formatDate(item.added_at, locale)}</TableCell>
       {baseline && current && changes ? (
         <>
           <TableCell>
@@ -108,7 +122,7 @@ function WatchRow({ item }: { item: WatchItem }) {
       <TableCell>
         <input
           aria-label={t('watchNote')}
-          className="w-40 text-sm"
+          className="control-sm w-44"
           maxLength={500}
           defaultValue={item.note ?? ''}
           onBlur={(event) => {
@@ -125,7 +139,7 @@ function WatchRow({ item }: { item: WatchItem }) {
         <Button
           size="sm"
           variant="ghost"
-          icon={<Trash2 size={14} />}
+          icon={<Trash2 size={13} />}
           disabled={remove.isPending}
           onClick={() => remove.mutate()}
         >

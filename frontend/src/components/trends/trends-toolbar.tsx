@@ -1,10 +1,11 @@
 'use client';
 
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Building2, ListFilter, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Building2, ListFilter, SlidersHorizontal } from 'lucide-react';
 import { LiquidityFilters } from '@/components/liquidity-cells';
 import { PeriodControl, RankingSettings, type RankingControls } from '@/components/ranking-settings';
 import { CLEAR_WARDROBE } from '@/components/wardrobe-presets';
 import { MenuCheckbox, Popover, PopoverRow, PopoverSection } from '@/components/ui/popover';
+import { SearchInput } from '@/components/ui/search-input';
 import { Segmented } from '@/components/ui/segmented';
 import { Toolbar } from '@/components/ui/toolbar';
 import { useI18n } from '@/lib/i18n';
@@ -38,7 +39,7 @@ const CLEARED: Partial<TrendFilters> = {
   newOnly: false,
   watchedOnly: false,
 };
-const COMPACT = 'h-7 min-h-0 py-0 text-xs';
+const COMPACT = 'control-sm';
 
 /** How many options of the filter menu differ from their defaults. */
 export function activeFilterCount(filters: TrendFilters): number {
@@ -68,16 +69,7 @@ export function TrendsToolbar({
         options={LEVELS.map(([value, label]) => ({ value, label: t(label) }))}
         onChange={(level) => update({ level })}
       />
-      <label className="relative w-full sm:w-56">
-        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden />
-        <span className="sr-only">{t('search')}</span>
-        <input
-          className={`${COMPACT} w-full pl-7`}
-          placeholder={t('search')}
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-        />
-      </label>
+      <SearchInput label={t('search')} value={search} onChange={onSearch} />
       <BrandMenu filters={filters} update={update} />
       <ScopeSelects filters={filters} update={update} />
       <FilterMenu filters={filters} update={update} />

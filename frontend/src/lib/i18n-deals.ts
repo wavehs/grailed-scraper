@@ -44,8 +44,6 @@ export const dealsEn: Record<string, string> = {
   dealsBrandScans: 'Brands scanned',
   dealsTruncated: 'More changes than one scan reads: {brands}',
   dealsAborted: 'The scan stopped after several brands failed in a row',
-  dealsPrev: 'Previous',
-  dealsNext: 'Next',
   dealsPage: '{from}–{to} of {total}',
   deals_enabled: 'Scan for deals',
   deals_enabled_help:
@@ -106,8 +104,6 @@ export const dealsRu: Record<string, string> = {
   dealsBrandScans: 'Просканированные бренды',
   dealsTruncated: 'Изменений больше, чем читает одно сканирование: {brands}',
   dealsAborted: 'Сканирование остановлено: несколько брендов подряд завершились ошибкой',
-  dealsPrev: 'Назад',
-  dealsNext: 'Дальше',
   dealsPage: '{from}–{to} из {total}',
   deals_enabled: 'Искать находки',
   deals_enabled_help:
