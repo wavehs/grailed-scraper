@@ -20,4 +20,5 @@
 | [COMPLIANCE.md](COMPLIANCE.md) | Этика, ToS и ограничения. |
 | [METRICS.md](METRICS.md) | Метрики групп, формула тренда и API экрана «Тренды». |
 | [ROADMAP.md](ROADMAP.md) | Направления после MVP. |
+| [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md) | Дизайн-система интерфейса в стиле Linear: токены, примитивы, шаблоны экранов. |
 | [ENVIRONMENT.md](ENVIRONMENT.md) | Runtime versions, reproducible install, dependency audit и compatibility debt. |
