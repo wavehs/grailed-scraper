@@ -29,8 +29,8 @@ export function WardrobePresets({
   if (!seasons.length) return null;
   const active = filters.wardrobe;
   return (
-    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('wardrobe')}>
-      <span className="text-xs text-[var(--text-muted)]" title={t('wardrobeHelp')}>
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('wardrobe')}>
+      <span className="mr-0.5 text-xs text-[var(--text-muted)]" title={t('wardrobeHelp')}>
         {t('wardrobe')}
       </span>
       {seasons.map((season) => (
@@ -39,23 +39,19 @@ export function WardrobePresets({
           type="button"
           aria-pressed={active === season}
           onClick={() => update(wardrobePatch(season, presets?.[season] ?? []))}
-          className={`rounded-md border px-2.5 py-1 text-xs ${
-            active === season
-              ? 'border-[var(--accent)] bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-              : 'border-[var(--border-default)] text-[var(--text-secondary)]'
-          }`}
+          className="chip"
         >
           {ICONS[season]} {t(`season_${season}`)}
         </button>
       ))}
       {active && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
+        <span className="inline-flex h-6 items-center gap-1 rounded-[5px] bg-[var(--accent-soft)] pl-2 pr-1 text-xs text-[var(--text-primary)]">
           {t('wardrobeTypes').replace('{count}', String(filters.productTypes.length))}
           <button
             type="button"
             aria-label={t('wardrobeClear')}
             onClick={() => update(CLEAR_WARDROBE)}
-            className="rounded-full p-0.5 hover:bg-[var(--bg-surface-hover)]"
+            className="rounded-[3px] p-0.5 text-[var(--text-secondary)] hover:bg-[var(--bg-control-hover)] hover:text-[var(--text-primary)]"
           >
             <X className="h-3 w-3" aria-hidden />
           </button>

@@ -158,6 +158,7 @@ describe('stage 10 screens', () => {
     expect(screen.getByText('$520')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /Sales by week/ })).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Product type'), 'lowtop_sneakers');
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
     await userEvent.type(screen.getByLabelText('Price to, $'), '600');
     await waitFor(() =>
       expect(
@@ -165,7 +166,7 @@ describe('stage 10 screens', () => {
           const url = String(input);
           return (
             url.includes('product_type=lowtop_sneakers') &&
-            !url.includes('window=') &&
+            url.includes('window=30') &&
             url.includes('price_max=600')
           );
         }),
@@ -259,6 +260,7 @@ describe('stage 10 screens', () => {
       'title',
       '1 of 3 sales in 30 d have no model.',
     );
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
     const toggle = screen.getByRole('checkbox', { name: 'Show descriptions' });
     expect(toggle).not.toBeChecked();
     expect(
@@ -370,6 +372,7 @@ describe('stage 10 screens', () => {
       fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes('/trends?'));
     expect(trendCalls().every((url) => url.includes('sort=liquidity'))).toBe(true);
     expect(trendCalls().some((url) => url.includes('include_unranked'))).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByLabelText('Sort by')).toHaveValue('liquidity');
     const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent);
     expect(headers).toEqual(
@@ -465,7 +468,7 @@ describe('stage 10 screens', () => {
     expect(await screen.findByText('unknown section: hats')).toBeInTheDocument();
   });
 
-  it('saves a new ranking period at once and ignores an old saved window', async () => {
+  it('saves a new ranking period at once and restores the saved view', async () => {
     window.sessionStorage.setItem(
       'gla-trend-filters',
       JSON.stringify({ window: 90, level: 'brand', sort: 'liquidity' }),
@@ -473,6 +476,7 @@ describe('stage 10 screens', () => {
     const fetchMock = rankingFetch(liquiditySettings);
     vi.stubGlobal('fetch', fetchMock);
     renderApp(<TrendsPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
     const period = await screen.findByRole('group', { name: 'Ranking period' });
     expect(within(period).getByRole('button', { name: '30 d' })).toHaveAttribute(
       'aria-pressed',
@@ -487,9 +491,10 @@ describe('stage 10 screens', () => {
       fetchMock.mock.calls
         .map(([input]) => String(input))
         .filter((url) => url.includes('/trends?'));
-    // The first request may go out before the saved session loads; none sends a window.
-    await waitFor(() => expect(trendUrls().some((url) => url.includes('level=brand'))).toBe(true));
-    expect(trendUrls().some((url) => url.includes('window'))).toBe(false);
+    // The first request may go out before the saved session loads; then the saved view applies.
+    await waitFor(() =>
+      expect(trendUrls().some((url) => url.includes('level=brand') && url.includes('window=90'))).toBe(true),
+    );
   });
 
   it('shows the group card with versions, variants, sales links and edits', async () => {

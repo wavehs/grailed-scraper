@@ -21,7 +21,7 @@ export function ExportCsvLink({ filters }: { filters: TrendFilters }) {
       href={trendExportHref(filters)}
       download
       title={t('exportCsvHelp')}
-      className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface-raised)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-surface-hover)]"
+      className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-[var(--border-default)] bg-[var(--bg-control)] px-2 text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-control-hover)]"
     >
       <Download size={14} aria-hidden />
       {t('exportCsv')}

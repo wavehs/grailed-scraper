@@ -100,9 +100,11 @@ describe('trends liquidity columns', () => {
     renderApp(<TrendsPage />);
     await screen.findByText('82');
 
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
     await userEvent.click(screen.getByRole('button', { name: 'Used' }));
     await userEvent.selectOptions(screen.getByLabelText('Department'), 'womenswear');
     await userEvent.click(screen.getByLabelText('Hide low data'));
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
     await userEvent.selectOptions(screen.getByLabelText('Sort by'), 'liquidity');
 
     await waitFor(() =>

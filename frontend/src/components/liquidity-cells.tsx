@@ -1,5 +1,7 @@
 'use client';
 
+import { MenuCheckbox, PopoverRow } from '@/components/ui/popover';
+import { Segmented } from '@/components/ui/segmented';
 import { useI18n } from '@/lib/i18n';
 import type { PriceBucket, TrendCondition, TrendDepartment, TrendFilters, TrendRow } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
@@ -83,7 +85,7 @@ export function SupplyCell({ row }: { row: TrendRow }) {
   );
 }
 
-/** Condition, department and "hide low data" filters of the trends table. */
+/** Condition, department and "hide low data" rows of the trends filter menu. */
 export function LiquidityFilters({
   filters,
   update,
@@ -94,46 +96,34 @@ export function LiquidityFilters({
   const { t } = useI18n();
   return (
     <>
-      <div
-        className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5"
-        role="group"
-        aria-label={t('conditionFilter')}
-      >
-        {CONDITIONS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={filters.condition === value}
-            onClick={() => update({ condition: value })}
-            className={`rounded-md px-2.5 py-1 text-xs ${
-              filters.condition === value
-                ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-                : 'text-[var(--text-secondary)]'
-            }`}
-          >
-            {t(label)}
-          </button>
-        ))}
-      </div>
-      <select
-        aria-label={t('departmentFilter')}
-        value={filters.department}
-        onChange={(event) => update({ department: event.target.value as TrendDepartment })}
-      >
-        {DEPARTMENTS.map(([value, label]) => (
-          <option key={value || 'all'} value={value}>
-            {t(label)}
-          </option>
-        ))}
-      </select>
-      <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]" title={t('hideLowDataHelp')}>
-        <input
-          type="checkbox"
-          checked={filters.hideLowData}
-          onChange={(event) => update({ hideLowData: event.target.checked })}
+      <PopoverRow label={t('conditionFilter')}>
+        <Segmented
+          label={t('conditionFilter')}
+          value={filters.condition}
+          options={CONDITIONS.map(([value, label]) => ({ value, label: t(label) }))}
+          onChange={(condition) => update({ condition })}
         />
-        {t('hideLowData')}
-      </label>
+      </PopoverRow>
+      <PopoverRow label={t('departmentFilter')} htmlFor="trend-department">
+        <select
+          id="trend-department"
+          className="h-7 min-h-0 py-0 text-xs"
+          value={filters.department}
+          onChange={(event) => update({ department: event.target.value as TrendDepartment })}
+        >
+          {DEPARTMENTS.map(([value, label]) => (
+            <option key={value || 'all'} value={value}>
+              {t(label)}
+            </option>
+          ))}
+        </select>
+      </PopoverRow>
+      <MenuCheckbox
+        label={t('hideLowData')}
+        title={t('hideLowDataHelp')}
+        checked={filters.hideLowData}
+        onChange={(hideLowData) => update({ hideLowData })}
+      />
     </>
   );
 }

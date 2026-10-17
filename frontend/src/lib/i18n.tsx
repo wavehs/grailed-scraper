@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { liquidityEn, liquidityRu } from '@/lib/i18n-liquidity';
 import { dealsEn, dealsRu } from '@/lib/i18n-deals';
 import { watchlistEn, watchlistRu } from '@/lib/i18n-watchlist';
+import { uiEn, uiRu } from '@/lib/i18n-ui';
 
 export type Locale = 'en' | 'ru';
 
@@ -485,6 +486,7 @@ const en: Record<string, string> = {
   runRpm: 'Rate, requests/min',
   runRpmPlaceholder: 'From settings',
   ...liquidityEn,
+  ...uiEn,
   ...watchlistEn,
   ...dealsEn,
 };
@@ -972,6 +974,7 @@ const ru: Record<string, string> = {
   runRpm: 'Скорость, запросов/мин',
   runRpmPlaceholder: 'Из настроек',
   ...liquidityRu,
+  ...uiRu,
   ...watchlistRu,
   ...dealsRu,
 };

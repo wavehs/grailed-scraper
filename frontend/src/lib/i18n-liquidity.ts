@@ -3,7 +3,6 @@
 export const liquidityEn: Record<string, string> = {
   sortLiquidity: 'Liquidity Score',
   sortP30: 'P30',
-  liquidityScore: 'LS',
   liquidityScoreHelp:
     'Liquidity Score 0–100: 60% the chance to sell within 30 days, 40% sales in 90 days, both against the best models of the section.',
   p30: 'P30',
@@ -99,7 +98,6 @@ export const liquidityEn: Record<string, string> = {
 export const liquidityRu: Record<string, string> = {
   sortLiquidity: 'Liquidity Score',
   sortP30: 'P30',
-  liquidityScore: 'LS',
   liquidityScoreHelp:
     'Liquidity Score 0–100: 60% — шанс продать за 30 дней, 40% — продажи за 90 дней, относительно лучших моделей раздела.',
   p30: 'P30',

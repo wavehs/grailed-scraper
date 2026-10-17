@@ -22,20 +22,24 @@ export function Modal({
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
+  // Callers pass inline closures; keeping the latest one in a ref stops each parent render
+  // from re-running the effect and pulling focus back to the close button.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     returnRef.current = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handler);
     return () => {
       window.removeEventListener('keydown', handler);
       window.setTimeout(() => returnRef.current?.focus(), 0);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

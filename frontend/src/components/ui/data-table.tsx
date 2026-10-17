@@ -5,12 +5,23 @@ import { cn } from '@/lib/utils';
 export function DataTable({
   children,
   className,
+  bleed = false,
 }: {
   children: ReactNode;
   className?: string;
+  /** Run edge to edge under a toolbar instead of sitting in a bordered box. */
+  bleed?: boolean;
 }) {
   return (
-    <div className={cn('overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-base)]', className)}>
+    <div
+      className={cn(
+        'overflow-hidden bg-[var(--bg-base)]',
+        bleed
+          ? '-mx-4 border-b border-[var(--border-subtle)] md:-mx-6 [&_td:first-child]:pl-4 [&_th:first-child]:pl-4 md:[&_td:first-child]:pl-6 md:[&_th:first-child]:pl-6'
+          : 'rounded-md border border-[var(--border-subtle)]',
+        className,
+      )}
+    >
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px] tabular">{children}</table>
       </div>

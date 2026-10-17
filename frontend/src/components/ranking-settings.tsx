@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Modal } from '@/components/ui/modal';
+import { Segmented } from '@/components/ui/segmented';
 import { Notice } from '@/components/states';
 import { errorMessage } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -84,29 +85,14 @@ export function PeriodControl({ controls }: { controls: RankingControls }) {
   const { settings, busy, save } = controls;
   if (!settings) return null;
   return (
-    <div
-      className="inline-flex flex-wrap rounded-lg border border-[var(--border-default)] p-0.5"
-      role="group"
-      aria-label={t('rankingPeriod')}
+    <Segmented
+      label={t('rankingPeriod')}
       title={t('rankingPeriodHelp')}
-    >
-      {settings.periods.map((days) => (
-        <button
-          key={days}
-          type="button"
-          aria-pressed={settings.period_days === days}
-          disabled={busy}
-          onClick={() => settings.period_days !== days && save(withPeriod(settings, days))}
-          className={`rounded-md px-2.5 py-1 text-xs tabular-nums disabled:cursor-not-allowed disabled:opacity-60 ${
-            settings.period_days === days
-              ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-              : 'text-[var(--text-secondary)]'
-          }`}
-        >
-          {periodLabel(days, t)}
-        </button>
-      ))}
-    </div>
+      disabled={busy}
+      value={settings.period_days}
+      options={settings.periods.map((days) => ({ value: days, label: periodLabel(days, t) }))}
+      onChange={(days) => save(withPeriod(settings, days))}
+    />
   );
 }
 
@@ -125,31 +111,41 @@ export function RankingStatus({ controls }: { controls: RankingControls }) {
   return null;
 }
 
-/** A collapsible panel with the threshold, excluded sections and weights of the ranking. */
+/** A toolbar chip that opens the threshold, excluded sections and weights of the ranking. */
 export function RankingSettings({ controls }: { controls: RankingControls }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
   const { settings } = controls;
   if (!settings) return null;
   return (
-    <Card className="p-0">
-      <details>
-        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
-          <SlidersHorizontal size={16} className="text-[var(--text-muted)]" />
-          {t('rankingSettings')}
-          {!settings.saved && <Badge variant="muted">{t('defaultsInUse')}</Badge>}
-        </summary>
+    <>
+      <button type="button" className="chip" data-state={open ? 'open' : 'closed'} onClick={() => setOpen(true)}>
+        <SlidersHorizontal size={13} className="text-[var(--text-muted)]" aria-hidden />
+        {t('rankingSettings')}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={t('rankingSettings')} maxWidth="max-w-2xl">
         <RankingForm
           // A new saved policy starts a fresh form.
           key={JSON.stringify(draftFromPolicy(settings))}
           settings={settings}
           controls={controls}
+          // The page shows the recalculation status once the dialog is closed.
+          onSubmitted={() => setOpen(false)}
         />
-      </details>
-    </Card>
+      </Modal>
+    </>
   );
 }
 
-function RankingForm({ settings, controls }: { settings: LiquiditySettings; controls: RankingControls }) {
+function RankingForm({
+  settings,
+  controls,
+  onSubmitted,
+}: {
+  settings: LiquiditySettings;
+  controls: RankingControls;
+  onSubmitted: () => void;
+}) {
   const { t } = useI18n();
   const [draft, setDraft] = useState<LiquidityDraft>(() => draftFromPolicy(settings));
   const check = draftToUpdate(draft, settings.period_days);
@@ -157,13 +153,18 @@ function RankingForm({ settings, controls }: { settings: LiquiditySettings; cont
   const patch = (next: Partial<LiquidityDraft>) => setDraft((current) => ({ ...current, ...next }));
   return (
     <form
-      className="space-y-4 border-t border-[var(--border-subtle)] p-4"
+      className="space-y-5"
       onSubmit={(event) => {
         event.preventDefault();
-        if (check.body) controls.save(check.body);
+        if (!check.body) return;
+        controls.save(check.body);
+        onSubmitted();
       }}
     >
-      <p className="text-xs text-[var(--text-muted)]">{t('rankingSettingsHelp')}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-[var(--text-muted)]">{t('rankingSettingsHelp')}</p>
+        {!settings.saved && <Badge variant="muted">{t('defaultsInUse')}</Badge>}
+      </div>
       <div className="flex flex-wrap gap-4">
         <NumberField
           label={t('minSalesPerMonth')}
@@ -185,18 +186,21 @@ function RankingForm({ settings, controls }: { settings: LiquiditySettings; cont
           {t(check.error)}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button icon={<Save size={16} />} disabled={!changed || !check.body || controls.busy}>
-          {controls.busy ? t('saving') : t('save')}
-        </Button>
+      <div className="-mx-5 -mb-5 flex flex-wrap justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
         <Button
           type="button"
           variant="secondary"
           icon={<RotateCcw size={14} />}
           disabled={!settings.saved || controls.busy}
-          onClick={controls.reset}
+          onClick={() => {
+            controls.reset();
+            onSubmitted();
+          }}
         >
           {t('resetDefaults')}
+        </Button>
+        <Button icon={<Save size={14} />} disabled={!changed || !check.body || controls.busy}>
+          {controls.busy ? t('saving') : t('save')}
         </Button>
       </div>
     </form>
@@ -215,10 +219,10 @@ function NumberField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1.5 block font-medium text-[var(--text-primary)]">{label}</span>
+    <label className="block">
+      <span className="mb-1.5 block text-xs text-[var(--text-secondary)]">{label}</span>
       <input
-        className="w-36 rounded-lg"
+        className="w-36"
         type="number"
         min={0}
         step={step}
@@ -244,10 +248,10 @@ function SectionChecklist({
     onChange(excluded.includes(id) ? excluded.filter((item) => item !== id) : [...excluded, id]);
   return (
     <fieldset className="space-y-1.5">
-      <legend className="mb-1.5 text-sm font-medium text-[var(--text-primary)]">{t('excludedSections')}</legend>
+      <legend className="mb-1.5 text-xs text-[var(--text-secondary)]">{t('excludedSections')}</legend>
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {sections.map((section) => (
-          <label key={section.id} className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
+          <label key={section.id} className="flex items-center gap-1.5 text-[13px] text-[var(--text-body)]">
             <input type="checkbox" checked={excluded.includes(section.id)} onChange={() => toggle(section.id)} />
             {section[locale]}
           </label>
@@ -268,15 +272,15 @@ function WeightFields({
   const shares = weightShares(draft);
   return (
     <fieldset className="space-y-1.5">
-      <legend className="text-sm font-medium text-[var(--text-primary)]">{t('rankingWeights')}</legend>
+      <legend className="text-xs text-[var(--text-secondary)]">{t('rankingWeights')}</legend>
       <p className="text-xs text-[var(--text-muted)]">{t('rankingWeightsHelp')}</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {WEIGHT_KEYS.map((key) => (
-          <div key={key} className="text-sm">
-            <label className="flex flex-col gap-1.5 text-[var(--text-secondary)]">
+          <div key={key}>
+            <label className="flex flex-col gap-1.5 text-[13px] text-[var(--text-body)]">
               {t(WEIGHT_LABELS[key])}
               <input
-                className="w-24 rounded-lg"
+                className="w-24"
                 type="number"
                 min={0}
                 max={MAX_WEIGHT}

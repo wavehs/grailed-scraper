@@ -1,5 +1,6 @@
 'use client';
 
+import { Segmented } from '@/components/ui/segmented';
 import { useI18n } from '@/lib/i18n';
 import {
   SEASONS,
@@ -19,12 +20,6 @@ const PRESETS: Array<[TrendPeriod, string]> = [
   ['range', 'periodRange'],
 ];
 
-function toggleClass(active: boolean): string {
-  return `rounded-md px-2.5 py-1 text-xs tabular-nums ${
-    active ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]' : 'text-[var(--text-secondary)]'
-  }`;
-}
-
 /** The 7/30/90-day window or a calendar period: a season, the last 12 months or a month range. */
 export function PeriodPicker({
   filters,
@@ -40,41 +35,24 @@ export function PeriodPicker({
     !isValidRange(filters.monthFrom, filters.monthTo);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5" role="group" aria-label={t('trendWindow')}>
-        {WINDOWS.map((value) => {
-          const active = filters.period === 'window' && filters.window === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={active}
-              onClick={() => update({ window: value, period: 'window' })}
-              className={toggleClass(active)}
-            >
-              {value} {t('daysShort')}
-            </button>
-          );
-        })}
-      </div>
-      <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5" role="group" aria-label={t('trendPeriod')}>
-        {PRESETS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={filters.period === value}
-            onClick={() => update({ period: value })}
-            className={toggleClass(filters.period === value)}
-          >
-            {t(label)}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label={t('trendWindow')}
+        value={filters.period === 'window' ? filters.window : null}
+        options={WINDOWS.map((value) => ({ value, label: `${value} ${t('daysShort')}` }))}
+        onChange={(value) => update({ window: value, period: 'window' })}
+      />
+      <Segmented
+        label={t('trendPeriod')}
+        value={filters.period}
+        options={PRESETS.map(([value, label]) => ({ value, label: t(label) }))}
+        onChange={(period) => update({ period })}
+      />
       {filters.period === 'range' && (
         <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
           <input
             type="month"
             aria-label={t('periodFrom')}
-            className="text-sm"
+            className="h-7 min-h-0 py-0 text-xs"
             value={filters.monthFrom}
             onChange={(event) => update({ monthFrom: event.target.value })}
           />
@@ -82,7 +60,7 @@ export function PeriodPicker({
           <input
             type="month"
             aria-label={t('periodTo')}
-            className="text-sm"
+            className="h-7 min-h-0 py-0 text-xs"
             value={filters.monthTo}
             onChange={(event) => update({ monthTo: event.target.value })}
           />
@@ -111,7 +89,7 @@ export function PeriodCoverageLine({ filters, coverage }: { filters: TrendFilter
   );
   return (
     <p className="text-xs text-[var(--text-secondary)]" role="status">
-      <span className="font-medium">{periodLabel(months, season?.toLocaleLowerCase(locale) ?? null, locale)}</span>
+      <span className="text-[var(--text-body)]">{periodLabel(months, season?.toLocaleLowerCase(locale) ?? null, locale)}</span>
       {gaps && <span className="text-[var(--warning)]"> · {gaps}</span>}
       <span className="text-[var(--text-muted)]"> · {t('periodPriceNote')}</span>
     </p>
