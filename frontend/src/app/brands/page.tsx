@@ -92,7 +92,10 @@ export default function BrandsPage() {
         <SearchInput label={t('search')} value={search} onChange={setSearch} />
         <Segmented
           label={t('status')}
-          options={STATUSES.map((value) => ({ value, label: t(value === 'all' ? 'allStatuses' : value) }))}
+          options={STATUSES.map((value) => ({
+            value,
+            label: t(value === 'all' ? 'allStatuses' : value),
+          }))}
           value={status}
           onChange={setStatus}
         />
@@ -177,9 +180,13 @@ function BrandList({
               )}
             >
               <StatusDot variant={statusVariant(brand.status)} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]">{brand.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]">
+                {brand.name}
+              </span>
               {pending > 0 && <Badge variant="warning">{pending}</Badge>}
-              <span className="text-xs tabular-nums text-[var(--text-muted)]">{brand.listings_count}</span>
+              <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                {brand.listings_count}
+              </span>
             </button>
           </li>
         );

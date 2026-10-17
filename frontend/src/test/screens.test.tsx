@@ -91,7 +91,9 @@ function rankingFetch(settings: typeof liquiditySettings, failure?: unknown) {
 /** Bodies of the liquidity settings writes with this method. */
 function writes(fetchMock: ReturnType<typeof rankingFetch>, method: 'PUT' | 'DELETE') {
   return fetchMock.mock.calls
-    .filter(([input, init]) => String(input).endsWith('/settings/liquidity') && init?.method === method)
+    .filter(
+      ([input, init]) => String(input).endsWith('/settings/liquidity') && init?.method === method,
+    )
     .map(([, init]) => (init?.body === undefined ? null : JSON.parse(String(init.body))));
 }
 
@@ -369,7 +371,9 @@ describe('stage 10 screens', () => {
     renderApp(<TrendsPage />);
     await screen.findByRole('link', { name: 'Balenciaga · Track · Low-top sneakers' });
     const trendCalls = () =>
-      fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes('/trends?'));
+      fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.includes('/trends?'));
     expect(trendCalls().every((url) => url.includes('sort=liquidity'))).toBe(true);
     expect(trendCalls().some((url) => url.includes('include_unranked'))).toBe(false);
     await userEvent.click(screen.getByRole('button', { name: 'View' }));
@@ -391,10 +395,14 @@ describe('stage 10 screens', () => {
     const toggle = screen.getByRole('checkbox', { name: 'Show items below the threshold' });
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
-    const runner = await screen.findByRole('link', { name: 'Balenciaga · Runner · Low-top sneakers' });
+    const runner = await screen.findByRole('link', {
+      name: 'Balenciaga · Runner · Low-top sneakers',
+    });
     expect(trendCalls().some((url) => url.includes('include_unranked=true'))).toBe(true);
     const runnerRow = runner.closest('tr') as HTMLElement;
-    expect(within(runnerRow).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
+    expect(within(runnerRow).getByTitle('Below the ranking threshold: no score')).toHaveTextContent(
+      '—',
+    );
     expect(within(runnerRow).getByText('4')).toBeInTheDocument();
   });
 
@@ -496,7 +504,9 @@ describe('stage 10 screens', () => {
         .filter((url) => url.includes('/trends?'));
     // The first request may go out before the saved session loads; then the saved view applies.
     await waitFor(() =>
-      expect(trendUrls().some((url) => url.includes('level=brand') && url.includes('window=90'))).toBe(true),
+      expect(
+        trendUrls().some((url) => url.includes('level=brand') && url.includes('window=90')),
+      ).toBe(true),
     );
   });
 
@@ -626,8 +636,12 @@ describe('stage 10 screens', () => {
     expect(within(stat('Likes, 30 d')).getByText('42')).toBeInTheDocument();
     // Sell-through is a column of the colour and size tables only, not a group metric.
     expect(screen.queryByText(/Sell-through/, { selector: 'dt' })).not.toBeInTheDocument();
-    const version = screen.getByRole('link', { name: 'Mega Geobasket' }).closest('tr') as HTMLElement;
-    expect(within(version).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
+    const version = screen
+      .getByRole('link', { name: 'Mega Geobasket' })
+      .closest('tr') as HTMLElement;
+    expect(within(version).getByTitle('Below the ranking threshold: no score')).toHaveTextContent(
+      '—',
+    );
     expect(within(version).getByText('12')).toBeInTheDocument();
     expect(screen.getByText('milk')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Rick Owens Geobasket Milk/ })).toHaveAttribute(
@@ -972,7 +986,8 @@ describe('stage 10 screens', () => {
         const url = String(input);
         if (url.endsWith('/parser/health')) return json({ status: 'ready', reasons: [] });
         if (url.endsWith('/brands')) return json({ data: [{ ...brand, status: 'verified' }] });
-        if (url.includes('/parser/runs?')) return json({ data: [run], total: 1, limit: 30, offset: 0 });
+        if (url.includes('/parser/runs?'))
+          return json({ data: [run], total: 1, limit: 30, offset: 0 });
         return json({});
       }),
     );
@@ -1020,7 +1035,9 @@ describe('stage 10 screens', () => {
     renderApp(<BrandsPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Add brand' }));
     const dialog = screen.getByRole('dialog', { name: 'Add brand' });
-    const input = within(dialog).getByPlaceholderText('Start typing a designer, e.g. Chrome Hearts');
+    const input = within(dialog).getByPlaceholderText(
+      'Start typing a designer, e.g. Chrome Hearts',
+    );
     await waitFor(() => expect(input).toHaveFocus());
     await userEvent.type(input, 'enfants');
     expect(await within(dialog).findByText(/812/)).toBeInTheDocument();

@@ -24,7 +24,12 @@ export function AddBrand({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="sm" icon={<Plus size={13} />} onClick={() => setOpen(true)} disabled={!writable}>
+      <Button
+        size="sm"
+        icon={<Plus size={13} />}
+        onClick={() => setOpen(true)}
+        disabled={!writable}
+      >
         {t('addBrand')}
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title={t('addBrand')} maxWidth="max-w-lg">
@@ -58,7 +63,10 @@ function DesignerSearch({ onAdded }: { onAdded: (brand: Brand) => void }) {
   const designers = useQuery({
     queryKey: ['designers', debounced],
     queryFn: ({ signal }) =>
-      getApi<{ data: DesignerSuggestion[] }>(`/brands/designers?${new URLSearchParams({ q: debounced })}`, signal),
+      getApi<{ data: DesignerSuggestion[] }>(
+        `/brands/designers?${new URLSearchParams({ q: debounced })}`,
+        signal,
+      ),
     enabled: debounced.length >= MIN_QUERY_LENGTH,
   });
   const add = useMutation({
@@ -90,19 +98,30 @@ function DesignerSearch({ onAdded }: { onAdded: (brand: Brand) => void }) {
       {showResults && designers.data && (
         <ul className="max-h-80 overflow-y-auto">
           {designers.data.data.map((designer) => (
-            <li key={designer.name} className="flex min-h-9 items-center justify-between gap-3 rounded-[5px] px-2 hover:bg-[var(--bg-surface-hover)]">
+            <li
+              key={designer.name}
+              className="flex min-h-9 items-center justify-between gap-3 rounded-[5px] px-2 hover:bg-[var(--bg-surface-hover)]"
+            >
               <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
                 {designer.name}{' '}
                 <span className="text-xs text-[var(--text-muted)]">
                   · {designer.listings_count} {t('activeListings')}
                 </span>
               </span>
-              <Button size="sm" variant="secondary" icon={<Plus size={13} />} disabled={add.isPending} onClick={() => add.mutate(designer)}>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Plus size={13} />}
+                disabled={add.isPending}
+                onClick={() => add.mutate(designer)}
+              >
                 {t('add')}
               </Button>
             </li>
           ))}
-          {!designers.data.data.length && <li className="px-2 py-1.5 text-xs text-[var(--text-muted)]">{t('noDesigners')}</li>}
+          {!designers.data.data.length && (
+            <li className="px-2 py-1.5 text-xs text-[var(--text-muted)]">{t('noDesigners')}</li>
+          )}
         </ul>
       )}
       {add.isError && (
