@@ -465,7 +465,10 @@ describe('stage 10 screens', () => {
     await userEvent.clear(screen.getByLabelText('Min. median price, $'));
     await userEvent.type(screen.getByLabelText('Min. median price, $'), '200');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('unknown section: hats')).toBeInTheDocument();
+    // The dialog stays open with the draft and shows why the save failed.
+    const dialog = screen.getByRole('dialog', { name: 'Ranking settings' });
+    expect(await within(dialog).findByText('unknown section: hats')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Min. median price, $')).toHaveValue(200);
   });
 
   it('saves a new ranking period at once and restores the saved view', async () => {

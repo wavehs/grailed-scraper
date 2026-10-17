@@ -2,8 +2,10 @@
 
 import { CircleHelp } from 'lucide-react';
 import { useId, useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 
 export function HelpTip({ label, text }: { label: string; text: string }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const tooltipId = useId();
   return (
@@ -15,7 +17,7 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
       <span
         aria-describedby={tooltipId}
         aria-expanded={open}
-        aria-label="Help"
+        aria-label={t('help')}
         className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition-colors duration-100 hover:bg-[var(--bg-control)] hover:text-[var(--text-primary)]"
         data-label={label}
         onBlur={() => setOpen(false)}

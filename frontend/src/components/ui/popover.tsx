@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * A toolbar chip that opens a floating panel, like Linear's "Filter" and "Display" menus.
- * The chip's accessible name is `label`; `count` shows how many options are active.
+ * The chip and the panel are named by `label`; `count` shows how many options are active
+ * and is part of the chip's name, e.g. "Filter (2)".
  */
 export function Popover({
   label,
@@ -25,7 +26,7 @@ export function Popover({
 }) {
   return (
     <RadixPopover.Root>
-      <RadixPopover.Trigger className="chip" aria-label={label}>
+      <RadixPopover.Trigger className="chip" aria-label={count ? `${label} (${count})` : label}>
         {icon}
         <span aria-hidden="true">{label}</span>
         {Boolean(count) && (
@@ -39,6 +40,7 @@ export function Popover({
       </RadixPopover.Trigger>
       <RadixPopover.Portal>
         <RadixPopover.Content
+          aria-label={label}
           align={align}
           sideOffset={6}
           collisionPadding={12}

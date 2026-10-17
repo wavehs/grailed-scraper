@@ -124,7 +124,7 @@ function GroupCard() {
           </div>
         </div>
         <aside className="order-1 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-sidebar)] px-4 py-5 md:px-6 lg:order-2 lg:w-[300px] lg:border-b-0 lg:border-l lg:px-5 lg:pb-10">
-          <div className="lg:sticky lg:top-5">
+          <div className="lg:sticky lg:top-[calc(var(--topbar-height)+1.25rem)]">
             <GroupProperties group={group} metrics={metrics} windowDays={windowDays} />
           </div>
         </aside>

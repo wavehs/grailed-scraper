@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export function Modal({
@@ -19,6 +20,7 @@ export function Modal({
   className?: string;
   maxWidth?: string;
 }) {
+  const { t } = useI18n();
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
@@ -68,7 +70,7 @@ export function Modal({
     >
       {/* Backdrop */}
       <button
-        aria-label="Close"
+        aria-label={t('close')}
         className="fixed inset-0 cursor-default bg-black/50"
         onClick={onClose}
         tabIndex={-1}
@@ -92,7 +94,7 @@ export function Modal({
             ref={closeRef}
             onClick={onClose}
             className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-control)] hover:text-[var(--text-primary)]"
-            aria-label="Close"
+            aria-label={t('close')}
           >
             <X size={16} />
           </button>

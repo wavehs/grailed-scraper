@@ -14,6 +14,7 @@ export const uiEn: Record<string, string> = {
   discovery_stale: 'Expired',
   discovery_missing: 'Not found yet',
   watchNotePlaceholder: 'Add a note…',
+  help: 'Help',
 };
 
 export const uiRu: Record<string, string> = {
@@ -30,4 +31,5 @@ export const uiRu: Record<string, string> = {
   discovery_stale: 'Устарел',
   discovery_missing: 'Ещё не получен',
   watchNotePlaceholder: 'Добавить заметку…',
+  help: 'Справка',
 };

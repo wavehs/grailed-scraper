@@ -58,7 +58,11 @@ export default function ListingsPage() {
   const rows = query.data?.data ?? [];
   return (
     <section aria-labelledby="catalog-heading">
-      <PageHeader title={t('catalog')} headingId="catalog-heading" description={t('catalogIntro')} />
+      <PageHeader
+        title={t('catalog')}
+        headingId="catalog-heading"
+        description={t('catalogIntro')}
+      />
       <Toolbar>
         <SearchInput
           label={t('search')}
@@ -100,7 +104,8 @@ export default function ListingsPage() {
         </select>
         {query.data && (
           <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)]">
-            {t('rowsTotal').replace('{count}', String(rows.length))}
+            {/* Cursor pages have no total; this counts the rows on the current page. */}
+            {t('shown')}: {rows.length}
           </span>
         )}
       </Toolbar>
@@ -108,73 +113,84 @@ export default function ListingsPage() {
         <LoadingState />
       ) : query.error ? (
         <ErrorState error={query.error} retry={() => query.refetch()} />
-      ) : !rows.length ? (
-        <EmptyState />
       ) : (
         <>
-          <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
-            <TableHead>
-              <tr>
-                <TableHeaderCell>{t('listing')}</TableHeaderCell>
-                <TableHeaderCell>{t('model')}</TableHeaderCell>
-                <TableHeaderCell>{t('status')}</TableHeaderCell>
-                <TableHeaderCell>{t('timeOnMarket')}</TableHeaderCell>
-                <TableHeaderCell>{t('price')}</TableHeaderCell>
-                <TableHeaderCell>{t('modelSales')}</TableHeaderCell>
-                <TableHeaderCell>{t('lastSeen')}</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <tbody>
-              {rows.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="min-w-72 max-w-md">
-                    <a
-                      className="text-[var(--text-primary)] hover:underline"
-                      href={item.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {item.title}
-                    </a>
-                    <p className="truncate text-xs text-[var(--text-muted)]">
-                      {item.brand} · {typeName(item.product_type)} · {item.size ?? '—'} ·{' '}
-                      {item.color ?? '—'} · #{item.grailed_id}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    {item.model_group_id ? (
-                      <Link
-                        className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline"
-                        href={`/group?id=${item.model_group_id}`}
+          {!rows.length ? (
+            <EmptyState />
+          ) : (
+            <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>{t('listing')}</TableHeaderCell>
+                  <TableHeaderCell>{t('model')}</TableHeaderCell>
+                  <TableHeaderCell>{t('status')}</TableHeaderCell>
+                  <TableHeaderCell>{t('timeOnMarket')}</TableHeaderCell>
+                  <TableHeaderCell>{t('price')}</TableHeaderCell>
+                  <TableHeaderCell>{t('modelSales')}</TableHeaderCell>
+                  <TableHeaderCell>{t('lastSeen')}</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <tbody>
+                {rows.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="min-w-72 max-w-md">
+                      <a
+                        className="text-[var(--text-primary)] hover:underline"
+                        href={item.url}
+                        rel="noreferrer"
+                        target="_blank"
                       >
-                        {groupLabel({ name: item.model_name ?? '', is_fallback: item.is_fallback, kind: item.kind }, t)}
-                      </Link>
-                    ) : (
-                      '—'
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="tabular-nums text-[var(--text-secondary)]">
-                      {formatDaysOnMarket(item.days_on_market, item.status, locale)}
-                    </span>
-                  </TableCell>
-                  <TableCell>{formatCurrency(item.price, locale)}</TableCell>
-                  <TableCell>
-                    <span className="tabular-nums">{item.model_sold_count}</span>
-                    <span className="text-[var(--text-muted)]">
-                      {' '}/ {item.model_active_count} {t('activeShort')}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-[var(--text-secondary)]">
-                    {new Date(item.last_seen_at).toLocaleDateString(locale)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </tbody>
-          </DataTable>
+                        {item.title}
+                      </a>
+                      <p className="truncate text-xs text-[var(--text-muted)]">
+                        {item.brand} · {typeName(item.product_type)} · {item.size ?? '—'} ·{' '}
+                        {item.color ?? '—'} · #{item.grailed_id}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      {item.model_group_id ? (
+                        <Link
+                          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline"
+                          href={`/group?id=${item.model_group_id}`}
+                        >
+                          {groupLabel(
+                            {
+                              name: item.model_name ?? '',
+                              is_fallback: item.is_fallback,
+                              kind: item.kind,
+                            },
+                            t,
+                          )}
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(item.status)}>{t(item.status)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="tabular-nums text-[var(--text-secondary)]">
+                        {formatDaysOnMarket(item.days_on_market, item.status, locale)}
+                      </span>
+                    </TableCell>
+                    <TableCell>{formatCurrency(item.price, locale)}</TableCell>
+                    <TableCell>
+                      <span className="tabular-nums">{item.model_sold_count}</span>
+                      <span className="text-[var(--text-muted)]">
+                        {' '}
+                        / {item.model_active_count} {t('activeShort')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-[var(--text-secondary)]">
+                      {new Date(item.last_seen_at).toLocaleDateString(locale)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
+          {/* Outside the empty state, so an empty later page can still go back. */}
           <Pager
             hasPrevious={page > 0}
             hasNext={Boolean(query.data?.next_cursor)}

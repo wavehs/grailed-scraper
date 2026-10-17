@@ -86,8 +86,10 @@ export function RunComposer({
       <div className="flex flex-wrap items-center gap-2">
         <span className="mr-2 flex items-center gap-1">
           <span className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-            <Switch label={t('fullRun')} checked={full} onChange={setFull} />
-            <span aria-hidden="true">{t('fullRun')}</span>
+            <Switch id="run-full" label={t('fullRun')} checked={full} onChange={setFull} />
+            <label htmlFor="run-full" className="cursor-pointer">
+              {t('fullRun')}
+            </label>
           </span>
           <HelpTip label={t('fullRun')} text={t('fullRunHelp')} />
         </span>

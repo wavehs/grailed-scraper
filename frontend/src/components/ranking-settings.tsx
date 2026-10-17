@@ -45,8 +45,9 @@ export type RankingControls = {
   error: unknown;
   /** Rows scored by the last save or reset while its notice is shown. */
   ranked: number | null;
-  save: (policy: LiquidityPolicyUpdate) => void;
-  reset: () => void;
+  /** `onSaved` runs only after the server accepted the change, so a failed save keeps the form. */
+  save: (policy: LiquidityPolicyUpdate, onSaved?: () => void) => void;
+  reset: (onSaved?: () => void) => void;
 };
 
 /** The saved liquidity policy and the save and reset actions shared by the period and panel. */
@@ -60,21 +61,24 @@ export function useRankingControls(): RankingControls {
     const timer = window.setTimeout(() => setNotice(null), RANKED_NOTICE_MS);
     return () => window.clearTimeout(timer);
   }, [notice]);
-  const done = (data: LiquiditySettings) => setNotice({ ranked: data.ranked ?? 0, at: Date.now() });
+  const done = (onSaved?: () => void) => (data: LiquiditySettings) => {
+    setNotice({ ranked: data.ranked ?? 0, at: Date.now() });
+    onSaved?.();
+  };
   return {
     settings: isLiquiditySettings(query.data) ? query.data : null,
     busy: saveMutation.isPending || resetMutation.isPending,
     error: saveMutation.error ?? resetMutation.error ?? query.error,
     ranked: notice?.ranked ?? null,
-    save: (policy) => {
+    save: (policy, onSaved) => {
       resetMutation.reset();
       setNotice(null);
-      saveMutation.mutate(policy, { onSuccess: done });
+      saveMutation.mutate(policy, { onSuccess: done(onSaved) });
     },
-    reset: () => {
+    reset: (onSaved) => {
       saveMutation.reset();
       setNotice(null);
-      resetMutation.mutate(undefined, { onSuccess: done });
+      resetMutation.mutate(undefined, { onSuccess: done(onSaved) });
     },
   };
 }
@@ -129,7 +133,7 @@ export function RankingSettings({ controls }: { controls: RankingControls }) {
           key={JSON.stringify(draftFromPolicy(settings))}
           settings={settings}
           controls={controls}
-          // The page shows the recalculation status once the dialog is closed.
+          // Closes once the server accepted the change; the page then shows the recalculation.
           onSubmitted={() => setOpen(false)}
         />
       </Modal>
@@ -157,8 +161,7 @@ function RankingForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!check.body) return;
-        controls.save(check.body);
-        onSubmitted();
+        controls.save(check.body, onSubmitted);
       }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -186,6 +189,7 @@ function RankingForm({
           {t(check.error)}
         </p>
       )}
+      {controls.error ? <Notice error>{errorMessage(controls.error)}</Notice> : null}
       <div className="-mx-5 -mb-5 flex flex-wrap justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
         <Button
           type="button"
@@ -193,8 +197,7 @@ function RankingForm({
           icon={<RotateCcw size={14} />}
           disabled={!settings.saved || controls.busy}
           onClick={() => {
-            controls.reset();
-            onSubmitted();
+            controls.reset(onSubmitted);
           }}
         >
           {t('resetDefaults')}

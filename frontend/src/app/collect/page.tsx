@@ -70,9 +70,9 @@ export default function CollectPage() {
         </div>
       )}
 
-      {activeRun ? (
-        <RunProgressPanel run={activeRun} onChanged={refreshRuns} />
-      ) : (
+      {activeRun && <RunProgressPanel run={activeRun} onChanged={refreshRuns} />}
+      {/* Hidden rather than unmounted during a run, so the brand choice and rate cap survive it. */}
+      <div hidden={Boolean(activeRun)}>
         <RunComposer
           brands={brands.data?.data}
           loading={brands.isLoading}
@@ -81,7 +81,7 @@ export default function CollectPage() {
             refreshRuns();
           }}
         />
-      )}
+      </div>
 
       <h2 className="-mx-4 flex h-11 items-center border-b border-[var(--border-subtle)] px-4 text-[13px] font-medium text-[var(--text-primary)] md:-mx-6 md:px-6">
         {t('collectionHistory')}
