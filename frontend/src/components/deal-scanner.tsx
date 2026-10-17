@@ -1,11 +1,10 @@
 'use client';
 
-import { type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Radar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { HelpTip } from '@/components/ui/help-tip';
+import { InlineStat } from '@/components/ui/inline-stat';
 import { Popover } from '@/components/ui/popover';
 import { ErrorState, Notice } from '@/components/states';
 import { formatRatio } from '@/components/liquidity-cells';
@@ -19,19 +18,6 @@ export function fill(template: string, values: Record<string, string | number>):
   return Object.entries(values).reduce(
     (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
     template,
-  );
-}
-
-/** One inline figure of the scanner strip: a muted label over its value. */
-function ScannerStat({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <p className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-        {label}
-        {help && <HelpTip label={label} text={help} />}
-      </p>
-      <div className="text-[13px] text-[var(--text-primary)]">{children}</div>
-    </div>
   );
 }
 
@@ -56,21 +42,21 @@ export function DealScannerBar({
   return (
     <div className="-mx-4 space-y-2 border-b border-[var(--border-subtle)] px-4 py-3 md:-mx-6 md:px-6">
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-        <ScannerStat label={t('dealsScanner')}>
+        <InlineStat label={t('dealsScanner')}>
           <Badge variant={scanner.enabled ? 'success' : 'muted'} dot>
             {scanner.enabled
               ? fill(t('dealsScannerOn'), { minutes: scanner.interval_minutes })
               : t('dealsScannerOff')}
           </Badge>
-        </ScannerStat>
-        <ScannerStat label={t('dealsHitRate')} help={t('dealsHitRateHelp')}>
+        </InlineStat>
+        <InlineStat label={t('dealsHitRate')} help={t('dealsHitRateHelp')}>
           <span className="font-medium tabular-nums">{formatRatio(summary.hit_rate)}</span>{' '}
           <span className="text-xs text-[var(--text-secondary)]">
             {fill(t('dealsRated'), { good: summary.good, bad: summary.bad, unrated: summary.unrated })}
           </span>
-        </ScannerStat>
+        </InlineStat>
         {last && (
-          <ScannerStat label={t('dealsLastScan')}>
+          <InlineStat label={t('dealsLastScan')}>
             {formatDate(last.finished_at, locale)}{' '}
             <span className="text-xs text-[var(--text-secondary)]">
               {fill(t('dealsLastScanSummary'), {
@@ -80,7 +66,7 @@ export function DealScannerBar({
                 new: last.deals?.new ?? 0,
               })}
             </span>
-          </ScannerStat>
+          </InlineStat>
         )}
         <div className="ml-auto flex items-center gap-2">
           {scanner.brands.length > 0 && (
