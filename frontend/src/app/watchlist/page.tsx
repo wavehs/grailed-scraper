@@ -123,6 +123,7 @@ function WatchRow({ item }: { item: WatchItem }) {
         <input
           aria-label={t('watchNote')}
           className="control-sm w-44"
+          placeholder={t('watchNotePlaceholder')}
           maxLength={500}
           defaultValue={item.note ?? ''}
           onBlur={(event) => {

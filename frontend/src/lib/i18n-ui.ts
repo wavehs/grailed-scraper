@@ -13,6 +13,7 @@ export const uiEn: Record<string, string> = {
   discovery_valid: 'Valid',
   discovery_stale: 'Expired',
   discovery_missing: 'Not found yet',
+  watchNotePlaceholder: 'Add a note…',
 };
 
 export const uiRu: Record<string, string> = {
@@ -28,4 +29,5 @@ export const uiRu: Record<string, string> = {
   discovery_valid: 'Действует',
   discovery_stale: 'Устарел',
   discovery_missing: 'Ещё не получен',
+  watchNotePlaceholder: 'Добавить заметку…',
 };
