@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'muted';
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'muted';
 
 const dotColors: Record<BadgeVariant, string> = {
   default: 'bg-[var(--accent)]',
@@ -56,4 +56,9 @@ export function Badge({
       {children}
     </span>
   );
+}
+
+/** The bare status dot of a badge, for dense rows where the label would repeat. */
+export function StatusDot({ variant }: { variant: BadgeVariant }) {
+  return <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotColors[variant])} />;
 }
