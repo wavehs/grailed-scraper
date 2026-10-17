@@ -3,231 +3,24 @@
 import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Clock3, DollarSign, ExternalLink, Gauge, Heart, ShoppingBag } from 'lucide-react';
-import { GroupEditor, GroupKindBadge, MoveListing, groupLabel, isServiceGroup } from '@/components/group-editor';
+import { GroupEditor, groupLabel } from '@/components/group-editor';
 import { AskVsSoldPanel } from '@/components/ask-vs-sold';
-import { formatRatio } from '@/components/liquidity-cells';
-import { MetricBadges } from '@/components/metric-badges';
-import { WatchSummary } from '@/components/watch-changes';
-import { WatchStar, useWatchItem } from '@/components/watch-star';
+import { GroupProperties } from '@/components/group/group-properties';
+import { ListingTable, MetricTable, VariantTable } from '@/components/group/group-tables';
+import { WatchStar } from '@/components/watch-star';
 import { MonthCharts } from '@/components/month-charts';
 import { ResaleCalculator } from '@/components/resale-calculator';
 import { WeeklyCharts } from '@/components/trend-charts';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { DataTable, TableCell, TableHead, TableHeaderCell, TableRow } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
-import { StatCard } from '@/components/ui/stat-card';
+import { ContentSection } from '@/components/ui/section';
+import { Segmented } from '@/components/ui/segmented';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { useI18n } from '@/lib/i18n';
-import { isLiquiditySettings, periodLabel } from '@/lib/liquidity';
-import { useLiquiditySettingsQuery, useTrendCardQuery, useTypeNames } from '@/lib/queries';
-import type { TrendCondition, TrendListing, TrendRow, TrendVariant } from '@/lib/types';
-import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
+import { useTrendCardQuery, useTypeNames } from '@/lib/queries';
+import type { TrendCondition, TrendRow } from '@/lib/types';
 
-function GroupCard() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { locale, t } = useI18n();
-  const { typeName } = useTypeNames();
-  const id = Number(searchParams.get('id'));
-  const groupId = Number.isInteger(id) && id > 0 ? id : null;
-  const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
-  const [condition, setCondition] = useState<TrendCondition>('all');
-  const card = useTrendCardQuery(groupId, windowDays, condition);
-  const watched = useWatchItem(groupId);
-  const forPeriod = useRankingPeriodLabel();
-  if (groupId === null) return <EmptyState />;
-  if (card.isLoading) return <LoadingState />;
-  if (!card.data) return <ErrorState error={card.error} retry={() => card.refetch()} />;
-  const { group, metrics } = card.data;
-  const title = `${group.brand} · ${groupLabel(group, t)} · ${typeName(group.product_type)}`;
-  return (
-    <section className="space-y-6" aria-labelledby="group-heading">
-      <Link className="inline-flex items-center gap-2 text-sm text-[var(--accent)] hover:underline" href="/trends">
-        <ArrowLeft size={16} />
-        {t('backToTrends')}
-      </Link>
-      <PageHeader
-        title={title}
-        description={group.parent ? `${t('modelLine')}: ${group.parent.name}` : undefined}
-        actions={
-          <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5" role="group" aria-label={t('trendWindow')}>
-            {([7, 30, 90] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={windowDays === value}
-                onClick={() => setWindowDays(value)}
-                className={`rounded-md px-2.5 py-1 text-xs tabular-nums ${
-                  windowDays === value
-                    ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                {value} {t('daysShort')}
-              </button>
-            ))}
-          </div>
-        }
-      />
-      <div className="flex flex-wrap gap-1">
-        {group.status === 'auto' && !isServiceGroup(group) && <Badge variant="warning">{t('autoGroup')}</Badge>}
-        <GroupKindBadge kind={group.kind} />
-        {metrics?.is_new && <Badge variant="info">{t('newBadge')}</Badge>}
-        <MetricBadges badges={metrics?.badges} />
-        <WatchStar groupId={group.id} />
-      </div>
-      {watched && <WatchSummary item={watched} />}
-
-      {metrics ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard
-              label={forPeriod(t('liquidityScore'))}
-              value={
-                <span title={metrics.liquidity_score === null ? t('belowThreshold') : undefined}>
-                  {formatNumber(metrics.liquidity_score, 0, locale)}
-                </span>
-              }
-              icon={<Gauge size={18} />}
-            />
-            <StatCard
-              label={`${t('salesInWindow')}, ${windowDays} ${t('daysShort')}`}
-              value={metrics.sold}
-              icon={<ShoppingBag size={18} />}
-            />
-            <StatCard
-              label={t('daysToSell')}
-              value={formatNumber(metrics.median_days_to_sell, 1, locale)}
-              icon={<Clock3 size={18} />}
-            />
-            <StatCard
-              label={forPeriod(t('likesColumn'))}
-              value={formatNumber(metrics.period_median_likes, 0, locale)}
-              icon={<Heart size={18} />}
-            />
-            <StatCard
-              label={t('medianPrice')}
-              value={formatCurrency(metrics.median_price, locale)}
-              icon={<DollarSign size={18} />}
-            />
-          </div>
-          <p className="text-xs text-[var(--text-muted)]">
-            {t('supplyNow')}: {metrics.active_now}
-          </p>
-          <Card className="p-5">
-            <WeeklyCharts
-              sales={metrics.weekly_sales}
-              prices={card.data.weekly_median_price}
-              computedAt={card.data.computed_at}
-            />
-          </Card>
-          {card.data.months.length > 0 && (
-            <Card className="p-5">
-              <MonthCharts months={card.data.months} overlay={card.data.season_overlay} />
-            </Card>
-          )}
-          <div className="grid gap-5 lg:grid-cols-2">
-            <AskVsSoldPanel price={metrics.price} condition={condition} onCondition={setCondition} />
-            <ResaleCalculator
-              defaultExpected={metrics.price?.p50 ?? metrics.median_price}
-              daysToSell={daysToSell(metrics)}
-            />
-          </div>
-        </>
-      ) : (
-        <EmptyState />
-      )}
-
-      {Boolean(card.data.versions.length) && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            {t('versionsTable')}
-          </h2>
-          <MetricTable rows={card.data.versions} />
-        </div>
-      )}
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <VariantTable title={t('popularColors')} rows={card.data.colors} />
-        <VariantTable title={t('popularSizes')} rows={card.data.sizes} sizes />
-      </div>
-
-      <ListingTable title={t('recentSales')} rows={card.data.recent_sales} brandId={group.brand_id} sold />
-      <ListingTable title={t('activeListingsNow')} rows={card.data.active_listings} brandId={group.brand_id} />
-
-      {card.data.type_metrics && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            {t('typeContext')}
-          </h2>
-          <MetricTable rows={[{ ...card.data.type_metrics, name: typeName(card.data.type_metrics.product_type) }]} />
-        </div>
-      )}
-
-      <GroupEditor
-        groupId={group.id}
-        onChanged={(changed) => {
-          if (changed.id !== group.id) router.push(`/group?id=${changed.id}`);
-        }}
-      />
-    </section>
-  );
-}
-
-/** Appends the ranking period to a label ("Likes, 30 d"); the label alone until it is known. */
-function useRankingPeriodLabel() {
-  const { t } = useI18n();
-  const settings = useLiquiditySettingsQuery();
-  const periodDays = isLiquiditySettings(settings.data) ? settings.data.period_days : null;
-  return (label: string) => (periodDays === null ? label : `${label}, ${periodLabel(periodDays, t)}`);
-}
-
-function MetricTable({ rows }: { rows: TrendRow[] }) {
-  const { locale, t } = useI18n();
-  const forPeriod = useRankingPeriodLabel();
-  return (
-    <DataTable>
-      <TableHead>
-        <tr>
-          <TableHeaderCell>{t('name')}</TableHeaderCell>
-          <TableHeaderCell>{forPeriod(t('liquidityScore'))}</TableHeaderCell>
-          <TableHeaderCell>{t('salesInWindow')}</TableHeaderCell>
-          <TableHeaderCell>{t('daysToSell')}</TableHeaderCell>
-          <TableHeaderCell>{forPeriod(t('likesColumn'))}</TableHeaderCell>
-          <TableHeaderCell>{t('medianPrice')}</TableHeaderCell>
-          <TableHeaderCell>{t('supplyNow')}</TableHeaderCell>
-        </tr>
-      </TableHead>
-      <tbody>
-        {rows.map((row) => (
-          <TableRow key={row.scope_key}>
-            <TableCell>
-              {row.group_id ? (
-                <Link className="text-[var(--accent)] hover:underline" href={`/group?id=${row.group_id}`}>
-                  {row.name}
-                </Link>
-              ) : (
-                row.name
-              )}
-            </TableCell>
-            <TableCell className="tabular-nums">
-              <span title={row.liquidity_score === null ? t('belowThreshold') : undefined}>
-                {formatNumber(row.liquidity_score, 0, locale)}
-              </span>
-            </TableCell>
-            <TableCell className="tabular-nums">{row.sold}</TableCell>
-            <TableCell className="tabular-nums">{formatNumber(row.median_days_to_sell, 1, locale)}</TableCell>
-            <TableCell className="tabular-nums">{formatNumber(row.period_median_likes, 0, locale)}</TableCell>
-            <TableCell className="tabular-nums">{formatCurrency(row.median_price, locale)}</TableCell>
-            <TableCell className="tabular-nums">{row.active_now}</TableCell>
-          </TableRow>
-        ))}
-      </tbody>
-    </DataTable>
-  );
-}
+const WINDOWS = [7, 30, 90] as const;
+type WindowDays = (typeof WINDOWS)[number];
 
 /** Expected days to sell from P30, else the observed median. */
 function daysToSell(metrics: TrendRow): number | null {
@@ -235,116 +28,108 @@ function daysToSell(metrics: TrendRow): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
 
-function VariantTable({ title, rows, sizes = false }: { title: string; rows: TrendVariant[]; sizes?: boolean }) {
+function GroupCard() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { t } = useI18n();
-  const showP30 = sizes && rows.some((row) => (row.p30 ?? null) !== null);
+  const { typeName } = useTypeNames();
+  const id = Number(searchParams.get('id'));
+  const groupId = Number.isInteger(id) && id > 0 ? id : null;
+  const [windowDays, setWindowDays] = useState<WindowDays>(30);
+  const [condition, setCondition] = useState<TrendCondition>('all');
+  const card = useTrendCardQuery(groupId, windowDays, condition);
+  if (groupId === null) return <EmptyState />;
+  if (card.isLoading) return <LoadingState />;
+  if (!card.data) return <ErrorState error={card.error} retry={() => card.refetch()} />;
+  const { group, metrics } = card.data;
+  const title = `${group.brand} · ${groupLabel(group, t)} · ${typeName(group.product_type)}`;
   return (
-    <Card className="space-y-2 p-4">
-      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
-      <p className="text-xs text-[var(--text-muted)]">{t('variantHelp')}</p>
-      {!rows.length ? (
-        <p className="text-sm text-[var(--text-muted)]">{t('noData')}</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-[var(--text-muted)]">
-              <th className="py-1 font-medium">{title}</th>
-              <th className="py-1 font-medium">{t('sold')}</th>
-              <th className="py-1 font-medium">{t('active')}</th>
-              <th className="py-1 font-medium">{t('sellThrough')}</th>
-              {showP30 && <th className="py-1 font-medium">{t('sizeP30')}</th>}
-            </tr>
-          </thead>
-          <tbody className="tabular-nums text-[var(--text-secondary)]">
-            {rows.map((row) => (
-              <tr key={row.value} className="border-t border-[var(--border-subtle)]">
-                <td className="py-1 text-[var(--text-primary)]">
-                  {row.value}
-                  {row.hot && (
-                    <span className="ml-1 text-xs text-[var(--warning)]" title={t('hotSizeHelp')}>
-                      🔥 {t('hotSize')}
-                    </span>
-                  )}
-                </td>
-                <td className="py-1">{row.sold}</td>
-                <td className="py-1">{row.active}</td>
-                <td className="py-1">{formatPercent(row.sell_through)}</td>
-                {showP30 && (
-                  <td className="py-1">
-                    {(row.p30 ?? null) === null ? '—' : `${formatRatio(row.p30)} · n=${row.p30_n ?? 0}`}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
-  );
-}
+    <section aria-labelledby="group-heading">
+      <PageHeader
+        title={title}
+        headingId="group-heading"
+        breadcrumb={
+          <Link className="hover:text-[var(--text-primary)]" href="/trends">
+            {t('trends')}
+          </Link>
+        }
+        description={group.parent ? `${t('modelLine')}: ${group.parent.name}` : undefined}
+        actions={
+          <>
+            <WatchStar groupId={group.id} />
+            <Segmented
+              label={t('trendWindow')}
+              value={windowDays}
+              options={WINDOWS.map((value) => ({ value, label: `${value} ${t('daysShort')}` }))}
+              onChange={setWindowDays}
+            />
+          </>
+        }
+      />
+      {/* Linear's issue layout: the content column and a property panel on the right. */}
+      {/* The panel comes first on phones and moves to the right from lg. */}
+      <div className="-mx-4 -mb-10 flex flex-col md:-mx-6 lg:flex-row">
+        <div className="order-2 min-w-0 flex-1 space-y-6 px-4 pb-10 pt-5 md:px-6 lg:order-1">
+          {metrics ? (
+            <>
+              <ContentSection>
+                <WeeklyCharts
+                  sales={metrics.weekly_sales}
+                  prices={card.data.weekly_median_price}
+                  computedAt={card.data.computed_at}
+                />
+              </ContentSection>
+              {card.data.months.length > 0 && (
+                <ContentSection>
+                  <MonthCharts months={card.data.months} overlay={card.data.season_overlay} />
+                </ContentSection>
+              )}
+              <div className="grid gap-4 border-t border-[var(--border-subtle)] pt-5 xl:grid-cols-2">
+                <AskVsSoldPanel price={metrics.price} condition={condition} onCondition={setCondition} />
+                <ResaleCalculator
+                  defaultExpected={metrics.price?.p50 ?? metrics.median_price}
+                  daysToSell={daysToSell(metrics)}
+                />
+              </div>
+            </>
+          ) : (
+            <EmptyState />
+          )}
 
-function ListingTable({
-  title,
-  rows,
-  brandId,
-  sold = false,
-}: {
-  title: string;
-  rows: TrendListing[];
-  brandId: number;
-  sold?: boolean;
-}) {
-  const { locale, t } = useI18n();
-  return (
-    <div className="space-y-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">{title}</h2>
-      {!rows.length ? (
-        <EmptyState />
-      ) : (
-        <DataTable>
-          <TableHead>
-            <tr>
-              <TableHeaderCell>{t('listing')}</TableHeaderCell>
-              <TableHeaderCell>{t('price')}</TableHeaderCell>
-              <TableHeaderCell>{sold ? t('timeToSell') : t('found')}</TableHeaderCell>
-              <TableHeaderCell>{t('actions')}</TableHeaderCell>
-            </tr>
-          </TableHead>
-          <tbody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <a className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline" href={row.url} target="_blank" rel="noreferrer" title={t('openOnGrailed')}>
-                    {row.title}
-                    <ExternalLink size={12} />
-                  </a>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {[row.group_name && groupLabel({ name: row.group_name, is_fallback: row.kind === 'none', kind: row.kind }, t), row.size, row.color].filter(Boolean).join(' · ')}
-                    {row.relisted && ` · ${t('relisted')}`}
-                  </p>
-                </TableCell>
-                <TableCell className="tabular-nums">{formatCurrency(row.price, locale)}</TableCell>
-                <TableCell className="tabular-nums">
-                  {sold
-                    ? row.days_to_sell === null
-                      ? '—'
-                      : `${row.days_to_sell} ${t('daysShort')}`
-                    : row.created_at
-                      ? new Date(row.created_at).toLocaleDateString(locale)
-                      : '—'}
-                  {sold && row.sold_at && (
-                    <p className="text-xs text-[var(--text-muted)]">{new Date(row.sold_at).toLocaleDateString(locale)}</p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <MoveListing listingId={row.id} brandId={brandId} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </tbody>
-        </DataTable>
-      )}
-    </div>
+          {Boolean(card.data.versions.length) && (
+            <ContentSection title={t('versionsTable')}>
+              <MetricTable rows={card.data.versions} />
+            </ContentSection>
+          )}
+          <div className="grid gap-6 border-t border-[var(--border-subtle)] pt-5 xl:grid-cols-2 [&>section]:border-t-0 [&>section]:pt-0">
+            <VariantTable title={t('popularColors')} rows={card.data.colors} />
+            <VariantTable title={t('popularSizes')} rows={card.data.sizes} sizes />
+          </div>
+          <ListingTable title={t('recentSales')} rows={card.data.recent_sales} brandId={group.brand_id} sold />
+          <ListingTable title={t('activeListingsNow')} rows={card.data.active_listings} brandId={group.brand_id} />
+          {card.data.type_metrics && (
+            <ContentSection title={t('typeContext')}>
+              <MetricTable
+                rows={[{ ...card.data.type_metrics, name: typeName(card.data.type_metrics.product_type) }]}
+              />
+            </ContentSection>
+          )}
+          <div className="border-t border-[var(--border-subtle)] pt-5">
+            <GroupEditor
+              groupId={group.id}
+              onChanged={(changed) => {
+                if (changed.id !== group.id) router.push(`/group?id=${changed.id}`);
+              }}
+            />
+          </div>
+        </div>
+        <aside className="order-1 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-sidebar)] px-4 py-5 md:px-6 lg:order-2 lg:w-[300px] lg:border-b-0 lg:border-l lg:px-5 lg:pb-10">
+          <div className="lg:sticky lg:top-5">
+            <GroupProperties group={group} metrics={metrics} windowDays={windowDays} />
+          </div>
+        </aside>
+      </div>
+    </section>
   );
 }
 

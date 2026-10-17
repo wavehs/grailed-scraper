@@ -7,6 +7,7 @@ export const uiEn: Record<string, string> = {
   clearFilters: 'Clear filters',
   listLevel: 'Level',
   rowsTotal: '{count} rows',
+  properties: 'Properties',
 };
 
 export const uiRu: Record<string, string> = {
@@ -16,4 +17,5 @@ export const uiRu: Record<string, string> = {
   clearFilters: 'Сбросить фильтры',
   listLevel: 'Уровень',
   rowsTotal: 'Строк: {count}',
+  properties: 'Свойства',
 };

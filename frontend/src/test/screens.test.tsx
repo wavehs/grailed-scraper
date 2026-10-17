@@ -616,12 +616,13 @@ describe('stage 10 screens', () => {
       '/group?id=2',
     );
     // Score and likes are labelled with the ranking period once the settings load.
-    await screen.findByText('Likes, 30 d', { selector: 'p' });
+    await screen.findByText('Likes, 30 d', { selector: 'dt' });
     const stat = (label: string) =>
-      screen.getByText(label, { selector: 'p' }).parentElement?.parentElement as HTMLElement;
+      screen.getByText(label, { selector: 'dt' }).parentElement as HTMLElement;
     expect(within(stat('Score, 30 d')).getByText('67')).toBeInTheDocument();
     expect(within(stat('Likes, 30 d')).getByText('42')).toBeInTheDocument();
-    expect(screen.queryByText(/Sell-through/)).not.toBeInTheDocument();
+    // Sell-through is a column of the colour and size tables only, not a group metric.
+    expect(screen.queryByText(/Sell-through/, { selector: 'dt' })).not.toBeInTheDocument();
     const version = screen.getByRole('link', { name: 'Mega Geobasket' }).closest('tr') as HTMLElement;
     expect(within(version).getByTitle('Below the ranking threshold: no score')).toHaveTextContent('—');
     expect(within(version).getByText('12')).toBeInTheDocument();

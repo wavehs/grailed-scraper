@@ -444,6 +444,9 @@ const en: Record<string, string> = {
   typeContext: 'Whole type for this brand',
   openOnGrailed: 'Open on Grailed',
   priceChange: 'vs 90 days',
+  newBadge: 'new',
+  newListings14d: 'new in 14 days',
+  sellThrough: 'Sell-through',
   schedule: 'Schedule',
   schedule_enabled: 'Collect every day',
   schedule_enabled_help:
@@ -930,6 +933,9 @@ const ru: Record<string, string> = {
   typeContext: 'Весь тип у бренда',
   openOnGrailed: 'Открыть на Grailed',
   priceChange: 'к 90 дням',
+  newBadge: 'новинка',
+  newListings14d: 'новых за 14 дней',
+  sellThrough: 'Доля продаж',
   schedule: 'Расписание',
   schedule_enabled: 'Собирать каждый день',
   schedule_enabled_help:
@@ -978,6 +984,9 @@ const ru: Record<string, string> = {
   ...watchlistRu,
   ...dealsRu,
 };
+
+/** Both dictionaries, for checks that every key the screens use is translated. */
+export const messages: Readonly<Record<Locale, Readonly<Record<string, string>>>> = { en, ru };
 
 type I18nValue = {
   locale: Locale;

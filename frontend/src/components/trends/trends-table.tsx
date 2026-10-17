@@ -35,7 +35,8 @@ export function TrendsTable({
 }) {
   const { t } = useI18n();
   return (
-    <DataTable bleed>
+    // Numbers and their notes stay on one line; the model title is the only column that wraps.
+    <DataTable bleed className="[&_td:not(:first-child)]:whitespace-nowrap">
       <TableHead>
         <tr>
           <TableHeaderCell>{t(LEVEL_COLUMN[level])}</TableHeaderCell>
@@ -81,7 +82,7 @@ function TrendTableRow({
   const medianPrice = periodMode ? row.median_price : (row.period_median_price ?? row.median_price);
   return (
     <TableRow className="align-top">
-      <TableCell className="min-w-64">
+      <TableCell className="min-w-72 max-w-md">
         <RowTitle row={row} onDrill={onDrill} />
       </TableCell>
       <TableCell>

@@ -9,8 +9,11 @@ export function PageHeader({
   description,
   actions,
   headingId,
+  breadcrumb,
 }: {
   title: string;
+  /** Links to the parent screens, shown before the title with a chevron. */
+  breadcrumb?: ReactNode;
   /** The id a page section's aria-labelledby points to. */
   headingId?: string;
   description?: string;
@@ -19,7 +22,13 @@ export function PageHeader({
   return (
     <header className="sticky top-11 z-10 -mx-4 -mt-4 md:top-0 flex min-h-[var(--topbar-height)] flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] px-4 py-2 md:-mx-6 md:px-6">
       <div className="flex min-w-0 items-baseline gap-3">
-        <h1 id={headingId} className="shrink-0 text-[13px] font-medium text-[var(--text-primary)]">{title}</h1>
+        {breadcrumb && (
+          <span className="flex shrink-0 items-baseline gap-1.5 text-[13px] text-[var(--text-secondary)]">
+            {breadcrumb}
+            <span aria-hidden="true" className="text-[var(--text-muted)]">›</span>
+          </span>
+        )}
+        <h1 id={headingId} className="min-w-0 truncate text-[13px] font-medium text-[var(--text-primary)]">{title}</h1>
         {description && (
           <p className="hidden min-w-0 truncate text-xs text-[var(--text-muted)] md:block" title={description}>
             {description}

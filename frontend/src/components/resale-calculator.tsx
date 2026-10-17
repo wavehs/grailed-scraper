@@ -67,13 +67,13 @@ export function ResaleCalculator({
   const money = (cents: number) => formatCurrency(cents, locale);
   return (
     <Card className="space-y-3 p-4">
-      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{t('calculator')}</h2>
+      <h2 className="text-[13px] font-medium text-[var(--text-primary)]">{t('calculator')}</h2>
       <div className="grid gap-2 sm:grid-cols-2">
         {FIELDS.map(([field, label]) => (
           <label key={field} className="flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
             {t(label)}
             <input
-              className="w-24 text-right text-sm tabular-nums"
+              className="h-7 min-h-0 w-24 py-0 text-right text-xs tabular-nums"
               inputMode="decimal"
               value={form[field]}
               placeholder={field === 'expected' && defaultExpected !== null ? String(defaultExpected / 100) : undefined}
@@ -103,7 +103,7 @@ export function ResaleCalculator({
       ) : !result ? (
         <p className="text-sm text-[var(--text-muted)]">{t('calcIncomplete')}</p>
       ) : (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" aria-label={t('calcResult')}>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[13px]" aria-label={t('calcResult')}>
           <dt className="text-[var(--text-muted)]">{t('calcFees')}</dt>
           <dd className="tabular-nums">
             {money(result.fees.total)} ({money(result.fees.commission)} + {money(result.fees.processing)})
