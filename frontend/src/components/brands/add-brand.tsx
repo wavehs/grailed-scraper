@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 import { api, errorMessage, getApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type { Brand, DesignerSuggestion } from '@/lib/types';
@@ -11,7 +12,7 @@ import type { Brand, DesignerSuggestion } from '@/lib/types';
 const DESIGNER_DEBOUNCE_MS = 300;
 const MIN_QUERY_LENGTH = 2;
 
-/** A designer search in the toolbar; its Grailed suggestions open below and add a brand. */
+/** The header's "Add brand" button; its dialog searches Grailed designers and adds one. */
 export function AddBrand({
   writable,
   onAdded,
@@ -20,8 +21,36 @@ export function AddBrand({
   onAdded: (brand: Brand) => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="sm" icon={<Plus size={13} />} onClick={() => setOpen(true)} disabled={!writable}>
+        {t('addBrand')}
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={t('addBrand')} maxWidth="max-w-lg">
+        <DesignerSearch
+          onAdded={(brand) => {
+            setOpen(false);
+            onAdded(brand);
+          }}
+        />
+      </Modal>
+    </>
+  );
+}
+
+/** A designer search whose Grailed suggestions each add a brand. */
+function DesignerSearch({ onAdded }: { onAdded: (brand: Brand) => void }) {
+  const { t } = useI18n();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
+  // The dialog focuses its close button after its children mount; the search is what the
+  // user came for, so take focus on the next tick.
+  useEffect(() => {
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), DESIGNER_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
@@ -35,32 +64,33 @@ export function AddBrand({
   const add = useMutation({
     mutationFn: (designer: DesignerSuggestion) =>
       api<Brand>('/brands', 'POST', { name: designer.name, designer: designer.name }),
-    onSuccess: (brand) => {
-      setQuery('');
-      onAdded(brand);
-    },
+    onSuccess: onAdded,
   });
-  const open = Boolean(designers.data) && debounced.length >= MIN_QUERY_LENGTH && query.trim().length > 0;
+  const showResults = debounced.length >= MIN_QUERY_LENGTH && query.trim().length > 0;
   return (
-    <div className="relative w-full sm:w-80">
-      <label>
-        <Plus size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden />
+    <div className="space-y-3">
+      <label className="block">
         <span className="sr-only">{t('addBrand')}</span>
         <input
-          className="control-sm w-full pl-7"
+          ref={inputRef}
+          className="control-sm w-full"
           placeholder={t('addBrandPlaceholder')}
           value={query}
-          disabled={!writable}
           onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setQuery('');
-          }}
         />
       </label>
-      {open && designers.data && (
-        <ul className="absolute inset-x-0 top-full z-30 mt-1.5 max-h-80 overflow-y-auto rounded-lg bg-[var(--bg-surface-raised)] p-1 shadow-[var(--shadow-float)] animate-scale-in">
+      {showResults && designers.isFetching && !designers.data && (
+        <p className="text-xs text-[var(--text-muted)]">{t('loading')}</p>
+      )}
+      {showResults && designers.isError && (
+        <p role="alert" className="text-xs text-[var(--danger)]">
+          {errorMessage(designers.error)}
+        </p>
+      )}
+      {showResults && designers.data && (
+        <ul className="max-h-80 overflow-y-auto">
           {designers.data.data.map((designer) => (
-            <li key={designer.name} className="flex min-h-8 items-center justify-between gap-3 rounded-[5px] px-2 hover:bg-[var(--bg-surface-hover)]">
+            <li key={designer.name} className="flex min-h-9 items-center justify-between gap-3 rounded-[5px] px-2 hover:bg-[var(--bg-surface-hover)]">
               <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
                 {designer.name}{' '}
                 <span className="text-xs text-[var(--text-muted)]">
@@ -76,7 +106,7 @@ export function AddBrand({
         </ul>
       )}
       {add.isError && (
-        <p role="alert" className="mt-1 text-xs text-[var(--danger)]">
+        <p role="alert" className="text-xs text-[var(--danger)]">
           {errorMessage(add.error)}
         </p>
       )}

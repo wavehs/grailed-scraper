@@ -1018,12 +1018,13 @@ describe('stage 10 screens', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     renderApp(<BrandsPage />);
-    await userEvent.type(
-      await screen.findByPlaceholderText('Start typing a designer, e.g. Chrome Hearts'),
-      'enfants',
-    );
-    expect(await screen.findByText(/812/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add brand' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add brand' });
+    const input = within(dialog).getByPlaceholderText('Start typing a designer, e.g. Chrome Hearts');
+    await waitFor(() => expect(input).toHaveFocus());
+    await userEvent.type(input, 'enfants');
+    expect(await within(dialog).findByText(/812/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(
         ([input, init]) => String(input).endsWith('/brands') && init?.method === 'POST',
@@ -1033,6 +1034,8 @@ describe('stage 10 screens', () => {
         designer: 'Enfants Riches Déprimés',
       });
     });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Brand added: Enfants Riches Déprimés')).toBeInTheDocument();
   });
 
   it('edits safe settings and sends a flat validated patch', async () => {

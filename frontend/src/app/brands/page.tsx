@@ -67,15 +67,25 @@ export default function BrandsPage() {
         headingId="brands-heading"
         description={t('brandsIntro')}
         actions={
-          <Button
-            size="sm"
-            variant="secondary"
-            icon={<Wand2 size={13} />}
-            onClick={() => autoMap.mutate()}
-            disabled={!health.writable || autoMap.isPending}
-          >
-            {autoMap.isPending ? t('mapping') : t('autoMap')}
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Wand2 size={13} />}
+              onClick={() => autoMap.mutate()}
+              disabled={!health.writable || autoMap.isPending}
+            >
+              {autoMap.isPending ? t('mapping') : t('autoMap')}
+            </Button>
+            <AddBrand
+              writable={health.writable}
+              onAdded={(brand) => {
+                setNotice(`${t('brandAdded')}: ${brand.name}`);
+                setSelectedId(brand.id);
+                client.invalidateQueries({ queryKey: ['brands'] });
+              }}
+            />
+          </>
         }
       />
       <Toolbar>
@@ -86,16 +96,6 @@ export default function BrandsPage() {
           value={status}
           onChange={setStatus}
         />
-        <div className="ml-auto">
-          <AddBrand
-            writable={health.writable}
-            onAdded={(brand) => {
-              setNotice(`${t('brandAdded')}: ${brand.name}`);
-              setSelectedId(brand.id);
-              client.invalidateQueries({ queryKey: ['brands'] });
-            }}
-          />
-        </div>
       </Toolbar>
       {(notice || error) && (
         <div className="space-y-2 py-3">
