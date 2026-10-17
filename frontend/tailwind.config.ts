@@ -1,4 +1,8 @@
 import type { Config } from 'tailwindcss';
+
+/** Short names for the Linear tokens in globals.css; the variables stay the source of truth. */
+const token = (name: string) => `var(--${name})`;
+
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
@@ -7,29 +11,28 @@ const config: Config = {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
-        base: '#0a0a12',
-        surface: {
-          DEFAULT: 'rgba(255, 255, 255, 0.03)',
-          hover: 'rgba(255, 255, 255, 0.06)',
+        canvas: token('bg-base'),
+        sidebar: token('bg-sidebar'),
+        surface: token('bg-surface'),
+        raised: token('bg-surface-raised'),
+        hover: token('bg-surface-hover'),
+        control: { DEFAULT: token('bg-control'), hover: token('bg-control-hover') },
+        selected: token('bg-selected'),
+        line: { DEFAULT: token('border-subtle'), strong: token('border-default') },
+        fg: {
+          DEFAULT: token('text-primary'),
+          body: token('text-body'),
+          secondary: token('text-secondary'),
+          muted: token('text-muted'),
         },
-        glass: {
-          DEFAULT: 'rgba(255, 255, 255, 0.04)',
-          hover: 'rgba(255, 255, 255, 0.08)',
-        },
-        subtle: 'rgba(255, 255, 255, 0.06)',
-        accent: {
-          DEFAULT: '#6366f1',
-          light: '#818cf8',
-          end: '#8b5cf6',
-          glow: 'rgba(99, 102, 241, 0.15)',
-        },
+        accent: { DEFAULT: token('accent'), hover: token('accent-hover'), soft: token('accent-soft') },
+        success: token('success'),
+        warning: token('warning'),
+        danger: token('danger'),
+        info: token('info'),
       },
-      animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'slide-down': 'slideDown 0.3s ease-out',
-        'scale-in': 'scaleIn 0.2s ease-out',
-      },
+      borderRadius: { DEFAULT: '5px', md: '6px', lg: '8px' },
+      height: { topbar: token('topbar-height'), row: token('row-height') },
     },
   },
   plugins: [],

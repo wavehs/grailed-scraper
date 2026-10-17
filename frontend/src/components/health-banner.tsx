@@ -30,19 +30,15 @@ export function HealthBanner() {
     <div
       role={unavailable ? 'alert' : 'status'}
       aria-live="polite"
-      className={`mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 animate-slide-down ${
-        unavailable
-          ? 'border-[var(--danger-border)] bg-[var(--danger-bg)]'
-          : 'border-[var(--warning-border)] bg-[var(--warning-bg)]'
-      }`}
+      className="-mx-4 -mt-4 mb-4 flex items-start gap-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 md:-mx-6 md:px-6"
     >
       {unavailable ? (
-        <XCircle size={18} className="mt-0.5 shrink-0 text-[var(--danger)]" />
+        <XCircle size={15} className="mt-0.5 shrink-0 text-[var(--danger)]" />
       ) : (
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--warning)]" />
+        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-[var(--warning)]" />
       )}
       <div className="min-w-0 flex-1">
-        <p className={`text-sm font-semibold ${unavailable ? 'text-[var(--danger)]' : 'text-[var(--warning)]'}`}>
+        <p className="text-[13px] font-medium text-[var(--text-primary)]">
           {connectionStale
             ? t('connectionNeedsUpdate')
             : unavailable
@@ -50,24 +46,23 @@ export function HealthBanner() {
               : t('systemDegraded')}
         </p>
         {(health.data.reasons ?? []).length > 0 && (
-          <ul className="mt-1.5 space-y-0.5 text-xs text-[var(--text-secondary)]">
+          <ul className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-[var(--text-secondary)]">
             {(health.data.reasons ?? []).map((reason) => (
-              <li key={reason}>• {t(reason)}</li>
+              <li key={reason}>{t(reason)}</li>
             ))}
           </ul>
         )}
         {refresh.isError && (
-          <p className="mt-2 text-xs text-[var(--danger)]" role="alert">
+          <p className="mt-1 text-xs text-[var(--danger)]" role="alert">
             {t('connectionUpdateFailed')}
           </p>
         )}
       </div>
       {connectionStale && (
         <Button
-          className="shrink-0"
           variant="secondary"
           size="sm"
-          icon={<RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : ''} />}
+          icon={<RefreshCw size={13} className={refresh.isPending ? 'animate-spin' : ''} />}
           disabled={refresh.isPending}
           onClick={() => refresh.mutate()}
         >

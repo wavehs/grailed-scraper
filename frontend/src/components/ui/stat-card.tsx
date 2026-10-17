@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
+/** A property cell: a muted label over a figure, as in Linear's project overview. */
 export function StatCard({
   label,
   value,
@@ -19,28 +20,20 @@ export function StatCard({
       ? 'text-[var(--success)]'
       : trend === 'down'
         ? 'text-[var(--danger)]'
-        : 'text-[var(--text-muted)]';
+        : 'text-[var(--text-primary)]';
 
   return (
     <div
       className={cn(
-        'rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 group animate-slide-up',
+        'rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5',
         className,
       )}
     >
-      <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-          {label}
-        </p>
-        {icon && (
-          <span className="text-[var(--text-muted)] transition-colors group-hover:text-[var(--accent)]">
-            {icon}
-          </span>
-        )}
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-xs text-[var(--text-muted)]">{label}</p>
+        {icon && <span className="text-[var(--text-muted)]">{icon}</span>}
       </div>
-      <p className={cn('mt-2 text-xl font-semibold tabular-nums tracking-tight', trendColor)}>
-        {value}
-      </p>
+      <p className={cn('mt-1 text-[15px] font-medium tabular-nums', trendColor)}>{value}</p>
     </div>
   );
 }

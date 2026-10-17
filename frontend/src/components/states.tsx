@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { errorMessage } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
+const BLOCK = 'flex min-h-40 flex-col items-center justify-center gap-2.5 p-8 text-center animate-fade-in';
+
 export function LoadingState() {
   const { t } = useI18n();
   return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-surface)] p-8 animate-fade-in">
-      <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
-      <p className="text-sm text-[var(--text-secondary)]">{t('loading')}</p>
+    <div className={BLOCK}>
+      <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+      <p className="text-[13px] text-[var(--text-muted)]">{t('loading')}</p>
     </div>
   );
 }
@@ -18,9 +20,9 @@ export function LoadingState() {
 export function EmptyState({ message }: { message?: string }) {
   const { t } = useI18n();
   return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-surface)] p-8 animate-fade-in">
-      <Inbox size={28} className="text-[var(--text-muted)]" />
-      <p className="text-sm text-[var(--text-secondary)]">{message ?? t('noData')}</p>
+    <div className={BLOCK}>
+      <Inbox size={22} strokeWidth={1.5} className="text-[var(--text-muted)]" />
+      <p className="text-[13px] text-[var(--text-secondary)]">{message ?? t('noData')}</p>
     </div>
   );
 }
@@ -28,14 +30,11 @@ export function EmptyState({ message }: { message?: string }) {
 export function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
   const { t } = useI18n();
   return (
-    <div
-      role="alert"
-      className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] p-8 animate-fade-in"
-    >
-      <AlertCircle size={24} className="text-[var(--danger)]" />
-      <p className="text-sm text-[var(--danger)]">{errorMessage(error) || t('requestFailed')}</p>
+    <div role="alert" className={BLOCK}>
+      <AlertCircle size={20} className="text-[var(--danger)]" />
+      <p className="max-w-md text-[13px] text-[var(--text-body)]">{errorMessage(error) || t('requestFailed')}</p>
       {retry && (
-        <Button variant="secondary" size="sm" icon={<RefreshCw size={14} />} onClick={retry}>
+        <Button variant="secondary" size="sm" icon={<RefreshCw size={13} />} onClick={retry}>
           {t('retry')}
         </Button>
       )}
@@ -55,19 +54,17 @@ export function Notice({
     <p
       role={error ? 'alert' : 'status'}
       aria-live="polite"
-      className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm animate-slide-up ${
-        error
-          ? 'border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)]'
-          : 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]'
-      }`}
+      className="flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-[13px] text-[var(--text-body)] animate-slide-up"
     >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${error ? 'bg-[var(--danger)]' : 'bg-[var(--success)]'}`}
+      />
       {children}
     </p>
   );
 }
 
 export function SkeletonLine({ className }: { className?: string }) {
-  return (
-    <div className={`h-4 rounded animate-shimmer ${className ?? 'w-full'}`} />
-  );
+  return <div className={`h-3.5 rounded animate-shimmer ${className ?? 'w-full'}`} />;
 }

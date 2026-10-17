@@ -3,21 +3,6 @@ import { cn } from '@/lib/utils';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'muted';
 
-const variantClasses: Record<BadgeVariant, string> = {
-  default:
-    'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]',
-  success:
-    'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]',
-  warning:
-    'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-border)]',
-  danger:
-    'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-border)]',
-  info:
-    'bg-[var(--info-bg)] text-[var(--info)] border-[var(--info-border)]',
-  muted:
-    'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border-[var(--border-default)]',
-};
-
 const dotColors: Record<BadgeVariant, string> = {
   default: 'bg-[var(--accent)]',
   success: 'bg-[var(--success)]',
@@ -42,6 +27,10 @@ export function statusVariant(status?: string): BadgeVariant {
   return 'muted';
 }
 
+/**
+ * Linear's label pill: a coloured dot and plain text on a hairline outline. The colour lives
+ * in the dot only, so a row of pills stays calm. `dot` makes the dot pulse for live states.
+ */
 export function Badge({
   children,
   variant = 'default',
@@ -56,14 +45,14 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4',
-        variantClasses[variant],
+        'inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border-default)] px-2 text-[11px] font-medium leading-none text-[var(--text-body)]',
         className,
       )}
     >
-      {dot && (
-        <span className={cn('h-1.5 w-1.5 rounded-full animate-pulse-subtle', dotColors[variant])} />
-      )}
+      <span
+        aria-hidden="true"
+        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotColors[variant], dot && 'animate-pulse-subtle')}
+      />
       {children}
     </span>
   );

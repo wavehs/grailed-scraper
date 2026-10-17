@@ -14,11 +14,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Providers>
           <div className="flex min-h-dvh">
             <AppSidebar />
-            <main id="main-content" className="min-w-0 flex-1 px-4 pb-8 pt-16 md:px-6 md:py-6 xl:px-8">
-              <div className="mx-auto max-w-[1480px]">
-                <HealthBanner />
-                {children}
-              </div>
+            {/* PageHeader bleeds over this gutter to form the 44px top bar of every screen. */}
+            <main id="main-content" className="min-w-0 flex-1 px-4 pb-10 pt-[60px] md:px-6 md:pt-4">
+              <HealthBanner />
+              {children}
             </main>
           </div>
         </Providers>

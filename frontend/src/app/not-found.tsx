@@ -1,20 +1,19 @@
+'use client';
+
 import Link from 'next/link';
-import { Home, Search } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 export default function NotFound() {
+  const { t } = useI18n();
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 animate-fade-in">
-      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]">
-        <Search size={26} className="text-[var(--accent)]" />
-      </div>
-      <h1 className="text-4xl font-semibold text-[var(--text-primary)]">404</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Page not found</p>
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center animate-fade-in">
+      <p className="text-[32px] font-medium tabular-nums text-[var(--text-muted)]">404</p>
+      <h1 className="text-[15px] font-medium">{t('notFoundTitle')}</h1>
       <Link
         href="/trends"
-        className="inline-flex items-center gap-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--accent-contrast)] transition-colors hover:bg-[var(--accent-hover)]"
+        className="inline-flex h-8 items-center rounded-[5px] bg-[var(--accent)] px-3 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
       >
-        <Home size={16} />
-        Go to Trends
+        {t('goToTrends')}
       </Link>
     </div>
   );

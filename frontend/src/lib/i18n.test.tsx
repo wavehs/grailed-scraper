@@ -2,12 +2,18 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { AppSidebar } from '@/components/app-sidebar';
+import { LanguageSelect } from '@/components/language-select';
 import { renderApp } from '@/test/render';
 
 describe('locale provider', () => {
   it('starts in English and persists a Russian selection', async () => {
     window.localStorage.clear();
-    renderApp(<AppSidebar />);
+    renderApp(
+      <>
+        <AppSidebar />
+        <LanguageSelect />
+      </>,
+    );
     expect(screen.getByText('Trends')).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'ru');
     expect(screen.getByText('Тренды')).toBeInTheDocument();

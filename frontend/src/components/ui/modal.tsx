@@ -65,7 +65,7 @@ export function Modal({
       {/* Backdrop */}
       <button
         aria-label="Close"
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm cursor-default"
+        className="fixed inset-0 cursor-default bg-black/50"
         onClick={onClose}
         tabIndex={-1}
       />
@@ -74,28 +74,28 @@ export function Modal({
       <div
         ref={dialogRef}
         className={cn(
-          'relative z-10 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-raised)] shadow-[var(--shadow-float)] animate-scale-in',
+          'relative z-10 w-full rounded-lg bg-[var(--bg-surface-raised)] shadow-[var(--shadow-float)] animate-scale-in',
           maxWidth,
           className,
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-4">
-          <h2 id="modal-title" className="text-lg font-semibold text-[var(--text-primary)]">
+        <div className="flex h-12 items-center justify-between border-b border-[var(--border-subtle)] px-5">
+          <h2 id="modal-title" className="text-sm font-medium text-[var(--text-primary)]">
             {title}
           </h2>
           <button
             ref={closeRef}
             onClick={onClose}
-            className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+            className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-control)] hover:text-[var(--text-primary)]"
             aria-label="Close"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </div>
   );

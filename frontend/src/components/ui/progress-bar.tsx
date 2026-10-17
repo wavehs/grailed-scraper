@@ -28,8 +28,8 @@ export function ProgressBar({
       )}
       <div
         className={cn(
-          'overflow-hidden rounded-full bg-[var(--bg-surface-hover)]',
-          size === 'sm' ? 'h-1.5' : 'h-2.5',
+          'overflow-hidden rounded-full bg-[var(--bg-control)]',
+          size === 'sm' ? 'h-1' : 'h-1.5',
         )}
         role="progressbar"
         aria-label={label}
@@ -42,7 +42,7 @@ export function ProgressBar({
             'h-full rounded-full',
             indeterminate
               ? 'w-full animate-shimmer'
-              : 'bg-[var(--accent)] transition-[width] duration-500 ease-out',
+              : 'bg-[var(--accent)] transition-[width] duration-300 ease-out',
           )}
           style={indeterminate ? undefined : { width: `${pct}%` }}
         />
