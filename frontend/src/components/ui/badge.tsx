@@ -16,7 +16,7 @@ const dotColors: Record<BadgeVariant, string> = {
 export function statusVariant(status?: string): BadgeVariant {
   if (!status) return 'muted';
   const s = status.toLowerCase();
-  if (['ready', 'completed', 'verified', 'confirmed', 'auto_confirmed', 'ok', 'live'].includes(s))
+  if (['ready', 'completed', 'verified', 'confirmed', 'auto_confirmed', 'ok', 'live', 'valid'].includes(s))
     return 'success';
   if (['running', 'pending', 'discovering', 'normalizing', 'scoring', 'planning', 'mapping', 'refreshing'].includes(s))
     return 'info';
