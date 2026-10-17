@@ -67,7 +67,7 @@ export function MonthCharts({ months, overlay }: { months: MonthPoint[]; overlay
     <div className="space-y-3">
       <div className="grid gap-5 lg:grid-cols-2">
         <figure className="space-y-2">
-          <figcaption className="text-sm font-medium text-[var(--text-primary)]">{t('monthlySales')}</figcaption>
+          <figcaption className="text-[13px] font-medium text-[var(--text-primary)]">{t('monthlySales')}</figcaption>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={rows} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -92,7 +92,7 @@ export function MonthCharts({ months, overlay }: { months: MonthPoint[]; overlay
           )}
         </figure>
         <figure className="space-y-2">
-          <figcaption className="text-sm font-medium text-[var(--text-primary)]">{t('monthlyMedianPrice')}</figcaption>
+          <figcaption className="text-[13px] font-medium text-[var(--text-primary)]">{t('monthlyMedianPrice')}</figcaption>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -4 }}>

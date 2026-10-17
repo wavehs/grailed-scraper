@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, Check, GitMerge, Pencil, RefreshCcw, Scissors, Split } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { ErrorState, LoadingState, Notice } from '@/components/states';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -121,12 +120,10 @@ export function GroupEditor({
     mode === 'not-model';
 
   return (
-    <Card className="space-y-4 p-5">
+    <section aria-label={t('editGroup')} className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          {t('editGroup')}
-        </h2>
-        <span className="text-sm text-[var(--text-primary)]">
+        <h2 className="text-[13px] font-medium text-[var(--text-primary)]">{t('editGroup')}</h2>
+        <span className="text-xs text-[var(--text-muted)]">
           {data.brand} · {groupLabel(data, t)} · {typeName(data.product_type)}
         </span>
         {data.status === 'auto' && !service && <Badge variant="warning">{t('autoGroup')}</Badge>}
@@ -190,24 +187,24 @@ export function GroupEditor({
 
       {mode && (
         <form
-          className="space-y-3 rounded-lg border border-[var(--border-subtle)] p-3"
+          className="max-w-xl space-y-3 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3"
           onSubmit={(event) => {
             event.preventDefault();
             mutation.mutate();
           }}
         >
           {mode === 'rename' && (
-            <label className="block text-sm">
+            <label className="block text-xs text-[var(--text-secondary)]">
               {t('name')}
-              <input className="mt-1 w-full rounded-lg" value={name} onChange={(e) => setName(e.target.value)} />
+              <input className="mt-1 w-full" value={name} onChange={(e) => setName(e.target.value)} />
             </label>
           )}
           {mode === 'merge' && (
-            <label className="block text-sm">
+            <label className="block text-xs text-[var(--text-secondary)]">
               <span className="text-xs text-[var(--text-muted)]">{t('groupMergeHelp')}</span>
               <select
                 aria-label={t('groupMerge')}
-                className="mt-1 w-full rounded-lg"
+                className="mt-1 w-full"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
               >
@@ -223,20 +220,20 @@ export function GroupEditor({
           {mode === 'split' && (
             <div className="space-y-2">
               <p className="text-xs text-[var(--text-muted)]">{t('groupSplitHelp')}</p>
-              <label className="block text-sm">
+              <label className="block text-xs text-[var(--text-secondary)]">
                 {t('groupSplitPhrase')}
-                <input className="mt-1 w-full rounded-lg" value={phrase} onChange={(e) => setPhrase(e.target.value)} />
+                <input className="mt-1 w-full" value={phrase} onChange={(e) => setPhrase(e.target.value)} />
               </label>
-              <label className="block text-sm">
+              <label className="block text-xs text-[var(--text-secondary)]">
                 {t('groupSplitName')}
                 <input
-                  className="mt-1 w-full rounded-lg"
+                  className="mt-1 w-full"
                   value={splitName}
                   onChange={(e) => setSplitName(e.target.value)}
                 />
               </label>
               {!service && (
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
                   <input type="checkbox" checked={asVersion} onChange={(e) => setAsVersion(e.target.checked)} />
                   {t('groupSplitAsVersion')}
                 </label>
@@ -246,7 +243,7 @@ export function GroupEditor({
           {mode === 'line' && (
             <select
               aria-label={t('modelLine')}
-              className="w-full rounded-lg"
+              className="w-full"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
             >
@@ -259,7 +256,7 @@ export function GroupEditor({
             </select>
           )}
           {mode === 'not-model' && (
-            <p className="text-sm text-[var(--text-secondary)]">{t('groupNotModelHelp')}</p>
+            <p className="text-xs text-[var(--text-secondary)]">{t('groupNotModelHelp')}</p>
           )}
           <div className="flex gap-2">
             <Button size="sm" disabled={!ready || mutation.isPending}>
@@ -271,7 +268,7 @@ export function GroupEditor({
           </div>
         </form>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -299,7 +296,7 @@ export function MoveListing({ listingId, brandId }: { listingId: number; brandId
   return (
     <select
       aria-label={t('moveListingTo')}
-      className="max-w-56 rounded-lg text-xs"
+      className="control-sm max-w-56"
       defaultValue=""
       disabled={move.isPending || groups.isLoading}
       onChange={(event) => {

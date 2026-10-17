@@ -20,8 +20,6 @@
     --bg-control: #282a34;
     --bg-control-hover: #2f3140;
     --bg-selected: #2b2e3d;
-    --bg-glass: var(--bg-surface);
-    --bg-glass-hover: var(--bg-surface-hover);
     --border-subtle: #2b2d3b;
     --border-default: #313148;
     --border-strong: #3e3f58;
@@ -33,23 +31,17 @@
     --accent-hover: #6e79d6;
     --accent-soft: rgba(94, 106, 210, 0.16);
     --accent-contrast: #ffffff;
-    --accent-start: var(--accent);
-    --accent-end: var(--accent);
     --accent-glow: rgba(94, 106, 210, 0.32);
     --success: #4cb782;
-    --success-light: #4cb782;
     --success-bg: rgba(76, 183, 130, 0.12);
     --success-border: rgba(76, 183, 130, 0.32);
     --warning: #f2c94c;
-    --warning-light: #f2c94c;
     --warning-bg: rgba(242, 201, 76, 0.1);
     --warning-border: rgba(242, 201, 76, 0.3);
     --danger: #eb5757;
-    --danger-light: #eb5757;
     --danger-bg: rgba(235, 87, 87, 0.1);
     --danger-border: rgba(235, 87, 87, 0.32);
     --info: #4ea7fc;
-    --info-light: #4ea7fc;
     --info-bg: rgba(78, 167, 252, 0.1);
     --info-border: rgba(78, 167, 252, 0.3);
     --sidebar-width: 220px;
@@ -120,10 +112,6 @@
 }
 
 @layer components {
-  .glass { border: 1px solid var(--border-subtle); background: var(--bg-surface); }
-  .glass-hover:hover { border-color: var(--border-default); background: var(--bg-surface-hover); }
-  .gradient-text { color: var(--text-primary); }
-  .glow-accent { box-shadow: none; }
   /* Linear's 28px chip: filters, view options and inline toggles in toolbars. */
   .chip {
     display: inline-flex;
@@ -153,7 +141,6 @@
   .tabular { font-variant-numeric: tabular-nums; }
   .animate-fade-in { animation: fadeIn 120ms ease-out; }
   .animate-slide-up { animation: slideUp 140ms ease-out; }
-  .animate-slide-down { animation: slideDown 140ms ease-out; }
   .animate-scale-in { animation: scaleIn 120ms ease-out; }
   .animate-pulse-subtle { animation: pulseSubtle 2s ease-in-out infinite; }
   .animate-shimmer { animation: shimmer 1.4s ease-in-out infinite; background: linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-surface-hover) 50%, var(--bg-surface) 100%); background-size: 200% 100%; }
@@ -165,7 +152,6 @@
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 @keyframes pulseSubtle { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }

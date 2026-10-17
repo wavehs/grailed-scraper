@@ -108,7 +108,7 @@ export function WeeklyCharts({
     <div className="space-y-3">
       <div className="grid gap-5 lg:grid-cols-2">
         <figure className="space-y-2">
-          <figcaption className="text-sm font-medium text-[var(--text-primary)]">
+          <figcaption className="text-[13px] font-medium text-[var(--text-primary)]">
             {t('weeklySales')}
           </figcaption>
           <div className="h-52">
@@ -127,7 +127,7 @@ export function WeeklyCharts({
           </div>
         </figure>
         <figure className="space-y-2">
-          <figcaption className="text-sm font-medium text-[var(--text-primary)]">
+          <figcaption className="text-[13px] font-medium text-[var(--text-primary)]">
             {t('weeklyMedianPrice')}
           </figcaption>
           <div className="h-52">
