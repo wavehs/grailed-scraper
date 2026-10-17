@@ -40,7 +40,15 @@ const sections: { label: string; items: NavItem[] }[] = [
 
 const settingsItem: NavItem = { key: 'settings', href: '/settings', icon: Settings };
 
-function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate: () => void }) {
+function NavLink({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  onNavigate: () => void;
+}) {
   const { t } = useI18n();
   const Icon = item.icon;
   return (
@@ -93,7 +101,9 @@ export function AppSidebar() {
         >
           {open ? <X size={16} /> : <Menu size={16} />}
         </button>
-        <span className="text-[13px] font-medium text-[var(--text-primary)]">Grailed Intelligence</span>
+        <span className="text-[13px] font-medium text-[var(--text-primary)]">
+          Grailed Intelligence
+        </span>
       </div>
 
       <aside
@@ -120,7 +130,12 @@ export function AppSidebar() {
               <p className="mb-1 px-2 text-xs text-[var(--text-muted)]">{t(section.label)}</p>
               <div className="flex flex-col gap-px">
                 {section.items.map((item) => (
-                  <NavLink key={item.href} item={item} active={isActive(item.href)} onNavigate={close} />
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    active={isActive(item.href)}
+                    onNavigate={close}
+                  />
                 ))}
               </div>
             </div>

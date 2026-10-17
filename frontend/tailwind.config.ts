@@ -25,7 +25,11 @@ const config: Config = {
           secondary: token('text-secondary'),
           muted: token('text-muted'),
         },
-        accent: { DEFAULT: token('accent'), hover: token('accent-hover'), soft: token('accent-soft') },
+        accent: {
+          DEFAULT: token('accent'),
+          hover: token('accent-hover'),
+          soft: token('accent-soft'),
+        },
         success: token('success'),
         warning: token('warning'),
         danger: token('danger'),
